@@ -1,0 +1,30 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: trip
+      POSTGRES_PASSWORD: trip
+      POSTGRES_DB: trip
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trip -d trip"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://trip:trip@db:5432/trip
+      PORT: 8000
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8020}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
