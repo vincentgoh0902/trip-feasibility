@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 StopType = Literal["venue", "transfer", "hotel", "meal"]
+TransportMode = Literal["walk", "transit", "bike", "car"]
+Pace = Literal["relaxed", "moderate", "packed"]
 
 
 class OsmRef(BaseModel):
@@ -28,3 +30,11 @@ class Stop(BaseModel):
     osm: OsmRef | None = None
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
+
+
+class TravelPreferences(BaseModel):
+    """How the traveller likes to travel (PRD FR-4). Defaults apply when they never set any."""
+
+    pace: Pace = "moderate"
+    max_walk_km: float = Field(default=10.0, gt=0, le=100)
+    transport_modes: list[TransportMode] = Field(default=["walk", "transit"], min_length=1)

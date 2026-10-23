@@ -12,6 +12,7 @@ def stop(
     type: str = "venue",
     osm: tuple[str, int] | None = ("way", 1),
     name: str | None = None,
+    at: tuple[float, float] | None = None,
 ) -> Stop:
     return Stop(
         id=stop_id,
@@ -22,4 +23,6 @@ def stop(
         place_name=name or f"Place {stop_id}",
         type=type,
         osm=OsmRef(type=osm[0], id=osm[1]) if osm else None,
+        lat=at[0] if at else None,
+        lon=at[1] if at else None,
     )

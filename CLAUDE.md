@@ -19,7 +19,9 @@ reference only.
   settings, db.py engine/session, errors.py error shape, models.py schema, itinerary.py
   `Stop` schema, mcp_server.py tools, `checks/` one module per check plus models.py
   (`CheckResult`) and deps.py (HTTP client, Postgres cache, `RateLimiter`, `Unavailable`),
-  `sources/nominatim.py` (OSM place tags; geocoding goes here too); `alembic/`
+  `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
+  `sources/nominatim.py` (OSM place tags; geocoding goes here too), `sources/routing.py`
+  (FOSSGIS OSRM table service); `alembic/`
   migrations; `tests/`; `scripts/smoke_checks.py` live API run; Dockerfile). Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored (local Postgres volume, datasets, review dumps).
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
@@ -42,8 +44,9 @@ reference only.
   200 with a DB check (503 if the DB is unreachable). Locally Compose publishes it on 8020.
 - **Config (env):** `DATABASE_URL`, `PORT`, `HTTP_USER_AGENT`, `HTTP_TIMEOUT_S`,
   `NAGER_BASE_URL`, `NOMINATIM_BASE_URL`, `NOMINATIM_MIN_INTERVAL_S` (1.0),
-  `NOMINATIM_TIMEOUT_S`, `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`,
-  `CACHE_TTL_OSM_DAYS`; tests only: `TEST_DATABASE_URL`. Secrets in `.env` / server `app.env`.
+  `NOMINATIM_TIMEOUT_S`, `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S` (1.0),
+  `ROUTING_TIMEOUT_S`, `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`,
+  `CACHE_TTL_OSM_DAYS`, `CACHE_TTL_ROUTES_DAYS`; tests only: `TEST_DATABASE_URL`. Secrets in `.env` / server `app.env`.
 - **Memory:** API idles at ~60 MB. Postgres sizing depends on the review vectors (below).
 - **Visibility:** homelab starts `private`. GitHub repo is **public**: never commit
   personal itineraries, API keys, review dumps or annotated datasets with personal details.
@@ -90,6 +93,14 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
   use. All Nominatim calls (including future geocoding) must go through
   `deps.nominatim_limiter`, which also pauses calls for 60 s after a 429/403/503. Never add
   retries that bypass it. Nominatim doesn't index untagged/unnamed objects (→ "not found").
+- **Routing (FOSSGIS OSRM) has the same rules:** ≤1 request/second via
+  `deps.routing_limiter`, no heavy use, and the frontend must show OSM attribution with a
+  "fix the map" link. One table request per travel mode covers a whole itinerary.
+- **Transit and taxi times are estimates** (constants in `checks/legs.py`): always label them
+  as estimated, and keep the 25% margin before an estimate becomes a blocker. No free
+  service routes public transport. Pace limits in `checks/daily_load.py` are untuned
+  defaults; tune both from the dev set, not by guessing.
+- Fake routing in tests: `tests/fake_osrm.py` (0.01° = 1 km; 5/15/30 km/h).
 - `opening-hours-py` rejects common-but-invalid hours like `Mo-Fr 9-17` (→ unknown), and uses
   its own holiday calendar for `PH`, separate from Nager.Date.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).

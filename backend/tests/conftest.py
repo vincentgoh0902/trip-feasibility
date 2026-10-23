@@ -32,6 +32,8 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["NAGER_BASE_URL"] = "https://nager.test/api/v3"
 os.environ["NOMINATIM_BASE_URL"] = "https://nominatim.test"
 os.environ["NOMINATIM_MIN_INTERVAL_S"] = "0"
+os.environ["ROUTING_BASE_URL"] = "https://routing.test"
+os.environ["ROUTING_MIN_INTERVAL_S"] = "0"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

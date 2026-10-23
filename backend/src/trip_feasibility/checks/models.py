@@ -29,6 +29,8 @@ class CheckResult(BaseModel):
     unknown: list[UnknownStop] = []
     checked_stop_ids: list[str] = []
     error: str | None = None
+    # Caveats on an "ok" result, e.g. a part of the check that couldn't run.
+    notes: list[str] = []
 
     @classmethod
     def unavailable(cls, check_name: str, error: str) -> "CheckResult":

@@ -20,10 +20,16 @@ class Settings(BaseSettings):
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     nominatim_min_interval_s: float = 1.0
     nominatim_timeout_s: float = 10.0
+    # Walking/cycling/driving times from the FOSSGIS OSRM servers (car, bike, foot profiles).
+    # Policy: at most 1 request per second, no heavy use, OSM attribution shown in the UI.
+    routing_base_url: str = "https://routing.openstreetmap.de"
+    routing_min_interval_s: float = 1.0
+    routing_timeout_s: float = 15.0
     # After a rate-limit or overload response, stop calling that service for this long.
     rate_limit_cooldown_s: float = 60.0
     cache_ttl_holidays_days: int = 30
     cache_ttl_osm_days: int = 7
+    cache_ttl_routes_days: int = 30
 
 
 @lru_cache

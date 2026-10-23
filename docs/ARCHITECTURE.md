@@ -5,9 +5,10 @@ including the tradeoffs and what was given up. Requirements are in [`PRD.md`](PR
 progress and open decisions are in [`../PLAN.md`](../PLAN.md). Keep this file current when
 the design changes.
 
-**Status (Oct 23, 2026):** backend skeleton, database schema, CI, and the first two check
-tools (public holidays, opening hours) exist and are tested. The parse pipeline, the
-remaining checks, the agent, the API routes, auth and the frontend don't exist yet.
+**Status (Oct 23, 2026):** backend skeleton, database schema, CI, and four of the five check
+tools (public holidays, opening hours, travel time, daily load) exist, are tested, and work
+against the live data sources. Hotel red flags, the parse pipeline, the agent, the API
+routes, auth and the frontend don't exist yet.
 
 ---
 
@@ -20,8 +21,8 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
  pasted text ──► parse pipeline ──► stops ──► agent ──► check tools (MCP) ──► violations ──► fixes
                (LLM only for step 1)            │        ├─ public_holidays   ✅ built
                                                 │        ├─ opening_hours     ✅ built
-                                                │        ├─ travel_time       ⏳
-                                                │        ├─ daily_load        ⏳
+                                                │        ├─ travel_time       ✅ built
+                                                │        ├─ daily_load        ✅ built
                                                 │        └─ hotel_red_flags   ⏳
                                                 └──► every external lookup is cached in Postgres
 ```
@@ -57,9 +58,13 @@ trip-feasibility/
     │       ├── models.py     CheckResult / Violation / UnknownStop
     │       ├── deps.py       HTTP client, Postgres response cache, RateLimiter, Unavailable
     │       ├── holidays.py   public holidays check (Nager.Date)
-    │       └── opening_hours.py  opening hours check (OSM data)
+    │       ├── opening_hours.py  opening hours check (OSM data)
+    │       ├── legs.py       legs between consecutive stops + travel options (shared)
+    │       ├── travel_time.py    travel time check
+    │       └── daily_load.py     daily load check
     ├── sources/
-    │   └── nominatim.py  OSM place tags via Nominatim (rate-limited); geocoding goes here too
+    │   ├── nominatim.py  OSM place tags via Nominatim (rate-limited); geocoding goes here too
+    │   └── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
     └── tests/                pytest; real Postgres, mocked HTTP
 ```
 
@@ -156,7 +161,8 @@ CheckResult
 ├── violations[]      check_name, severity (info|warning|blocker), stop_ids, message, evidence, source
 ├── unknown[]         stop_id + reason: stops the check could not evaluate
 ├── checked_stop_ids  stops it actually evaluated
-└── error             why it was unavailable
+├── error             why it was unavailable
+└── notes[]           caveats on an "ok" result (e.g. walking distance couldn't be checked)
 ```
 
 Why this shape:
@@ -305,6 +311,74 @@ What switching gives up, and how it's handled:
   10k requests/month), or self-hosting Nominatim/Overpass on the homelab with an extract
   covering only the test-set cities.
 
+### Travel time and daily load (`checks/legs.py`, `travel_time.py`, `daily_load.py`)
+
+Both checks need the same thing: the **legs** between consecutive stops on the same day,
+with how long each takes. `legs.py` works that out once; because routes are cached per
+pair, the second check makes no extra requests.
+
+**Stops are taken in itinerary order, not sorted by time.** If an itinerary's times run
+backwards, that is itself a problem worth reporting (as an overlap), not something to quietly
+fix by re-sorting.
+
+**Routing source: FOSSGIS OSRM servers** (`routing.openstreetmap.de`, `sources/routing.py`).
+Free, no key, worldwide walking, cycling and driving. Tested live: Eiffel Tower → Louvre
+came back as 3.7 km, 50 min on foot, 20 min by bike, 10.6 min by car, about 1 s each. It
+uses OSRM's **table** service: one request per travel mode returns every pair at once, so a
+whole itinerary costs 2-3 requests, not one per leg. Policy: at most 1 request per second,
+identify the app, no heavy use, and **the UI must show OSM attribution with a "fix the map"
+link** (a frontend requirement to remember). Same `RateLimiter` and 60 s back-off as
+Nominatim.
+
+Considered and rejected: **OpenRouteService** needs an API key, and third-party reports say
+its current API host shuts down in early November 2026 (not confirmed from official
+sources). It would also need its own key in `app.env`. Kept as a fallback idea.
+
+**How each travel mode's time is worked out.** The traveller's own transport modes are used
+(PRD FR-4), and the fastest one wins for each leg:
+
+| Mode | Time | Why |
+| --- | --- | --- |
+| walk | OSRM foot route | Real route on the street network. Only offered for legs up to 3 km, unless walking is the traveller's only mode: nobody plans a 6 km walk between museums by default |
+| bike | OSRM bike route | Real route |
+| car (taxi) | OSRM car time × 1.3 + 5 min | OSRM car times assume empty roads; city traffic and waiting for pickup add time |
+| transit | OSRM car time × 1.5 + 10 min | **No free routing service covers public transport.** This rough estimate (driving time, slower, plus walking to the station and waiting) is marked `estimated: true` in the evidence and "(estimated)" in the message |
+
+The constants are starting guesses, to be checked against the dev set. Live in Paris the
+estimate looked reasonable: Musée d'Orsay → Eiffel Tower came out at 21 min by public
+transport, which matches a real metro trip. Real transit routing would need GTFS timetables
+and a router like OpenTripPlanner, which is a project of its own.
+
+**Travel time severity:**
+
+| Situation | Severity |
+| --- | --- |
+| Stops overlap (the next starts before the previous ends) | blocker |
+| Gap shorter than the travel time (walk/bike: exact; estimates: more than 25% short) | blocker |
+| Estimated time slightly over the gap (within 25%) | warning: "may not be enough time" |
+| Enough time, but less slack than the buffer (strictness: 0, 10 or 20 min; default 10) | warning |
+| Two stops at the same place | never flagged; the buffer only applies when there's travel |
+| A missing time, an unlocated stop, or no route | unknown |
+
+Why the 25% margin: in the first live run, "21 min needed, 20 available" came out as a
+blocker, but 21 was an estimate. A blocker should mean "this cannot work", so estimated
+times only block when they're clearly over.
+
+**Daily load** looks at each day: number of venue stops, length of the day (first start to
+last end), and walking distance (walking legs, plus 0.4 km to and from stations for each
+transit leg). Limits by pace (PRD FR-4), starting defaults to tune on the dev set:
+
+| Pace | Venues per day | Day length |
+| --- | --- | --- |
+| relaxed | 3 | 8 h |
+| moderate (default) | 5 | 10 h |
+| packed | 7 | 13 h |
+
+Over any limit → one **warning** per day, listing every limit exceeded. Walking more than
+1.5× the traveller's limit → **blocker**. If routing is down, the day is still checked for
+venues and hours, and a note says walking wasn't checked; that's why `CheckResult` has
+`notes`.
+
 ### Why MCP (`mcp_server.py`)
 
 Each check is exposed as an MCP tool (PRD ADR-4). MCP is a standard protocol for giving
@@ -331,16 +405,22 @@ client can call it.
   to run against any database whose name doesn't end in `_test`. This exists because the
   first version wiped the dev database on every test run.
 - **HTTP is mocked with respx, against fake hosts.** Tests point the tools at
-  `nager.test` / `nominatim.test`, so even a mistake can't hit the real services. CI is
-  then fast and deterministic, and doesn't fail when a public service is having a bad day.
+  `nager.test` / `nominatim.test` / `routing.test`, so even a mistake can't hit the real
+  services. CI is then fast and deterministic, and doesn't fail when a public service is
+  having a bad day.
+- **A fake routing server** (`tests/fake_osrm.py`) computes distances from the coordinates
+  (0.01° = 1 km; walking 5 km/h, cycling 15, driving 30), so every expected travel time in
+  a test can be worked out by hand.
 - **What tests cover:** each severity rule, past-midnight visits, holiday rules, regional
   holidays, unknown handling, cache hits, batches of 50, the 1-request-per-second throttle,
-  the 60 s pause after a 429/403/503, "unavailable" on every kind of failure, and the MCP
-  round trip.
+  the 60 s pause after a 429/403/503, "unavailable" on every kind of failure, mode choice
+  and estimates, the estimate margin, overlaps, same-place stops, pace limits, walking
+  totals, partial results when routing is down, and the MCP round trip.
 - **What they don't cover:** the real APIs. `scripts/smoke_checks.py` runs the tools once
-  against them by hand. Live on Oct 23, 2026: both tools worked in 1.7 s total (the Eiffel
-  Tower is correctly a blocker on 14 July, which its OSM hours mark as closed), and a rerun
-  made zero external requests.
+  against them by hand. Live on Oct 23, 2026: all four tools worked (the Eiffel Tower is
+  correctly a blocker on 14 July, which its OSM hours mark as closed; a deliberately packed
+  Paris day got four travel-time violations and an overloaded-day warning), about 12 s for
+  the first run, and a rerun made zero external requests.
 
 ## 7. CI (`.github/workflows/ci.yml`)
 
@@ -393,6 +473,11 @@ Postgres. Three things to settle before the first deploy:
 | 12 | MCP tools, connected in-process | Plain functions; separate MCP process | Standard protocol and schemas without network overhead | A dependency on a fast-moving SDK |
 | 13 | Tests on a guarded `_test` database | Tests on the dev database | A test drops the schema; the guard makes data loss impossible | Two databases locally |
 | 14 | Mocked HTTP against fake hosts in tests | Live API calls in tests | Deterministic, fast CI; no accidental real calls | Real API format changes are only caught by the smoke script |
+| 15 | FOSSGIS OSRM (table service) for routing | OpenRouteService; one request per leg | Free, no key, all pairs in one request per mode | 1 request/second; must show OSM attribution |
+| 16 | Transit time estimated from driving time | GTFS + OpenTripPlanner; leave transit out | No free transit router; most city trips use transit | An estimate, so it's labelled, and only blocks when clearly short |
+| 17 | Estimated times block only when >25% short | Treat estimates like exact times | A blocker must mean "can't work"; avoids false blockers | Some real problems show as warnings |
+| 18 | Legs computed once, shared by two checks | Each check routes on its own | One routing cost, consistent numbers | The checks are coupled through `legs.py` |
+| 19 | Pace limits as fixed starting defaults | Ask the LLM to judge load | Deterministic and testable; tuned on the dev set | Defaults may not suit everyone until tuned |
 
 ## 11. Known gaps and next steps
 
@@ -401,8 +486,11 @@ Postgres. Three things to settle before the first deploy:
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
 - Nominatim's 1 request/second limit is per process; fine for one API container, but several
   processes calling it would need a shared limiter (e.g. in Postgres).
-- Next tools: travel time (OSRM / OpenRouteService), daily load, then the parse pipeline,
-  hotel reviews and the agent. Order and status are in `PLAN.md`.
+- Transit times are estimates; the travel-mode constants and pace limits are untuned
+  guesses until the dev set exists.
+- The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
+- Next: annotation format, parse pipeline (with geocoding via Nominatim), hotel reviews and
+  the hotel check, then the agent. Order and status are in `PLAN.md`.
 
 ## Glossary
 
@@ -411,6 +499,10 @@ Postgres. Three things to settle before the first deploy:
 - **OSM / Nominatim / Overpass:** OpenStreetMap is the open map database. Nominatim is its
   search service (names → places, and place IDs → tags, used here for `opening_hours`).
   Overpass is its general query API, no longer used because the public servers are overloaded.
+- **OSRM:** Open Source Routing Machine, a fast router over OSM roads and paths. FOSSGIS runs
+  public servers for walking, cycling and driving; its "table" service returns travel times
+  between many points in one request.
+- **GTFS:** the standard timetable format for public transport; needed for real transit routing.
 - **Nager.Date:** a free public-holidays API, by country and year.
 - **pgvector / HNSW:** a Postgres extension for storing embeddings and finding similar ones;
   HNSW is the index type that makes that search fast.

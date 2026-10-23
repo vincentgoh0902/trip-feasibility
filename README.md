@@ -5,7 +5,7 @@ travel times that don't fit, hotel red flags, overloaded days), shows the eviden
 proposes fixes that are re-checked before you see them.
 
 **Status:** early build. The backend skeleton, database schema and the first check tools
-(public holidays, opening hours) are in place; the agent and frontend are next. Evaluation results will be reported here,
+(public holidays, opening hours, travel time, daily load) are in place; the agent and frontend are next. Evaluation results will be reported here,
 whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works and why:
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -47,8 +47,16 @@ After changing `src/trip_feasibility/models.py`:
 | `NAGER_BASE_URL` | `https://date.nager.at/api/v3` | Public holidays API |
 | `NOMINATIM_BASE_URL` | `https://nominatim.openstreetmap.org` | OSM place lookups (opening hours) |
 | `NOMINATIM_MIN_INTERVAL_S` | `1.0` | Minimum gap between Nominatim requests (its usage policy) |
+| `ROUTING_BASE_URL` | `https://routing.openstreetmap.de` | Walking/cycling/driving routes (FOSSGIS OSRM) |
+| `ROUTING_MIN_INTERVAL_S` | `1.0` | Minimum gap between routing requests (its usage policy) |
 | `RATE_LIMIT_COOLDOWN_S` | `60` | Pause after a service answers 429/403/503 |
 | `HTTP_USER_AGENT` | `trip-feasibility/0.1 (+repo URL)` | Identifies the app to OSM services |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 
 Secrets go in `.env` (gitignored), never in the repo. CI runs gitleaks on every push.
+
+## Data sources
+
+Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, via
+[Nominatim](https://nominatim.org) and the [FOSSGIS routing servers](https://routing.openstreetmap.de).
+Public holidays from [Nager.Date](https://date.nager.at).

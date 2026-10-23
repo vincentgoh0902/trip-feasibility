@@ -8,13 +8,17 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] FastAPI skeleton: `/health` with DB check, single error shape
 - [x] CI: ruff, pytest against Postgres, `alembic check`, gitleaks
 - [x] Tests use a separate `_test` database (guarded), so they never wipe dev data
-- [ ] Collect and annotate ~30 itineraries (dev / test split)
+- [ ] **Vincent: collect** ~30 itineraries from ChatGPT, Claude and Gemini (can start now; needs
+      the test-set cities decided first)
+- [ ] Annotation format, validator and annotation guide (next)
+- [ ] **Vincent: annotate** the itineraries (once the format exists; must be done before the
+      first baseline eval, i.e. by the time the agent runs from a CLI)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
 - [x] Opening hours tool (OSM tags via Nominatim `/lookup`, `opening-hours-py`)
 - [x] Switched from Overpass to Nominatim; 1 req/s throttle and 60 s back-off on 429/403/503
-- [ ] Travel time tool (OSRM / OpenRouteService)
-- [ ] Daily load tool
+- [x] Travel time tool (FOSSGIS OSRM table service; transit estimated)
+- [x] Daily load tool (pace limits, walking distance)
 - [ ] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
 - [ ] Choose embedding model; `hotel_reviews` table; load reviews and embeddings
 - [ ] Hotel red-flags tool
@@ -33,6 +37,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - Local API host port is 8020 (8000 is taken on the Mac); the container listens on `PORT`.
 
 ## Open
+
+- Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
+  on the dev set once it exists.
+- The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
 
 - If traffic outgrows Nominatim's public policy: keyed service (NextGIS, Overpass.ch free
   tier) or self-hosted Nominatim/Overpass for the test-set cities (server session).

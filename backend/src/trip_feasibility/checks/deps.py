@@ -93,6 +93,7 @@ class CheckDeps:
     cache: ResponseCache
     settings: Settings
     nominatim_limiter: RateLimiter
+    routing_limiter: RateLimiter
 
     async def cached(
         self, source: str, key: str, ttl: timedelta, fetch: Callable[[], Awaitable[Any]]
@@ -121,5 +122,8 @@ def make_check_deps(
         settings=settings,
         nominatim_limiter=RateLimiter(
             "Nominatim", settings.nominatim_min_interval_s, settings.rate_limit_cooldown_s
+        ),
+        routing_limiter=RateLimiter(
+            "OSRM routing", settings.routing_min_interval_s, settings.rate_limit_cooldown_s
         ),
     )
