@@ -17,8 +17,9 @@ reference only.
   tracing; MLflow for Tier 2 training only (Mac side).
 - **Layout:** `backend/` (uv project: `src/trip_feasibility/` main.py app, config.py env
   settings, db.py engine/session, errors.py error shape, models.py schema, itinerary.py
-  `Stop` schema, mcp_server.py tools, `checks/` one module per check plus models.py
-  (`CheckResult`) and deps.py (HTTP client, Postgres cache, `RateLimiter`, `Unavailable`),
+  `Stop` schema, dataset.py eval dataset entries + split validation, mcp_server.py tools,
+  `checks/` one module per check plus models.py (`CheckResult`) and deps.py (HTTP client,
+  Postgres cache, `RateLimiter`, `Unavailable`),
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
   `sources/nominatim.py` (OSM place tags; geocoding goes here too), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
@@ -36,6 +37,12 @@ reference only.
   exception out of the check. External lookups go through `CheckDeps.cached` / the
   `api_cache` table; failures are never cached. Tests mock HTTP with respx against the fake
   hosts set in conftest; nothing in the test suite may call a real API.
+- **Vienna is held out** (PLAN.md "Decisions"): dev = 5 each from Paris, London, Barcelona;
+  test = the other 15 plus all 10 Vienna. **Never show me Vienna outputs, results or traces
+  while building**; only the final test run touches them. If anything changes after Vienna
+  results were seen, record it in the README (Vienna is then no longer unseen). Variants stay
+  in their parent's split; `dataset.split_errors` checks all of this. Cached Vienna
+  Nominatim/routing lookups are fine.
 - **Evals:** every run writes model ID, prompt version, config and dataset version to
   `eval_runs`. The held-out test set is touched only for reported results. The judge
   model is from a different provider than the agent model.
@@ -110,7 +117,7 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 ## Open decisions
 
 Tracked in `PLAN.md` ("Open"). Summary: embedding model and dimension; agent and judge
-models (different providers); test-set cities; demo-mode scope, and where demo runs live
+models (different providers); demo-mode scope, and where demo runs live
 (`check_runs.version_id` is required, but demo mode must save nothing); hosting shape below.
 
 ## Hosting (open questions)

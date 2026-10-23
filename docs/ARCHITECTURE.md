@@ -478,6 +478,9 @@ Postgres. Three things to settle before the first deploy:
 | 17 | Estimated times block only when >25% short | Treat estimates like exact times | A blocker must mean "can't work"; avoids false blockers | Some real problems show as warnings |
 | 18 | Legs computed once, shared by two checks | Each check routes on its own | One routing cost, consistent numbers | The checks are coupled through `legs.py` |
 | 19 | Pace limits as fixed starting defaults | Ask the LLM to judge load | Deterministic and testable; tuned on the dev set | Defaults may not suit everyone until tuned |
+| 20 | Dataset cities: Paris, London, Barcelona, Vienna; 2 high- + 2 low-scoring hotels each | Any cities; Amsterdam/Milan too | All four have hotel reviews, so every check is evaluated in every city; high-scoring hotels are false-positive controls | Results are measured on four European cities only; other cities run but are unmeasured |
+| 21 | Transit constants fitted globally from annotated real times | Per-city tuning; a transit router now | Per-city constants wouldn't carry over to unseen cities; the baseline shows whether a router is worth it | Transit stays an estimate in Tier 1 |
+| 22 | Vienna held out of dev entirely (2026-10-24); dev 15, test 25 | Random split across all four cities | Measures how the checker does on a city it was never tuned on; variants stay with their parent so nothing leaks | Vienna's numbers rest on 10 itineraries, so they're reported as counts too; seeing them while building spoils them |
 
 ## 11. Known gaps and next steps
 
