@@ -34,13 +34,15 @@ STOPS = [
         type="venue",
         osm=OsmRef(type="way", id=5013364),
     ),
+    # An OSM node with no tags: Nominatim doesn't index it, so it reports "not found".
+    # Real stops come from Nominatim geocoding and are always indexed.
     Stop(
-        id="untagged",
+        id="unindexed",
         day=2,
         date=date(2026, 10, 27),
         start_time=time(14),
         end_time=time(15),
-        place_name="Untagged node",
+        place_name="Unindexed node",
         type="venue",
         osm=OsmRef(type="node", id=3227252034),
     ),

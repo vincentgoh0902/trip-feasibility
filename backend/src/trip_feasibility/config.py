@@ -1,8 +1,6 @@
 from functools import lru_cache
-from typing import Annotated
 
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -17,21 +15,15 @@ class Settings(BaseSettings):
     )
     http_timeout_s: float = 30.0
     nager_base_url: str = "https://date.nager.at/api/v3"
-    # Tried in order; the next one is used when one is down or overloaded. Mirrors must
-    # hold the whole planet (overpass.osm.ch, for example, is Switzerland only).
-    overpass_urls: Annotated[list[str], NoDecode] = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-    ]
-    # Lookups by ID answer in ~1-2 s when a server is healthy; fail fast and try the next.
-    overpass_timeout_s: float = 10.0
+    # OSM place tags (opening hours) come from Nominatim's /lookup. Its usage policy allows at
+    # most 1 request per second and blocks clients that ignore it.
+    nominatim_base_url: str = "https://nominatim.openstreetmap.org"
+    nominatim_min_interval_s: float = 1.0
+    nominatim_timeout_s: float = 10.0
+    # After a rate-limit or overload response, stop calling that service for this long.
+    rate_limit_cooldown_s: float = 60.0
     cache_ttl_holidays_days: int = 30
     cache_ttl_osm_days: int = 7
-
-    @field_validator("overpass_urls", mode="before")
-    @classmethod
-    def _split_urls(cls, v: object) -> object:
-        return [u.strip() for u in v.split(",") if u.strip()] if isinstance(v, str) else v
 
 
 @lru_cache

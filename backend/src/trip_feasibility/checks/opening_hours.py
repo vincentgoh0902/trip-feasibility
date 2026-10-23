@@ -1,5 +1,5 @@
-"""Opening hours check (OSM Overpass): flags stops outside a venue's opening hours, or at a
-venue that no longer exists.
+"""Opening hours check (OSM data via Nominatim): flags stops outside a venue's opening
+hours, or at a venue that no longer exists.
 
 - blocker: closed for the whole visit (or all day when the stop has no time), or OSM marks
   the place as disused/demolished
@@ -11,70 +11,17 @@ OSM data never counts against the venue. Hotels and transfers aren't checked.
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-import httpx
 from opening_hours import OpeningHours, ParserError, State
 
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.checks.models import CheckResult, UnknownStop, Violation
-from trip_feasibility.itinerary import OsmRef, Stop
+from trip_feasibility.itinerary import Stop
+from trip_feasibility.sources.nominatim import fetch_osm_tags, tags_key
 
 CHECK_NAME = "opening_hours"
 CHECKED_TYPES = {"venue", "meal"}
 _PRIMARY_KEYS = {"amenity", "shop", "tourism", "leisure", "craft", "office", "historic"}
 _LIFECYCLE_PREFIXES = ("disused:", "abandoned:", "demolished:", "razed:", "removed:", "was:")
-
-
-def _cache_key(ref: OsmRef) -> str:
-    return f"osm:{ref.type}:{ref.id}"
-
-
-def _overpass_query(refs: list[OsmRef]) -> str:
-    parts = []
-    for osm_type in ("node", "way", "relation"):
-        ids = sorted({r.id for r in refs if r.type == osm_type})
-        if ids:
-            parts.append(f"{osm_type}(id:{','.join(map(str, ids))});")
-    return f"[out:json][timeout:25];({''.join(parts)});out tags;"
-
-
-async def _post_overpass(deps: CheckDeps, query: str) -> list[dict[str, Any]]:
-    errors = []
-    for url in deps.settings.overpass_urls:
-        try:
-            r = await deps.http.post(
-                url, data={"data": query}, timeout=deps.settings.overpass_timeout_s
-            )
-            if r.status_code != 200:
-                errors.append(f"{url}: HTTP {r.status_code}")
-                continue
-            body = r.json()
-        except (httpx.HTTPError, ValueError) as e:
-            errors.append(f"{url}: {e!r}")
-            continue
-        # Overpass reports timeouts and overload as HTTP 200 with a "remark".
-        remark = body.get("remark") or ""
-        if "error" in remark.lower():
-            errors.append(f"{url}: {remark}")
-            continue
-        return body.get("elements", [])
-    raise Unavailable("All Overpass servers failed: " + "; ".join(errors))
-
-
-async def fetch_osm_tags(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any] | None]:
-    """Tags per cache key; None when the element doesn't exist (any more) in OSM."""
-    keys = {_cache_key(r): r for r in refs}
-    found: dict[str, Any] = await deps.cache.get_many(list(keys))
-    missing = [r for k, r in keys.items() if k not in found]
-    if missing:
-        elements = await _post_overpass(deps, _overpass_query(missing))
-        fetched = {_cache_key(r): {"missing": True} for r in missing}
-        for el in elements:
-            fetched[f"osm:{el['type']}:{el['id']}"] = {"tags": el.get("tags", {})}
-        await deps.cache.put_many(
-            "overpass", fetched, timedelta(days=deps.settings.cache_ttl_osm_days)
-        )
-        found.update(fetched)
-    return {k: (None if v.get("missing") else v["tags"]) for k, v in found.items()}
 
 
 def _is_defunct(tags: dict[str, Any]) -> bool:
@@ -149,7 +96,7 @@ async def check_opening_hours(
     violations = []
     for stop in located:
         assert stop.osm is not None
-        tags = tags_by_key.get(_cache_key(stop.osm))
+        tags = tags_by_key.get(tags_key(stop.osm))
         base_evidence = {"osm_type": stop.osm.type, "osm_id": stop.osm.id}
         if tags is None:
             violations.append(
@@ -157,7 +104,9 @@ async def check_opening_hours(
                     check_name=CHECK_NAME,
                     severity="warning",
                     stop_ids=[stop.id],
-                    message=f"{stop.place_name} is no longer in OpenStreetMap; it may have closed.",
+                    message=(
+                        f"{stop.place_name} was not found in OpenStreetMap; it may have closed."
+                    ),
                     evidence={**base_evidence, "found": False},
                     source=stop.osm.url,
                 )

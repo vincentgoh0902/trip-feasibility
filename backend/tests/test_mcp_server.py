@@ -11,10 +11,16 @@ async def test_tools_are_listed_with_output_schemas(check_deps):
 
 
 async def test_call_tool_returns_structured_check_result(check_deps, respx_mock):
-    respx_mock.post("https://overpass-a.test/api/interpreter").respond(
-        json={
-            "elements": [{"type": "way", "id": 1, "tags": {"opening_hours": "Tu-Su 10:00-18:00"}}]
-        }
+    respx_mock.get("https://nominatim.test/lookup").respond(
+        json=[
+            {
+                "osm_type": "way",
+                "osm_id": 1,
+                "category": "tourism",
+                "type": "museum",
+                "extratags": {"opening_hours": "Tu-Su 10:00-18:00"},
+            }
+        ]
     )
     stops = [
         {

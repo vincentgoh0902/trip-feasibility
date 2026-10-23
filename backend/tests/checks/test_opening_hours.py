@@ -1,5 +1,4 @@
 from datetime import date
-from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -7,29 +6,30 @@ import pytest
 from tests.factories import stop
 from trip_feasibility.checks.opening_hours import check_opening_hours
 
-OVERPASS_A = "https://overpass-a.test/api/interpreter"
-OVERPASS_B = "https://overpass-b.test/api/interpreter"
+LOOKUP = "https://nominatim.test/lookup"
 MON, TUE = date(2026, 10, 26), date(2026, 10, 27)
 
 
-def overpass(*elements):
-    return {"version": 0.6, "elements": list(elements)}
+def place(osm_type: str, osm_id: int, *, category="tourism", type="museum", **extratags):
+    """A Nominatim /lookup result; the main tag comes back as category/type."""
+    return {
+        "osm_type": osm_type,
+        "osm_id": osm_id,
+        "category": category,
+        "type": type,
+        "name": f"{osm_type} {osm_id}",
+        "extratags": extratags or None,
+    }
 
 
-def way(osm_id: int, **tags):
-    return {"type": "way", "id": osm_id, "tags": tags}
-
-
-def query_of(request: httpx.Request) -> str:
-    return parse_qs(request.content.decode())["data"][0]
+def way(osm_id: int, **extratags):
+    return place("way", osm_id, **extratags)
 
 
 @pytest.fixture
 def museum(respx_mock):
     """way/1: closed Mondays, 09:00-18:00 otherwise."""
-    return respx_mock.post(OVERPASS_A).respond(
-        json=overpass(way(1, name="Museum", opening_hours="Tu-Su 09:00-18:00"))
-    )
+    return respx_mock.get(LOOKUP).respond(json=[way(1, opening_hours="Tu-Su 09:00-18:00")])
 
 
 @pytest.mark.parametrize(
@@ -65,15 +65,13 @@ async def test_violation_carries_evidence_and_source(check_deps, museum):
     [("Mo-Su 18:00-02:00", None), ("Mo-Su 18:00-24:00", "warning")],
 )
 async def test_visit_past_midnight(check_deps, respx_mock, hours, expected):
-    respx_mock.post(OVERPASS_A).respond(json=overpass(way(1, opening_hours=hours)))
+    respx_mock.get(LOOKUP).respond(json=[way(1, opening_hours=hours)])
     result = await check_opening_hours(check_deps, [stop("a", TUE, "23:00", "01:00")])
     assert [v.severity for v in result.violations] == ([expected] if expected else [])
 
 
 async def test_public_holiday_rule_uses_country(check_deps, respx_mock):
-    respx_mock.post(OVERPASS_A).respond(
-        json=overpass(way(1, opening_hours="Mo-Su 09:00-18:00; PH off"))
-    )
+    respx_mock.get(LOOKUP).respond(json=[way(1, opening_hours="Mo-Su 09:00-18:00; PH off")])
     christmas = [stop("a", date(2026, 12, 25), "10:00", "12:00")]
     [v] = (await check_opening_hours(check_deps, christmas, "fr")).violations
     assert v.severity == "blocker"
@@ -82,13 +80,13 @@ async def test_public_holiday_rule_uses_country(check_deps, respx_mock):
 @pytest.mark.parametrize(
     ("tags", "reason_part"),
     [
-        ({"name": "Cafe"}, "no opening_hours"),
+        ({"wheelchair": "yes"}, "no opening_hours"),
         ({"opening_hours": "Mo-Fr 9-17"}, "unparseable"),
         ({"opening_hours": "Mo-Su unknown"}, "unknown for this time"),
     ],
 )
 async def test_unusable_hours_are_unknown_not_violations(check_deps, respx_mock, tags, reason_part):
-    respx_mock.post(OVERPASS_A).respond(json=overpass(way(1, **tags)))
+    respx_mock.get(LOOKUP).respond(json=[way(1, **tags)])
     result = await check_opening_hours(check_deps, [stop("a", TUE, "10:00", "11:00")])
     assert result.violations == []
     [u] = result.unknown
@@ -97,15 +95,15 @@ async def test_unusable_hours_are_unknown_not_violations(check_deps, respx_mock,
 
 
 async def test_place_missing_from_osm_is_a_warning(check_deps, respx_mock):
-    respx_mock.post(OVERPASS_A).respond(json=overpass())
+    respx_mock.get(LOOKUP).respond(json=[])
     [v] = (await check_opening_hours(check_deps, [stop("a", TUE, "10:00", "11:00")])).violations
     assert v.severity == "warning"
     assert v.evidence["found"] is False
 
 
 async def test_disused_place_is_a_blocker(check_deps, respx_mock):
-    respx_mock.post(OVERPASS_A).respond(
-        json=overpass(way(1, **{"name": "Old Cafe", "disused:amenity": "cafe"}))
+    respx_mock.get(LOOKUP).respond(
+        json=[way(1, category="building", type="yes", **{"disused:amenity": "cafe"})]
     )
     [v] = (await check_opening_hours(check_deps, [stop("a", TUE, "10:00", "11:00")])).violations
     assert v.severity == "blocker"
@@ -126,53 +124,72 @@ async def test_only_located_venues_and_meals_are_checked(check_deps, museum):
     ]
 
 
-async def test_one_batched_query_and_cached_afterwards(check_deps, respx_mock):
-    route = respx_mock.post(OVERPASS_A).respond(
-        json=overpass(
-            way(1, opening_hours="24/7"),
-            {"type": "node", "id": 7, "tags": {"opening_hours": "24/7"}},
-        )
+async def test_current_main_tag_overrides_old_lifecycle_tags(check_deps, respx_mock):
+    respx_mock.get(LOOKUP).respond(
+        json=[place("way", 1, category="amenity", type="restaurant", **{"was:shop": "bakery"})]
+    )
+    result = await check_opening_hours(check_deps, [stop("a", TUE, "10:00", "11:00")])
+    assert result.violations == []
+
+
+async def test_one_lookup_and_cached_afterwards(check_deps, respx_mock):
+    route = respx_mock.get(LOOKUP).respond(
+        json=[way(1, opening_hours="24/7"), place("node", 7, opening_hours="24/7")]
     )
     stops = [
         stop("a", TUE, "10:00", "11:00", osm=("way", 1)),
         stop("b", TUE, "12:00", "13:00", osm=("node", 7)),
-        stop("c", TUE, "14:00", "15:00", osm=("relation", 9)),  # not in OSM
+        stop("c", TUE, "14:00", "15:00", osm=("relation", 9)),  # unknown to Nominatim
     ]
     first = await check_opening_hours(check_deps, stops)
     second = await check_opening_hours(check_deps, stops)
     assert route.call_count == 1
-    query = query_of(route.calls[0].request)
-    assert "node(id:7);" in query and "way(id:1);" in query and "relation(id:9);" in query
+    params = route.calls[0].request.url.params
+    assert params["osm_ids"] == "W1,N7,R9"
+    assert params["extratags"] == "1"
     assert first == second
     assert [v.stop_ids for v in second.violations] == [["c"]]
 
 
+async def test_more_than_50_places_are_split_into_batches(check_deps, respx_mock):
+    route = respx_mock.get(LOOKUP).respond(json=[])
+    stops = [stop(f"s{i}", TUE, "10:00", "11:00", osm=("node", i)) for i in range(1, 121)]
+    await check_opening_hours(check_deps, stops)
+    sizes = [len(c.request.url.params["osm_ids"].split(",")) for c in route.calls]
+    assert sizes == [50, 50, 20]
+
+
 @pytest.mark.parametrize(
-    "first_server",
+    ("response", "error_part"),
     [
-        httpx.Response(504),
-        httpx.Response(200, json={"elements": [], "remark": "runtime error: timeout"}),
-        httpx.ConnectTimeout("slow"),
+        (httpx.Response(500), "HTTP 500"),
+        (httpx.ConnectTimeout("slow"), "request failed"),
+        (httpx.Response(200, text="<html>"), "invalid JSON"),
+        (httpx.Response(200, json={"error": "x"}), "unexpected response"),
     ],
 )
-async def test_falls_back_to_next_overpass_server(check_deps, respx_mock, first_server):
-    a = respx_mock.post(OVERPASS_A)
-    if isinstance(first_server, Exception):
-        a.side_effect = first_server
+async def test_source_failures_make_the_check_unavailable(
+    check_deps, respx_mock, response, error_part
+):
+    route = respx_mock.get(LOOKUP)
+    if isinstance(response, Exception):
+        route.side_effect = response
     else:
-        a.return_value = first_server
-    respx_mock.post(OVERPASS_B).respond(json=overpass(way(1, opening_hours="Tu-Su 09:00-18:00")))
-    result = await check_opening_hours(check_deps, [stop("a", MON, "10:00", "11:00")])
-    assert result.status == "ok"
-    assert [v.severity for v in result.violations] == ["blocker"]
-
-
-async def test_all_overpass_servers_down_is_unavailable(check_deps, respx_mock):
-    respx_mock.post(OVERPASS_A).respond(504)
-    respx_mock.post(OVERPASS_B).respond(429)
+        route.return_value = response
     result = await check_opening_hours(check_deps, [stop("a", MON, "10:00", "11:00")])
     assert result.status == "unavailable"
-    assert "HTTP 504" in result.error and "HTTP 429" in result.error
+    assert error_part in result.error
+
+
+@pytest.mark.parametrize("status", [429, 403, 503])
+async def test_rate_limit_response_pauses_further_requests(check_deps, respx_mock, status):
+    route = respx_mock.get(LOOKUP).respond(status)
+    first = await check_opening_hours(check_deps, [stop("a", MON, "10:00", "11:00")])
+    second = await check_opening_hours(check_deps, [stop("b", MON, "10:00", "11:00")])
+    assert first.status == second.status == "unavailable"
+    assert "backing off" in first.error
+    assert "back off" in second.error
+    assert route.call_count == 1  # the second check never reached Nominatim
 
 
 async def test_no_located_stops_makes_no_request(check_deps, respx_mock):

@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from mcp.server.mcpserver import Context, MCPServer
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from trip_feasibility.checks.deps import CheckDeps, ResponseCache, make_http_client
+from trip_feasibility.checks.deps import CheckDeps, make_check_deps, make_http_client
 from trip_feasibility.checks.holidays import check_public_holidays
 from trip_feasibility.checks.models import CheckResult
 from trip_feasibility.checks.opening_hours import check_opening_hours
@@ -25,9 +25,7 @@ async def lifespan(_: MCPServer) -> AsyncIterator[CheckDeps]:
     engine = make_engine(settings.database_url)
     async with make_http_client(settings) as http:
         try:
-            yield CheckDeps(
-                http=http, cache=ResponseCache(async_sessionmaker(engine)), settings=settings
-            )
+            yield make_check_deps(http, async_sessionmaker(engine), settings)
         finally:
             await engine.dispose()
 

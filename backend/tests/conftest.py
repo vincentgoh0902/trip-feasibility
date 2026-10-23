@@ -30,9 +30,8 @@ if not (make_url(TEST_DATABASE_URL).database or "").endswith("_test"):
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 # Fake data-source hosts: tests mock them with respx and can never hit the real services.
 os.environ["NAGER_BASE_URL"] = "https://nager.test/api/v3"
-os.environ["OVERPASS_URLS"] = (
-    "https://overpass-a.test/api/interpreter,https://overpass-b.test/api/interpreter"
-)
+os.environ["NOMINATIM_BASE_URL"] = "https://nominatim.test"
+os.environ["NOMINATIM_MIN_INTERVAL_S"] = "0"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -40,7 +39,7 @@ from alembic.config import Config  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
-from trip_feasibility.checks.deps import CheckDeps, ResponseCache, make_http_client  # noqa: E402
+from trip_feasibility.checks.deps import make_check_deps, make_http_client  # noqa: E402
 from trip_feasibility.config import get_settings  # noqa: E402
 from trip_feasibility.main import app  # noqa: E402
 
@@ -87,5 +86,5 @@ async def check_deps(test_database):
         await session.commit()
     settings = get_settings()
     async with make_http_client(settings) as http:
-        yield CheckDeps(http=http, cache=ResponseCache(sessionmaker), settings=settings)
+        yield make_check_deps(http, sessionmaker, settings)
     await engine.dispose()

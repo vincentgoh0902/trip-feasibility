@@ -55,9 +55,11 @@ trip-feasibility/
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   └── checks/
     │       ├── models.py     CheckResult / Violation / UnknownStop
-    │       ├── deps.py       HTTP client, Postgres response cache, Unavailable error
+    │       ├── deps.py       HTTP client, Postgres response cache, RateLimiter, Unavailable
     │       ├── holidays.py   public holidays check (Nager.Date)
-    │       └── opening_hours.py  opening hours check (OSM Overpass)
+    │       └── opening_hours.py  opening hours check (OSM data)
+    ├── sources/
+    │   └── nominatim.py  OSM place tags via Nominatim (rate-limited); geocoding goes here too
     └── tests/                pytest; real Postgres, mocked HTTP
 ```
 
@@ -167,8 +169,8 @@ Why this shape:
   you couldn't tell good coverage from bad. Keeping it separate lets the README report
   coverage honestly (PRD risk: "OSM opening hours missing or stale").
 - **`unavailable` instead of an exception.** If a data source is down, that one check says
-  so and the run finishes with the other checks (PRD reliability requirement). Today proved
-  it: both Overpass servers were down for hours and the tool degraded cleanly.
+  so and the run finishes with the other checks (PRD reliability requirement). This was
+  tested for real: when every Overpass server was down for hours, the tool degraded cleanly.
 - **`evidence` + `source` on every violation** back the UX principle "evidence first": every
   card shows what triggered it and links to where the data came from.
 - **`message`** isn't in the PRD's list; it's a human-readable sentence so the UI and the agent
@@ -191,7 +193,7 @@ The cache is the `api_cache` table: `key → response, expires_at`.
 
 - **Why Postgres and not Redis:** it's already running, it survives restarts, and it's
   backed up on the server. Redis would be one more service for no real gain at this scale.
-- **Failures are never cached.** If Overpass times out, the next run tries again instead of
+- **Failures are never cached.** If a data source times out, the next run tries again instead of
   remembering the failure for a week.
 - **"Not found" *is* cached** (OSM elements that don't exist), because that's a real answer.
 - **Lifetimes:** holidays 30 days (they're fixed a year ahead), OSM tags 7 days (hours change
@@ -222,10 +224,11 @@ That's less noise in the UI, and it matches how a person thinks ("the 14th is a 
 `PH off` (closed on public holidays). The two checks complement each other: holidays gives a
 general heads-up, opening hours a precise answer where the data exists.
 
-### Opening hours check (`checks/opening_hours.py`)
+### Opening hours check (`checks/opening_hours.py`, `sources/nominatim.py`)
 
-Source: OpenStreetMap via the Overpass API. Each stop already carries its OSM ID (from
-geocoding, which comes later), so the check looks up that exact element, not a name search.
+Source: OpenStreetMap data, read through **Nominatim's `/lookup` endpoint** (see "Why
+Nominatim, not Overpass" below). Each stop already carries its OSM ID (from geocoding, which
+comes later), so the check looks up that exact place, not a name search.
 
 **Parsing the hours.** OSM's `opening_hours` format is complex (`Tu-Su 09:30-23:45; Jun
 21-Sep 02: 09:00-00:45; Jul 14,Jul 15 off; PH off`). Writing a parser would be a project in
@@ -249,24 +252,58 @@ Severity rules:
 | Only an arrival time, and closed at that moment | blocker |
 | Open for only part of the visit | warning |
 | OSM tags say the place closed down (`disused:*`, `demolished:*`, … and no current use) | blocker |
-| The OSM element doesn't exist any more | warning (it may have closed, or been re-mapped under a new ID; that's not certain enough for a blocker) |
+| The place isn't found (deleted from OSM, or not indexed by Nominatim) | warning (it may have closed, or been re-mapped under a new ID; that's not certain enough for a blocker) |
 | No hours, unparseable hours, hours marked unknown, or no OSM ID | unknown |
 
 Hotels and transfers aren't checked; their "opening hours" aren't meaningful for a visit.
 Visits that cross midnight (23:00-01:00) are handled as running into the next day.
 
-**Overpass reliability.** The public Overpass servers are often overloaded. Today the main
-one returned 504s and timeouts for hours. So:
+### Why Nominatim, not Overpass
 
-- Several servers are tried in order (`OVERPASS_URLS`). Mirrors must cover the whole planet;
-  `overpass.osm.ch` looked healthy in testing but only has Swiss data.
-- A short 10-second timeout per server (lookups by ID take 1-2 s when healthy), so two dead
-  servers cost 20 s instead of a minute. The PRD budget is 60 s for a whole check.
-- Overpass sometimes reports errors as HTTP 200 with a `remark`; those count as failures.
-- All stops are looked up in **one** batched query, and only the ones not already cached.
+The first version read OSM tags from **Overpass**, OSM's general query API. On Oct 23, 2026
+every public Overpass server tested was down or timing out for hours: overpass-api.de,
+overpass.kumi.systems, overpass.private.coffee, and the VK Maps server (22 s per query).
+This turned out to be a lasting situation, not an outage:
 
-If Overpass stays unreliable, the fallback is a cached snapshot of the cities in the test
-set, or a self-hosted Overpass for those cities.
+- The main server's own error page says it is "at capacity" and that the public endpoint
+  "is intended for browser-based and human-operated tools. For automated or high-volume use,
+  run a local Overpass API instance."
+- The maintainer posted (Aug 11, 2026) that the servers are "at capacity again", throughput
+  has dropped sharply over the past year, adding servers is too expensive, and clients that
+  keep getting rate-limited are now banned faster
+  ([forum](https://community.openstreetmap.org/t/overpass-api-performance-issues/140598/157)).
+- The [usage policy](https://wiki.openstreetmap.org/wiki/Overpass_API) counts all of an
+  app's users together, asks regular users to stay around 1/100 of the ~10,000 queries/day
+  guideline, warns "do not expect high reliability", and sends commercial use to paid or
+  self-hosted servers. kumi.systems is no longer on its list of public servers.
+
+The check only needs the tags of places whose IDs we already know. **Nominatim** (OSM's
+search service, which geocoding will use anyway) returns exactly that: `/lookup?osm_ids=
+W5013364&extratags=1` gave the Eiffel Tower's `opening_hours` in 0.13 s, the same value
+Overpass returned earlier that day.
+
+What switching gives up, and how it's handled:
+
+- **Nominatim only indexes places with a name, address or meaningful tag.** An untagged
+  node comes back "not found". That's harmless in practice: stops get their OSM IDs from
+  Nominatim geocoding, so they're always indexed. `scripts/smoke_checks.py` includes one
+  such node to show the behaviour.
+- **Nominatim reports the main tag separately** (`category=tourism`, `type=museum`) rather
+  than in `extratags`. `_place_tags` merges it back, so "this place closed down" detection
+  still sees the current use and doesn't misfire on old `was:*` tags.
+- **Nominatim has its own strict policy:** identify the app, at most **1 request per
+  second**, cache results, no bulk use
+  ([policy](https://operations.osmfoundation.org/policies/nominatim/)). That's handled in code:
+  - `RateLimiter` (`checks/deps.py`) spaces requests ≥1 s apart within the process.
+  - On HTTP 429, 403 or 503 it **stops calling Nominatim for 60 s**: the check reports
+    "unavailable" without sending anything, instead of retrying into a ban. (Overpass's
+    policy also asks for ≥30 s after a 429; the old code just moved on to the next server.)
+  - One request covers up to 50 places; only uncached places are requested; results are
+    cached for 7 days. A check usually makes 0 or 1 requests.
+- **Volume:** ~30 eval itineraries plus light demo traffic fits the policy. If the app ever
+  outgrows it, the options are a free keyed service (NextGIS, or Overpass.ch's free tier of
+  10k requests/month), or self-hosting Nominatim/Overpass on the homelab with an extract
+  covering only the test-set cities.
 
 ### Why MCP (`mcp_server.py`)
 
@@ -294,15 +331,16 @@ client can call it.
   to run against any database whose name doesn't end in `_test`. This exists because the
   first version wiped the dev database on every test run.
 - **HTTP is mocked with respx, against fake hosts.** Tests point the tools at
-  `nager.test` / `overpass-a.test`, so even a mistake can't hit the real services. CI is
-  then fast and deterministic, and doesn't fail when Overpass is having a bad day.
+  `nager.test` / `nominatim.test`, so even a mistake can't hit the real services. CI is
+  then fast and deterministic, and doesn't fail when a public service is having a bad day.
 - **What tests cover:** each severity rule, past-midnight visits, holiday rules, regional
-  holidays, unknown handling, cache hits, batching, failover between Overpass servers,
-  "unavailable" on every kind of failure, and the MCP round trip.
+  holidays, unknown handling, cache hits, batches of 50, the 1-request-per-second throttle,
+  the 60 s pause after a 429/403/503, "unavailable" on every kind of failure, and the MCP
+  round trip.
 - **What they don't cover:** the real APIs. `scripts/smoke_checks.py` runs the tools once
-  against them by hand. Today, Nager.Date worked live; Overpass was down, so the
-  opening-hours logic was checked by replaying a real Overpass response for the Eiffel
-  Tower (correctly a blocker on 14 July, which its OSM hours mark as closed).
+  against them by hand. Live on Oct 23, 2026: both tools worked in 1.7 s total (the Eiffel
+  Tower is correctly a blocker on 14 July, which its OSM hours mark as closed), and a rerun
+  made zero external requests.
 
 ## 7. CI (`.github/workflows/ci.yml`)
 
@@ -350,7 +388,8 @@ Postgres. Three things to settle before the first deploy:
 | 8 | `opening-hours-py` for OSM hours | Write a parser | The format is too complex to do well quickly | Separate holiday calendar from Nager |
 | 9 | Holidays mostly *warn*, never block | Block on any holiday | Most holidays don't close most venues; blocking would hurt precision | A real holiday closure only blocks via OSM `PH off` |
 | 10 | Missing OSM element → warning | Blocker | It may be re-mapped, not closed | A truly closed place is only a warning |
-| 11 | Several Overpass servers, 10 s timeout each | One server, long timeout | Public Overpass is unreliable; latency budget is 60 s | More config |
+| 11 | OSM tags from Nominatim `/lookup`, not Overpass | Overpass mirrors; keyed services; self-hosting | Public Overpass is at capacity and asks automated clients to self-host; Nominatim answers ID lookups fast and geocoding needs it anyway | Unindexed places come back "not found"; must keep to 1 request/second |
+| 11b | Throttle + 60 s pause on 429/403/503 | Retry, or fail over immediately | OSM services ban clients that retry into rate limits | A burst of checks waits, or reports "unavailable" for a minute |
 | 12 | MCP tools, connected in-process | Plain functions; separate MCP process | Standard protocol and schemas without network overhead | A dependency on a fast-moving SDK |
 | 13 | Tests on a guarded `_test` database | Tests on the dev database | A test drops the schema; the guard makes data loss impossible | Two databases locally |
 | 14 | Mocked HTTP against fake hosts in tests | Live API calls in tests | Deterministic, fast CI; no accidental real calls | Real API format changes are only caught by the smoke script |
@@ -360,7 +399,8 @@ Postgres. Three things to settle before the first deploy:
 - Eval runs should ignore cache expiry (section 5, caching).
 - Where demo runs are stored (section 4).
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
-- Overpass reliability for the test-set cities (section 5).
+- Nominatim's 1 request/second limit is per process; fine for one API container, but several
+  processes calling it would need a shared limiter (e.g. in Postgres).
 - Next tools: travel time (OSRM / OpenRouteService), daily load, then the parse pipeline,
   hotel reviews and the agent. Order and status are in `PLAN.md`.
 
@@ -368,8 +408,9 @@ Postgres. Three things to settle before the first deploy:
 
 - **MCP (Model Context Protocol):** a standard way to give an AI model tools: each tool
   declares JSON Schemas for input and output, and any MCP client can call it.
-- **OSM / Overpass:** OpenStreetMap is the open map database; Overpass is its read-only query
-  API, used here to fetch a place's tags, including `opening_hours`.
+- **OSM / Nominatim / Overpass:** OpenStreetMap is the open map database. Nominatim is its
+  search service (names → places, and place IDs → tags, used here for `opening_hours`).
+  Overpass is its general query API, no longer used because the public servers are overloaded.
 - **Nager.Date:** a free public-holidays API, by country and year.
 - **pgvector / HNSW:** a Postgres extension for storing embeddings and finding similar ones;
   HNSW is the index type that makes that search fast.

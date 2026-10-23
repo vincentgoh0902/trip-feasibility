@@ -45,8 +45,9 @@ After changing `src/trip_feasibility/models.py`:
 | `DATABASE_URL` | `postgresql+asyncpg://trip:trip@localhost:5432/trip` | Postgres connection |
 | `PORT` | `8000` | Port the API listens on inside the container |
 | `NAGER_BASE_URL` | `https://date.nager.at/api/v3` | Public holidays API |
-| `OVERPASS_URLS` | overpass-api.de, overpass.kumi.systems | Overpass servers, comma-separated, tried in order |
-| `OVERPASS_TIMEOUT_S` | `10` | Per-server timeout before trying the next |
+| `NOMINATIM_BASE_URL` | `https://nominatim.openstreetmap.org` | OSM place lookups (opening hours) |
+| `NOMINATIM_MIN_INTERVAL_S` | `1.0` | Minimum gap between Nominatim requests (its usage policy) |
+| `RATE_LIMIT_COOLDOWN_S` | `60` | Pause after a service answers 429/403/503 |
 | `HTTP_USER_AGENT` | `trip-feasibility/0.1 (+repo URL)` | Identifies the app to OSM services |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 

@@ -11,7 +11,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [ ] Collect and annotate ~30 itineraries (dev / test split)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
-- [x] Opening hours tool (OSM Overpass, mirror fallback, `opening-hours-py`)
+- [x] Opening hours tool (OSM tags via Nominatim `/lookup`, `opening-hours-py`)
+- [x] Switched from Overpass to Nominatim; 1 req/s throttle and 60 s back-off on 429/403/503
 - [ ] Travel time tool (OSRM / OpenRouteService)
 - [ ] Daily load tool
 - [ ] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
@@ -33,8 +34,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 
 ## Open
 
-- Overpass reliability: public servers were down for hours on Oct 23. If it persists, cache a
-  snapshot of the test-set cities or self-host Overpass for them.
+- If traffic outgrows Nominatim's public policy: keyed service (NextGIS, Overpass.ch free
+  tier) or self-hosted Nominatim/Overpass for the test-set cities (server session).
 - `PH` rules use opening-hours-py's holiday calendar, Nager.Date is used by the holiday check;
   they could disagree. Revisit if evals show it.
 

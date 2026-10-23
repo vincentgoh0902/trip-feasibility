@@ -1,5 +1,7 @@
 """What every check needs: an HTTP client, the Postgres-backed response cache and settings."""
 
+import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -59,11 +61,38 @@ class ResponseCache:
         await self.put_many(source, {key: value}, ttl)
 
 
+class RateLimiter:
+    """Keeps calls to one service at least min_interval_s apart (per process), and stops
+    calling it for cooldown_s after it signals overload, instead of retrying into a ban."""
+
+    def __init__(self, name: str, min_interval_s: float, cooldown_s: float) -> None:
+        self.name = name
+        self._min_interval_s = min_interval_s
+        self._cooldown_s = cooldown_s
+        self._lock = asyncio.Lock()
+        self._next_at = 0.0
+        self._paused_until = 0.0
+
+    async def wait(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            if now < self._paused_until:
+                left = self._paused_until - now
+                raise Unavailable(f"{self.name} asked us to back off; pausing {left:.0f}s more")
+            if now < self._next_at:
+                await asyncio.sleep(self._next_at - now)
+            self._next_at = time.monotonic() + self._min_interval_s
+
+    def back_off(self) -> None:
+        self._paused_until = time.monotonic() + self._cooldown_s
+
+
 @dataclass
 class CheckDeps:
     http: httpx.AsyncClient
     cache: ResponseCache
     settings: Settings
+    nominatim_limiter: RateLimiter
 
     async def cached(
         self, source: str, key: str, ttl: timedelta, fetch: Callable[[], Awaitable[Any]]
@@ -80,4 +109,17 @@ def make_http_client(settings: Settings) -> httpx.AsyncClient:
         headers={"User-Agent": settings.http_user_agent},
         timeout=settings.http_timeout_s,
         follow_redirects=True,
+    )
+
+
+def make_check_deps(
+    http: httpx.AsyncClient, sessionmaker: async_sessionmaker[AsyncSession], settings: Settings
+) -> CheckDeps:
+    return CheckDeps(
+        http=http,
+        cache=ResponseCache(sessionmaker),
+        settings=settings,
+        nominatim_limiter=RateLimiter(
+            "Nominatim", settings.nominatim_min_interval_s, settings.rate_limit_cooldown_s
+        ),
     )
