@@ -28,12 +28,19 @@ if not (make_url(TEST_DATABASE_URL).database or "").endswith("_test"):
 
 # Set before the app reads its settings, so every engine the tests create points here.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+# Fake data-source hosts: tests mock them with respx and can never hit the real services.
+os.environ["NAGER_BASE_URL"] = "https://nager.test/api/v3"
+os.environ["OVERPASS_URLS"] = (
+    "https://overpass-a.test/api/interpreter,https://overpass-b.test/api/interpreter"
+)
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
+from trip_feasibility.checks.deps import CheckDeps, ResponseCache, make_http_client  # noqa: E402
 from trip_feasibility.config import get_settings  # noqa: E402
 from trip_feasibility.main import app  # noqa: E402
 
@@ -68,3 +75,17 @@ async def client():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
+
+
+@pytest.fixture
+async def check_deps(test_database):
+    """CheckDeps on the test database with an empty response cache."""
+    engine = create_async_engine(test_database)
+    sessionmaker = async_sessionmaker(engine)
+    async with sessionmaker() as session:
+        await session.execute(text("TRUNCATE api_cache"))
+        await session.commit()
+    settings = get_settings()
+    async with make_http_client(settings) as http:
+        yield CheckDeps(http=http, cache=ResponseCache(sessionmaker), settings=settings)
+    await engine.dispose()
