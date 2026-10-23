@@ -22,6 +22,7 @@ async def _current_revision() -> str | None:
 
 
 async def test_migrations_round_trip():
+    # Drops every table in the test database, then rebuilds it.
     cfg = _alembic()
     # Alembic's async env.py runs its own event loop, so call it off this one.
     await asyncio.to_thread(command.upgrade, cfg, "head")

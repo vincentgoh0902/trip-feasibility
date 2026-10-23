@@ -28,7 +28,7 @@ cd backend
 uv sync
 uv run alembic upgrade head
 uv run uvicorn trip_feasibility.main:app --reload --port 8020
-uv run pytest
+uv run pytest                    # uses its own trip_test database
 uv run ruff check . && uv run ruff format --check .
 ```
 
@@ -41,5 +41,6 @@ After changing `src/trip_feasibility/models.py`:
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql+asyncpg://trip:trip@localhost:5432/trip` | Postgres connection |
 | `PORT` | `8000` | Port the API listens on inside the container |
+| `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 
 Secrets go in `.env` (gitignored), never in the repo. CI runs gitleaks on every push.

@@ -30,7 +30,7 @@ loose reference only.
 - **Styling:** follows `../Vincent Goh Branding Kit.pdf`. Colours as tokens, not hardcoded.
 - **Port:** API listens on 8000 in the container (override with `PORT`); `GET /health` →
   200 with a DB check (503 if the DB is unreachable). Locally Compose publishes it on 8020.
-- **Config (env):** `DATABASE_URL`, `PORT`. Secrets in `.env` / server `app.env`.
+- **Config (env):** `DATABASE_URL`, `PORT`; tests only: `TEST_DATABASE_URL`. Secrets in `.env` / server `app.env`.
 - **Memory:** API idles at ~60 MB. Postgres sizing depends on the review vectors (below).
 - **Visibility:** homelab starts `private`. GitHub repo is **public**: never commit
   personal itineraries, API keys, review dumps or annotated datasets with personal details.
@@ -59,8 +59,10 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 
 ## Gotchas
 
-- **pytest wipes the database it points at:** `tests/test_migrations.py` downgrades to
-  `base` and back. Never run tests against a database holding data you want to keep.
+- **Tests use their own database:** `TEST_DATABASE_URL`, default = `DATABASE_URL` with
+  `_test` appended (`trip_test`), created if missing and migrated per session by
+  `tests/conftest.py`. `test_migrations.py` drops the whole schema, so conftest refuses any
+  database whose name doesn't end in `_test`. Don't weaken that guard.
 - 8000 is taken on this Mac by another process, hence local port 8020.
 - `backend/alembic/` (the migrations folder) shadows the `alembic` package for ruff's
   import sorting, so pyproject sets `known-third-party = ["alembic"]`.

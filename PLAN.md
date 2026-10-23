@@ -7,6 +7,7 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Repo, Docker Compose, Postgres 17 + pgvector, Alembic schema (all tables except `hotel_reviews`)
 - [x] FastAPI skeleton: `/health` with DB check, single error shape
 - [x] CI: ruff, pytest against Postgres, `alembic check`, gitleaks
+- [x] Tests use a separate `_test` database (guarded), so they never wipe dev data
 - [ ] Collect and annotate ~30 itineraries (dev / test split)
 - [ ] MCP tools with caching and unit tests: opening hours, holidays, travel time, daily load
 - [ ] Choose embedding model; `hotel_reviews` table; load reviews and embeddings
