@@ -250,3 +250,20 @@ def test_version_changes_with_content(dataset):
     assert before == dataset_version(dataset)
     write(dataset, "paris-01", notes="edited")
     assert dataset_version(dataset) != before
+
+
+def test_text_must_match_the_saved_reply(dataset, tmp_path_factory):
+    raw = tmp_path_factory.mktemp("raw")
+    write(dataset, "paris-01")
+    text = load_yaml(EXAMPLE)["text"]
+
+    assert validate_dataset(dataset, partial=True, raw_dir=raw).errors == []  # not saved yet
+    missing = validate_dataset(dataset, raw_dir=raw).errors
+    assert any("paris-01.yaml: no saved reply" in e for e in missing)
+
+    (raw / "paris-01.md").write_text(text.rstrip() + "\n")  # as save_reply.sh writes it
+    assert validate_dataset(dataset, partial=True, raw_dir=raw).errors == []
+
+    (raw / "paris-01.md").write_text(text.replace("Louvre Museum", "Louvre"))
+    [error] = validate_dataset(dataset, partial=True, raw_dir=raw).errors
+    assert error.startswith("itineraries/paris-01.yaml: text differs from the saved reply")

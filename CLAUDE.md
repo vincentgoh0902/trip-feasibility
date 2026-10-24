@@ -36,6 +36,8 @@ reference only.
   example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
   CC0), `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset),
+  `evals/raw/<id>.md` (each chatbot reply exactly as copied, saved by `scripts/save_reply.sh`;
+  the validator checks the YAML text matches it), `evals/runs/` (eval run details),
   `embeddings/` (cached review vectors) and `calibration/` (reviews hand-labelled by theme, from
   hotels outside the dataset, for the hotel check).
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
@@ -98,6 +100,7 @@ uv run alembic upgrade head
 uv run uvicorn trip_feasibility.main:app --reload --port 8020
 uv run pytest -q
 uv run ruff check . && uv run ruff format --check .
+scripts/save_reply.sh paris-03                # clipboard → data/evals/raw/paris-03.md
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 uv run python scripts/smoke_parse.py               # live geocoding (+ extraction if key set)
@@ -169,7 +172,8 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
   reads `10:30` as the number 630 (base 60). The custom loader keeps times as text.
 - The Kaggle CSV mangles accents (`H tel Regina`, `Batty Langley s`); hotels.yaml keeps the
   real `name` and the CSV's `csv_name` separately. All 16 csv_names were checked against the CSV.
-- `data/dataset/` is gitignored, so the hand annotations exist only on this Mac until backed up.
+- `data/dataset/` and `data/evals/raw/` are gitignored, so the annotations and raw replies
+  exist only on this Mac until backed up.
 - Hotel theme keywords must mean the same in Python's `re` (calibration) and Postgres `~*`
   (the check): no `\b`; use `(^|[^a-z])`. A test compares both engines. Changing THEMES'
   phrasings needs `embed_hotel_themes.py`, or the check refuses the stale JSON.

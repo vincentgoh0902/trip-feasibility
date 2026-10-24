@@ -9,7 +9,7 @@
 Runs in eval mode: cached lookups are reused even when expired, so reruns make no external
 calls once every lookup is cached. Only annotated itineraries are run. The test split
 (including Vienna) needs --final: it is touched only for reported results, and per-itinerary
-lines are never printed for it. Details per itinerary go to data/evals/ (gitignored).
+lines are never printed for it. Details per itinerary go to data/evals/runs/ (gitignored).
 """
 
 import argparse
@@ -34,7 +34,7 @@ from trip_feasibility.parse.extract import PROMPT_VERSION, make_client
 
 ROOT = Path(__file__).resolve().parents[2]
 DATASET = ROOT / "data" / "dataset"
-OUT = ROOT / "data" / "evals"
+OUT = ROOT / "data" / "evals" / "runs"
 
 
 def _of(n: int, total: int) -> str:

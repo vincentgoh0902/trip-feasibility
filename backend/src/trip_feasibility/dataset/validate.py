@@ -221,7 +221,26 @@ def load_dataset(root: Path) -> Report:
     return report
 
 
-def validate_dataset(root: Path, *, partial: bool = False) -> Report:
+def raw_reply_dir(root: Path) -> Path:
+    """Where scripts/save_reply.sh keeps the chatbots' raw replies: data/evals/raw/<id>.md
+    next to data/dataset/."""
+    return root.parent / "evals" / "raw"
+
+
+def raw_reply_errors(itin: DatasetItinerary, raw_dir: Path, *, partial: bool) -> list[str]:
+    """The YAML text must be the saved reply, unchanged. Synthetic variants have none."""
+    if itin.source == "synthetic":
+        return []
+    path = raw_dir / f"{itin.id}.md"
+    if not path.exists():
+        return [] if partial else [f"no saved reply at {path} (scripts/save_reply.sh)"]
+    if path.read_text(encoding="utf-8").rstrip() != itin.text.rstrip():
+        return [f"text differs from the saved reply {path}; paste it unchanged"]
+    return []
+
+
+def validate_dataset(root: Path, *, partial: bool = False, raw_dir: Path | None = None) -> Report:
+    raw_dir = raw_dir or raw_reply_dir(root)
     report = load_dataset(root)
     hotels: dict[str, Hotel] = {}
     for h in report.hotels:
@@ -231,6 +250,7 @@ def validate_dataset(root: Path, *, partial: bool = False) -> Report:
     for itin in report.itineraries:
         where = f"itineraries/{itin.id}.yaml"
         report.errors += [f"{where}: {e}" for e in itinerary_errors(itin, hotels)]
+        report.errors += [f"{where}: {e}" for e in raw_reply_errors(itin, raw_dir, partial=partial)]
 
     report.errors += split_errors(report.itineraries, complete=not partial)
     if not partial:

@@ -13,6 +13,7 @@ Files you'll use:
 | `docs/annotation/example.yaml` | A fully annotated, made-up example (not in the dataset) |
 | `data/dataset/hotels.yaml` | The 16 hotels, for you to label |
 | `data/dataset/itineraries/<id>.yaml` | One file per itinerary (you create these) |
+| `data/evals/raw/<id>.md` | Each chatbot reply exactly as copied (`scripts/save_reply.sh`) |
 | `docs/TEST_CITIES.md` | Which hotels, and why |
 
 `data/` is gitignored: the dataset never goes to the public repo. Back it up (see the end).
@@ -70,12 +71,26 @@ Write it the way a traveller would, and vary the wording. For example:
 
 ### Saving it
 
-Copy `docs/annotation/template.yaml` to `data/dataset/itineraries/<id>.yaml`:
+The id is the city plus two digits, `paris-01` to `paris-10` (so "P03" is `paris-03`).
 
-- `id`: city plus two digits, `paris-01` to `paris-10`; the file name must match.
-- `text`: the model's whole answer, pasted exactly, indented by two spaces under `text: |`.
-  Don't fix, shorten or reformat anything. If the answer goes over 5,000 characters,
-  regenerate with a shorter limit rather than cutting it.
+1. **Save the raw reply.** Copy the whole answer (the chatbot's copy button is easiest), then
+   from `backend/`:
+
+   ```sh
+   scripts/save_reply.sh paris-03          # writes data/evals/raw/paris-03.md
+   ```
+
+   It saves the clipboard exactly, refuses to overwrite an existing reply (`-f` to replace
+   it), and warns when the reply is over 5,000 characters: then regenerate with a shorter word
+   limit rather than cutting it. Images in a reply are dropped (only text is saved), as they
+   would be when pasted into the checker; any image link or placeholder line stays in the
+   text. This file is the record of exactly what the model said.
+
+2. **Create the itinerary file.** Copy `docs/annotation/template.yaml` to
+   `data/dataset/itineraries/<id>.yaml` (the file name must match the id) and fill in:
+
+- `text`: the same reply, pasted unchanged, indented by two spaces under `text: |`. Don't
+  fix, shorten or reformat anything; the validator checks it matches `data/evals/raw/<id>.md`.
 - `prompt`, `model`, `source`, `trip_start` (the date of day 1), `preferences` if not default.
 - Leave out `stops`, `legs` and `violations` for now.
 
@@ -242,6 +257,9 @@ uv run python scripts/validate_dataset.py --partial
 It prints counts per split and city, how many are annotated, the label counts, and a
 version hash; then every problem, with the file name. Run it after every few files.
 
-`data/dataset/` exists only on your Mac. Copy it somewhere safe regularly (an external
-drive, cloud storage, or a separate **private** GitHub repo). Never put it in the public
-repo.
+Once everything is collected, run it without `--partial`: every itinerary then needs its
+saved reply in `data/evals/raw/`.
+
+`data/dataset/` and `data/evals/raw/` exist only on your Mac. Copy both somewhere safe
+regularly (an external drive, cloud storage, or a separate **private** GitHub repo). Never put
+them in the public repo.

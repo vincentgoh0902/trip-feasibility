@@ -63,6 +63,7 @@ trip-feasibility/
     ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
     ├── scripts/check_itinerary.py    parse + check one itinerary from the command line
     ├── scripts/run_eval.py           score the checks on the dataset, log to eval_runs
+    ├── scripts/save_reply.sh         clipboard → data/evals/raw/<id>.md (raw chatbot reply)
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -638,6 +639,10 @@ no datasets in git). One YAML file per itinerary, plus `hotels.yaml`:
   came, the prompt, model, trip start date, preferences and split.
 - The annotation half is added later: gold `stops`, real travel times (`legs`) and
   hand-labelled `violations`.
+- Each chatbot reply is also saved on its own, exactly as copied, in `data/evals/raw/<id>.md`
+  (`scripts/save_reply.sh`). The validator checks the YAML `text` matches it, so a stray edit
+  to the text can't go unnoticed; without `--partial` every non-synthetic itinerary needs one.
+  Images in replies are dropped: only text is saved, as when pasting into the checker.
 
 YAML because it's hand-written: comments, multi-line text blocks, little punctuation. Its
 one trap: YAML 1.1 reads `10:30` as the number 630 (base 60), so files are read with a
@@ -716,7 +721,7 @@ reported apart.
 calls once cached). Only annotated itineraries run, so it works on a partial dev set. The
 test split needs `--final`, and prints no per-itinerary lines. Every run writes an
 `eval_runs` row (dataset version, model, prompt version, config, all metrics) unless
-`--no-save`; per-itinerary details go to gitignored `data/evals/`.
+`--no-save`; per-itinerary details go to gitignored `data/evals/runs/`.
 
 **Checked on the example** (as a one-itinerary dataset): all 3 labels found (Louvre closed,
 two travel-time problems), 2 false positives (a 12.5 h day the example calls fine, and a
