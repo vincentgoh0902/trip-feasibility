@@ -6,7 +6,7 @@ with evidence, and proposes re-checked fixes. Every reported result is backed by
 logged evaluation on a versioned, hand-annotated dataset.
 
 **Requirements live in `docs/PRD.md`; progress and open decisions in `PLAN.md`; how it all
-works and why in `docs/ARCHITECTURE.md`. Read them at the start of every session. Update
+works and why in `docs/ARCHITECTURE.md`; dataset rules in `docs/ANNOTATION.md`. Read them at the start of every session. Update
 PLAN.md as work lands, and ARCHITECTURE.md (including its decision log) whenever a design
 choice is made or changed: it is how I follow the project.** The PRD's dates are a loose
 reference only.
@@ -17,14 +17,18 @@ reference only.
   tracing; MLflow for Tier 2 training only (Mac side).
 - **Layout:** `backend/` (uv project: `src/trip_feasibility/` main.py app, config.py env
   settings, db.py engine/session, errors.py error shape, models.py schema, itinerary.py
-  `Stop` schema, dataset.py eval dataset entries + split validation, mcp_server.py tools,
+  `Stop` schema, `dataset/` eval dataset (models.py annotation file format, split.py dev/test
+  split rules, validate.py loading + validation + gold labels), mcp_server.py tools,
   `checks/` one module per check plus models.py (`CheckResult`) and deps.py (HTTP client,
   Postgres cache, `RateLimiter`, `Unavailable`),
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
   `sources/nominatim.py` (OSM place tags; geocoding goes here too), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
-  migrations; `tests/`; `scripts/smoke_checks.py` live API run; Dockerfile). Planned: `frontend/`, `train/` (Tier 2, Mac only).
-  `data/` is gitignored (local Postgres volume, datasets, review dumps).
+  migrations; `tests/`; `scripts/` (smoke_checks.py live API run, validate_dataset.py,
+  sample_reviews.py); Dockerfile). `docs/annotation/` holds the annotation template, a worked
+  example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
+  `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
+  CC0), and `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset).
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
   and review the file. CI runs `alembic check`, so models and migrations must match.
 - **Errors:** every error response is `{"error": {"code", "message"}}`; raise `AppError`.
@@ -43,6 +47,15 @@ reference only.
   results were seen, record it in the README (Vienna is then no longer unseen). Variants stay
   in their parent's split; `dataset.split_errors` checks all of this. Cached Vienna
   Nominatim/routing lookups are fine.
+- **Dataset annotations:** one YAML file per itinerary (format in `dataset/models.py`, example
+  in `docs/annotation/example.yaml`). Gold stops are what parse step 1 should return;
+  `place_name` must be copied verbatim from the text. Only opening_hours (by stop),
+  public_holidays and daily_load (by day) are hand-labelled. travel_time labels are derived
+  from the real leg times (blocker if gap < minutes, warning if gap < minutes + 10 min
+  buffer; overlaps are always blockers), and every leg under 60 min must have a real time.
+  hotel_red_flags labels come from hotels.yaml, one per hotel per itinerary. Labels use
+  warning/blocker only; info isn't counted. Truth is reality (official sites, Google Maps),
+  never our own checks or data sources.
 - **Evals:** every run writes model ID, prompt version, config and dataset version to
   `eval_runs`. The held-out test set is touched only for reported results. The judge
   model is from a different provider than the agent model.
@@ -69,6 +82,8 @@ uv run alembic upgrade head
 uv run uvicorn trip_feasibility.main:app --reload --port 8020
 uv run pytest -q
 uv run ruff check . && uv run ruff format --check .
+uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
+uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 ```
 
@@ -113,6 +128,11 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).
 - The pgvector extension is created in the initial migration; `hotel_reviews` is not yet
   in the schema because its vector dimension depends on the embedding model.
+- Dataset YAML is read with `dataset.validate.load_yaml`, not `yaml.safe_load`: plain YAML 1.1
+  reads `10:30` as the number 630 (base 60). The custom loader keeps times as text.
+- The Kaggle CSV mangles accents (`H tel Regina`, `Batty Langley s`); hotels.yaml keeps the
+  real `name` and the CSV's `csv_name` separately. All 16 csv_names were checked against the CSV.
+- `data/dataset/` is gitignored, so the hand annotations exist only on this Mac until backed up.
 
 ## Open decisions
 

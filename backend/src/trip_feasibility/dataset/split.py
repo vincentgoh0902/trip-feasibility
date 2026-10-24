@@ -1,12 +1,11 @@
-"""The annotated evaluation dataset: entries, the dev/test split, and its validation.
+"""The dev/test split and its validation.
 
 Vienna is held out of the dev set entirely (decided 2026-10-24), so the test set reports
 results for seen cities (Paris, London, Barcelona) and one unseen city (Vienna) separately.
 Synthetic variants (from the injection script) record their source in `parent_id` and always
 sit in the same split as it, so no variant of a test itinerary can leak into dev.
 
-The full annotation format (stops, true violations, real transit times) extends
-`DatasetEntry`; `split_errors` is one part of the validator.
+The full annotation format (models.DatasetItinerary) extends `DatasetEntry`.
 """
 
 from collections import Counter
@@ -39,8 +38,12 @@ class DatasetEntry(BaseModel):
     parent_id: str | None = None
 
 
-def split_errors(entries: list[DatasetEntry]) -> list[str]:
-    """Everything wrong with the dev/test split; an empty list means it's valid."""
+def split_errors(entries: list[DatasetEntry], *, complete: bool = True) -> list[str]:
+    """Everything wrong with the dev/test split; an empty list means it's valid.
+
+    complete=False is for a dataset still being collected: counts may fall short of the
+    plan, but not exceed it.
+    """
     errors = []
     by_id: dict[str, DatasetEntry] = {}
     for e in entries:
@@ -48,18 +51,17 @@ def split_errors(entries: list[DatasetEntry]) -> list[str]:
             errors.append(f"{e.id}: duplicate id")
         by_id[e.id] = e
 
+    def count_error(name: str, n: int, expected: int) -> None:
+        if n > expected or (complete and n < expected):
+            errors.append(f"{name}: {n} itineraries, expected {expected}")
+
     originals = [e for e in entries if e.parent_id is None]
     totals = Counter(e.split for e in originals)
     for split, expected in SPLIT_TOTALS.items():
-        if totals[split] != expected:
-            errors.append(f"{split}: {totals[split]} itineraries, expected {expected}")
+        count_error(split, totals[split], expected)
     per_city = Counter((e.split, e.city) for e in originals)
     for key in sorted(set(SPLIT_PLAN) | set(per_city)):
-        split, city = key
-        if per_city[key] != SPLIT_PLAN.get(key, 0):
-            errors.append(
-                f"{split}/{city}: {per_city[key]} itineraries, expected {SPLIT_PLAN.get(key, 0)}"
-            )
+        count_error(f"{key[0]}/{key[1]}", per_city[key], SPLIT_PLAN.get(key, 0))
 
     for e in entries:
         if e.city == UNSEEN_CITY and e.split != "test":

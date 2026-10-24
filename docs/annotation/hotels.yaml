@@ -1,0 +1,83 @@
+# The 16 dataset hotels (docs/TEST_CITIES.md). Copy to data/dataset/hotels.yaml and label
+# each one: red_flags is a list of themes (noise, cleanliness, safety, location), [] for none.
+# Leave it null until you've labelled it. See docs/ANNOTATION.md, "Hotels".
+- key: paris-hyatt-regency-etoile
+  city: paris
+  name: Hyatt Regency Paris Etoile
+  csv_name: Hyatt Regency Paris Etoile
+  red_flags: null
+- key: paris-mercure-terminus-nord
+  city: paris
+  name: Mercure Paris Terminus Nord
+  csv_name: Mercure Paris Terminus Nord
+  red_flags: null
+- key: paris-regina
+  city: paris
+  name: Hôtel Regina
+  csv_name: H tel Regina
+  red_flags: null
+- key: paris-la-clef-tour-eiffel
+  city: paris
+  name: La Clef Tour Eiffel
+  csv_name: La Clef Tour Eiffel
+  red_flags: null
+- key: london-cavendish
+  city: london
+  name: Hotel Cavendish
+  csv_name: Hotel Cavendish
+  red_flags: null
+- key: london-commodore
+  city: london
+  name: Commodore Hotel
+  csv_name: Commodore Hotel
+  red_flags: null
+- key: london-rosewood
+  city: london
+  name: Rosewood London
+  csv_name: Rosewood London
+  red_flags: null
+- key: london-batty-langleys
+  city: london
+  name: Batty Langley's
+  csv_name: Batty Langley s
+  red_flags: null
+- key: barcelona-catalonia-park-putxet
+  city: barcelona
+  name: Catalonia Park Putxet
+  csv_name: Catalonia Park Putxet
+  red_flags: null
+- key: barcelona-expo
+  city: barcelona
+  name: Expo Hotel Barcelona
+  csv_name: Expo Hotel Barcelona
+  red_flags: null
+- key: barcelona-casa-camper
+  city: barcelona
+  name: Hotel Casa Camper
+  csv_name: Hotel Casa Camper
+  red_flags: null
+- key: barcelona-catalonia-magdalenes
+  city: barcelona
+  name: Catalonia Magdalenes
+  csv_name: Catalonia Magdalenes
+  red_flags: null
+- key: vienna-exe
+  city: vienna
+  name: Exe Vienna
+  csv_name: Exe Vienna
+  red_flags: null
+- key: vienna-suite-900m-oper
+  city: vienna
+  name: Suite Hotel 900 m zur Oper
+  csv_name: Suite Hotel 900 m zur Oper
+  red_flags: null
+- key: vienna-kaiserhof
+  city: vienna
+  name: Best Western Premier Kaiserhof Wien
+  csv_name: Best Western Premier Kaiserhof Wien
+  red_flags: null
+- key: vienna-rathaus-wein-design
+  city: vienna
+  name: Hotel Rathaus Wein & Design
+  csv_name: Hotel Rathaus Wein Design
+  red_flags: null

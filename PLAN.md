@@ -9,12 +9,14 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] CI: ruff, pytest against Postgres, `alembic check`, gitleaks
 - [x] Tests use a separate `_test` database (guarded), so they never wipe dev data
 - [x] Test-set cities and hotels picked (`docs/TEST_CITIES.md`)
-- [ ] **Vincent: collect** 40 itineraries from ChatGPT, Claude and Gemini (10 per city: Paris,
-      London, Barcelona, Vienna), using the hotels in `docs/TEST_CITIES.md`
-- [x] Validator: dev/test split check (`dataset.py`, `split_errors`)
-- [ ] Annotation format, rest of the validator, annotation guide (next)
-- [ ] **Vincent: annotate** the itineraries (once the format exists; must be done before the
-      first baseline eval, i.e. by the time the agent runs from a CLI)
+- [x] Annotation format (`dataset/`), validator (`scripts/validate_dataset.py`), review
+      sampler, guide (`docs/ANNOTATION.md`), template and worked example (`docs/annotation/`)
+- [ ] **Vincent: collect** 40 itineraries from ChatGPT, Claude and Gemini (10 per city), then
+      assign splits at random (ANNOTATION.md steps 1–2). **← now**
+- [ ] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3)
+- [ ] **Vincent: annotate** the itineraries (step 4); must be done before the first baseline
+      eval, i.e. by the time the agent runs from a CLI
+- [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
 - [x] Opening hours tool (OSM tags via Nominatim `/lookup`, `opening-hours-py`)
@@ -70,5 +72,7 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - Hosting shape (see CLAUDE.md "Hosting"): Auth.js needs a running Next.js server, so a
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
 - Embedding model / vector dimension; agent and judge models; demo-mode scope.
+- Eval runner: run checks on gold stops (isolates the checks), on the agent's parsed stops
+  (end to end), or both; and how parsed stops are aligned to gold stops.
 - Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
   runs live (in memory, or a separate table with a short TTL).

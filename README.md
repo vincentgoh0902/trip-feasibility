@@ -35,6 +35,10 @@ uv run ruff check . && uv run ruff format --check .
 
 Run the check tools once against the real APIs: `uv run python scripts/smoke_checks.py`.
 
+Evaluation dataset: how to build it is in [`docs/ANNOTATION.md`](docs/ANNOTATION.md); the
+files live in `data/dataset/` (not in the repo). Check them with
+`uv run python scripts/validate_dataset.py --partial`.
+
 After changing `src/trip_feasibility/models.py`:
 `uv run alembic revision --autogenerate -m "<what changed>"`, then review the file.
 

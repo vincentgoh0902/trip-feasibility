@@ -1,0 +1,82 @@
+# A worked example, NOT part of the dataset: a made-up one-day Paris itinerary, fully
+# annotated. Times and travel minutes are illustrative. Guide: docs/ANNOTATION.md.
+id: example-paris
+city: paris
+split: dev
+source: claude
+model: Claude (example)
+prompt: Plan one day in Paris on Tuesday 8 December 2026 with times. I'm staying at Hôtel Regina.
+trip_start: 2026-12-08 # a Tuesday
+preferences:
+  pace: moderate
+  max_walk_km: 10
+  transport_modes: [walk, transit]
+text: |
+  **Day 1 – Art and icons**
+  - 8:30 – 8:45: Drop your bags at Hôtel Regina, right by the Tuileries.
+  - 9:00 – 12:00: Louvre Museum. Head straight for the Mona Lisa before the crowds.
+  - 12:15 – 13:30: Lunch at Café Marly, overlooking the glass pyramid.
+  - 13:45 – 16:00: Musée d'Orsay for the Impressionists.
+  - 16:10 – 17:30: Eiffel Tower, up to the summit for the view.
+  - Evening: Dinner cruise on the Seine with Bateaux Parisiens.
+
+# --- annotation ---
+stops:
+  - id: s1
+    day: 1
+    start_time: "08:30"
+    end_time: "08:45"
+    place_name: Hôtel Regina
+    type: hotel
+    hotel: paris-regina
+  - id: s2
+    day: 1
+    start_time: "09:00"
+    end_time: "12:00"
+    place_name: Louvre Museum
+    type: venue
+  - id: s3
+    day: 1
+    start_time: "12:15"
+    end_time: "13:30"
+    place_name: Café Marly
+    type: meal
+  - id: s4
+    day: 1
+    start_time: "13:45"
+    end_time: "16:00"
+    place_name: Musée d'Orsay
+    type: venue
+  - id: s5
+    day: 1
+    start_time: "16:10"
+    end_time: "17:30"
+    place_name: Eiffel Tower
+    type: venue
+    osm: way/5013364
+  - id: s6
+    day: 1
+    time_of_day: evening
+    place_name: Bateaux Parisiens
+    type: meal
+
+# Real door-to-door times for every leg with under 60 minutes between stops.
+legs:
+  - { from: s1, to: s2, mode: walk, minutes: 5, source: Google Maps (illustrative) }
+  - { from: s2, to: s3, mode: walk, minutes: 3, source: Google Maps (illustrative) }
+  # 15 min gap, 15 min walk: fits, but with no buffer -> derived travel_time warning
+  - { from: s3, to: s4, mode: walk, minutes: 15, source: Google Maps (illustrative) }
+  # 10 min gap, 25 min by metro -> derived travel_time blocker
+  - { from: s4, to: s5, mode: transit, minutes: 25, source: Google Maps (illustrative) }
+
+# Hand labels: opening_hours (a stop), public_holidays and daily_load (a day).
+violations:
+  - check: opening_hours
+    severity: blocker
+    stop: s2
+    note: The Louvre is closed every Tuesday.
+    source: louvre.fr visitor information
+# No public_holidays label: 8 December isn't a holiday in France.
+# No daily_load label: three venues and two meals is fine at a moderate pace.
+
+notes: Bateaux Parisiens has no time, so its leg from the Eiffel Tower isn't recorded.

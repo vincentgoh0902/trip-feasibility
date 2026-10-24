@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field
 StopType = Literal["venue", "transfer", "hotel", "meal"]
 TransportMode = Literal["walk", "transit", "bike", "car"]
 Pace = Literal["relaxed", "moderate", "packed"]
+TimeOfDay = Literal["morning", "afternoon", "evening"]
+
+# Parse step 3 turns "morning" etc. into these windows; annotators judge such stops by them too.
+TIME_OF_DAY_WINDOWS: dict[TimeOfDay, tuple[time, time]] = {
+    "morning": (time(9), time(12)),
+    "afternoon": (time(13), time(17)),
+    "evening": (time(18), time(21)),
+}
 
 
 class OsmRef(BaseModel):

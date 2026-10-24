@@ -1,0 +1,25 @@
+# Copy to data/dataset/itineraries/<id>.yaml (file name = id). Fill in the top part when
+# you collect the itinerary; add the annotation part later. Guide: docs/ANNOTATION.md.
+id: paris-01 # <city>-<two digits>; synthetic variants: <parent id>-<suffix>
+city: paris # paris | london | barcelona | vienna
+split: dev # dev | test (Vienna is always test)
+source: chatgpt # chatgpt | claude | gemini | synthetic
+model: # the model name shown in the app, e.g. "GPT-5"
+prompt: >-
+  The exact prompt you used.
+trip_start: 2026-12-08 # the date of day 1
+preferences: # leave out to use the defaults (moderate, 10 km, walk + transit)
+  pace: moderate # relaxed | moderate | packed
+  max_walk_km: 10
+  transport_modes: [walk, transit] # any of walk, transit, bike, car
+text: |
+  Paste the model's answer here exactly as it came, indented by two spaces.
+
+# --- annotation: add these three together (use [] when there are none) ---
+# stops:
+#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", place_name: ..., type: venue }
+# legs:
+#   - { from: s1, to: s2, mode: transit, minutes: 20, source: Google Maps }
+# violations:
+#   - { check: opening_hours, severity: blocker, stop: s1, note: ..., source: ... }
+# notes:
