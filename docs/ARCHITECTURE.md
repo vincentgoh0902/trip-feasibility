@@ -63,7 +63,8 @@ trip-feasibility/
     ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
     ├── scripts/check_itinerary.py    parse + check one itinerary from the command line
     ├── scripts/run_eval.py           score the checks on the dataset, log to eval_runs
-    ├── scripts/save_reply.sh         clipboard → data/evals/raw/<id>.md (raw chatbot reply)
+    ├── scripts/save_reply.sh         clipboard → data/dataset/texts/<id>.md (raw chatbot reply)
+    ├── scripts/show_clean.py         a saved reply as extraction sees it (after step 0)
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -502,15 +503,51 @@ client can call it.
 
 ## 6. The parse pipeline (`parse/`)
 
-PRD FR-1 turns pasted text into located stops in five steps. Only step 1 uses an LLM.
+PRD FR-1 turns pasted text into located stops in five steps, after a code-only cleaning
+step. Only step 1 uses an LLM.
 
 | Step | Where | Status |
 |---|---|---|
+| 0. Cleaning | `clean.clean_text`: chat-interface debris removed in code | Built |
 | 1. Extraction | `extract.extract_stops`: Claude Haiku 5.5, structured output | Built; live run needs a key |
 | 2. Validation | `schema.validate_extraction`: the model, or the error text for one retry | Built |
 | 3. Normalisation | `normalise.normalise` | Built |
 | 4. Geocoding | `geocode.locate_city`, `geocode.geocode_stops` | Built, works live |
 | 5. User review | Frontend table | Later |
+
+### Cleaning (`clean.py`)
+
+Users paste whole chatbot replies, and a reply copied from a chat UI is often mostly debris:
+a ChatGPT reply with photos ran to an estimated 30,000 characters, most of it image links of ~250
+characters each, plus source citations (favicon link, title, `+1`), HTML entities
+(`&#x20;`), markdown escapes (`\&`), and the text of interactive widgets (map hints like "Use
+two fingers to move the map", ratings, "0 of 8" checklist counters). Step 0 removes what
+follows a fixed pattern:
+
+- lines that are only an image link (image hosts, image extensions, `purpose=inline`);
+- citation blocks (a favicon link, a title, then `+N`); a favicon without `+N` goes alone;
+- markdown images inside lines; other links keep their text (often a place name), not the URL;
+- markdown escapes and HTML entities are decoded;
+- lines that are only a number, a rating or a counter, and known widget lines;
+- runs of blank lines are collapsed.
+
+Prose that isn't a schedule (intro, tips, a booking checklist) stays: telling it apart from
+the schedule is reading, so extraction does it (the prompt says a checklist that repeats
+scheduled places adds no stops). The rules are conservative: a line that might be itinerary
+stays.
+
+Limits (PRD FR-1): 50,000 characters raw, only against abuse; 15,000 once cleaned, which is
+what extraction is sized for (~4,000 input tokens on Haiku). Over either is `ParseError
+too_long` before any LLM or geocoding call, with a message suggesting the "rewrite as plain
+text" follow-up; text is never cut, as the checks would then pass days they never saw.
+`ParsedItinerary.text` is the cleaned text; `CLEAN_VERSION` is logged with parsed-mode eval
+runs, since a rule change shifts parse accuracy like a prompt change does. The dataset keeps
+the raw reply (`texts/<id>.md`), so evals cover cleaning too, and gold `place_name`s are checked
+against the cleaned text (`scripts/show_clean.py <id>` prints it).
+
+Interactive widgets that don't reach the clipboard at all (Claude's day tabs) are a
+different problem: there's nothing to clean. The paste box will offer a "rewrite as plain
+text" follow-up line and warn when the parsed days don't cover the trip (PLAN.md "Open").
 
 ### Extraction schema (`schema.py`)
 
@@ -577,7 +614,7 @@ so re-running an eval makes no new external calls and sees the same data as the 
 
 ### End to end (`pipeline.py`)
 
-`parse_itinerary` runs steps 1–4: locate the city (unknown city → `ParseError
+`parse_itinerary` runs steps 0–4: clean and check the length (`too_long`), locate the city (unknown city → `ParseError
 city_not_found`, before any LLM call), extract, normalise, geocode. It returns the stops,
 every stop's geocode (unresolved ones listed), and the extraction's model, prompt version
 and token counts. Step 5 (the user confirms the stops) sits between this and the checks, which
@@ -668,23 +705,35 @@ it was never tuned on.
 ### Files
 
 The dataset lives in `data/dataset/` (gitignored: the repo is public, and the global rule is
-no datasets in git). One YAML file per itinerary, plus `hotels.yaml`:
+no datasets in git). Per itinerary, a YAML file and a text file, plus `hotels.yaml`:
 
-- The top half is written when an itinerary is collected: the generated text exactly as it
-  came, the prompt, model, trip start date, preferences and split.
-- The annotation half is added later: gold `stops`, real travel times (`legs`) and
-  hand-labelled `violations`.
-- Each chatbot reply is also saved on its own, exactly as copied, in `data/evals/raw/<id>.md`
-  (`scripts/save_reply.sh`). The validator checks the YAML `text` matches it, so a stray edit
-  to the text can't go unnoticed; without `--partial` every non-synthetic itinerary needs one.
-  Images in replies are dropped: only text is saved, as when pasting into the checker.
+```
+data/dataset/
+  hotels.yaml
+  itineraries/<id>.yaml   metadata and labels
+  texts/<id>.md           the reply exactly as copied (scripts/save_reply.sh)
+```
+
+- The YAML's top half is written when an itinerary is collected: the prompt, model, trip
+  start date, preferences and split. The annotation half is added later: gold `stops`, real
+  travel times (`legs`) and hand-labelled `violations`.
+- The text is only in `texts/<id>.md`; `load_dataset` reads it into `DatasetItinerary.text`,
+  so nothing downstream knows about the split. A YAML with a `text` key, or without its text
+  file, is an error; a text without a YAML is fine until the dataset is complete. Synthetic
+  variants get a text file too, so every itinerary loads the same way.
+- Why the text isn't in the YAML: whole chatbot replies run to tens of thousands of
+  characters (section 6, Cleaning), which is unworkable as an indented YAML block. One copy
+  also means nothing to keep in sync (it used to be pasted into the YAML and checked against
+  a separately saved reply), and the folder is self-contained for backup, versioning and a
+  later import elsewhere.
 
 YAML because it's hand-written: comments, multi-line text blocks, little punctuation. Its
 one trap: YAML 1.1 reads `10:30` as the number 630 (base 60), so files are read with a
 custom loader (`validate.load_yaml`) that keeps times as text.
 
-The dataset version stored with every eval run is a hash of all the files
-(`dataset_version`), so any edit to any label gives a new version without needing git.
+The dataset version stored with every eval run is a hash of all the files, texts included
+(`dataset_version`), so any edit to any label or text gives a new version without needing
+git.
 
 ### What's labelled, and by whom
 
@@ -876,6 +925,8 @@ Postgres. Three things to settle before the first deploy:
 | 49 | Fixes are operations applied by code, not rewritten itineraries | LLM returns a new itinerary | Small, checkable, explainable changes; no invented coordinates or silently changed stops | Only four kinds of change can be expressed |
 | 50 | Every enabled check re-runs on each fix; one retry for unfixed violations | Re-run only the target check; no retry | A fix that moves a stop can break other checks; a retry with reasons recovers many failures cheaply | Re-checks cost routing lookups; at most two LLM calls per run |
 | 51 | Hotel review text kept out of the fix prompt | Send full evidence | Review text is untrusted third-party content (PRD injection goal) | The model can't quote reviews in a fix |
+| 52 | Pasted text cleaned in code before extraction; limits 50,000 raw / 15,000 cleaned (2026-10-24) | One 5,000 limit, users regenerate; let the LLM read the debris; screenshots | Users paste whole replies, and a normal ChatGPT reply is an estimated ~30,000 characters, mostly image links; pattern removal is cheap, testable and keeps the LLM to reading | Rules follow today's chat UIs and need upkeep; unrecognised debris reaches the prompt (extraction mostly ignores it) |
+| 53 | Dataset text in `texts/<id>.md`, not in the YAML; the YAML holds metadata and labels (2026-10-24) | Text in the YAML (it was); optional in the YAML | Whole replies are too long for YAML blocks; one copy can't drift; one self-contained folder; a single way to load | Two files per itinerary, matched by file name |
 
 ## 13. Known gaps and next steps
 

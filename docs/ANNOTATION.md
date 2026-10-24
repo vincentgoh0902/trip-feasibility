@@ -10,10 +10,10 @@ Files you'll use:
 | File | What it is |
 |---|---|
 | `docs/annotation/template.yaml` | Blank itinerary file to copy |
-| `docs/annotation/example.yaml` | A fully annotated, made-up example (not in the dataset) |
+| `docs/annotation/example.yaml`, `example.md` | A fully annotated, made-up example and its text (not in the dataset) |
 | `data/dataset/hotels.yaml` | The 16 hotels, for you to label |
-| `data/dataset/itineraries/<id>.yaml` | One file per itinerary (you create these) |
-| `data/evals/raw/<id>.md` | Each chatbot reply exactly as copied (`scripts/save_reply.sh`) |
+| `data/dataset/itineraries/<id>.yaml` | One file per itinerary: metadata and labels (you create these) |
+| `data/dataset/texts/<id>.md` | Its text: the chatbot reply exactly as copied (`scripts/save_reply.sh`) |
 | `docs/TEST_CITIES.md` | Which hotels, and why |
 
 `data/` is gitignored: the dataset never goes to the public repo. Back it up (see the end).
@@ -65,7 +65,7 @@ Write it the way a traveller would, and vary the wording. For example:
 - Always name the hotel and the start date (weekday plus date).
 - Some prompts can push for a full schedule ("as much as possible") and some for a relaxed
   one. Don't ask for mistakes: the point is to find the ones models make on their own.
-- "Under 600 words" keeps the text within the 5,000-character limit.
+- "Under 600 words" keeps the text well within the limit (15,000 characters once cleaned).
 - Use a fresh chat for each itinerary (no memory of earlier ones). Don't put personal
   details in the prompt: the itineraries may appear in the public README as examples.
 
@@ -77,20 +77,35 @@ The id is the city plus two digits, `paris-01` to `paris-10` (so "P03" is `paris
    from `backend/`:
 
    ```sh
-   scripts/save_reply.sh paris-03          # writes data/evals/raw/paris-03.md
+   scripts/save_reply.sh paris-03          # writes data/dataset/texts/paris-03.md
    ```
 
-   It saves the clipboard exactly, refuses to overwrite an existing reply (`-f` to replace
-   it), and warns when the reply is over 5,000 characters: then regenerate with a shorter word
-   limit rather than cutting it. Images in a reply are dropped (only text is saved), as they
-   would be when pasted into the checker; any image link or placeholder line stays in the
-   text. This file is the record of exactly what the model said.
+   It saves the clipboard exactly and refuses to overwrite an existing reply (`-f` to replace
+   it). Keep everything the copy brings along: image links, source citations, map or
+   checklist text. That debris is what real users paste, and the checker strips it in code
+   before extraction (parse step 0, `parse/clean.py`). This file is the record of exactly what
+   the model said.
+
+   Limits: 50,000 characters as copied, 15,000 once cleaned. The validator checks both. Over
+   either, regenerate with a shorter word limit rather than cutting the reply. To see the
+   cleaned text and its length:
+
+   ```sh
+   uv run python scripts/show_clean.py paris-03
+   ```
+
+   **Interactive replies** (day tabs, carousels, timeline widgets) don't copy: only the
+   surrounding text, or the visible tab, reaches the clipboard. Don't transcribe the widget
+   by hand. Regenerate in a fresh chat with the same prompt plus one closing line, *"Reply in
+   plain text only, with no interactive widgets or tabs."*, and record that exact prompt in
+   `prompt`. Regenerate only for the format, never to get a reply with more or fewer
+   mistakes. Before saving, check that every day is in the clipboard (`pbpaste | less`).
 
 2. **Create the itinerary file.** Copy `docs/annotation/template.yaml` to
    `data/dataset/itineraries/<id>.yaml` (the file name must match the id) and fill in:
 
-- `text`: the same reply, pasted unchanged, indented by two spaces under `text: |`. Don't
-  fix, shorten or reformat anything; the validator checks it matches `data/evals/raw/<id>.md`.
+- The reply doesn't go in this file: it's `texts/<id>.md` from step 1, and the validator
+  reads it from there. Don't edit that file; to replace a reply, save it again with `-f`.
 - `prompt`, `model`, `source`, `trip_start` (the date of day 1), `preferences` if not default.
 - Leave out `stops`, `legs` and `violations` for now.
 
@@ -151,7 +166,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `day` | Day number as in the text (1 = `trip_start`) |
 | `start_time`, `end_time` | Only if the text states them. Otherwise leave them out; never guess. "9:00–12:00" → `"09:00"`, `"12:00"` (quoted) |
 | `time_of_day` | Only when the text says morning, afternoon or evening instead of times |
-| `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. The validator checks it appears in the text |
+| `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text |
 | `type` | `venue` (sights, museums, shops, shows), `meal` (a named restaurant, café or market eaten at), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
 | `osm` | Optional; leave it out for now |
@@ -160,6 +175,9 @@ What counts as a stop: a place the traveller goes to. Not stops: general advice 
 Navigo pass"), alternatives ("or, if it rains, ..."), and vague meals without a place
 ("lunch nearby"). For a meal described as an area ("lunch in Le Marais"), use the area as
 `place_name`; it won't get an opening-hours label.
+
+A booking checklist, summary or recap at the end that names places already in the schedule
+adds no stops: each visit is one stop, from the schedule.
 
 Keep stops in the order of the text; if the text's own order is impossible (an afternoon
 stop listed before a morning one), keep the text's order and mention it in `notes`.
@@ -257,9 +275,10 @@ uv run python scripts/validate_dataset.py --partial
 It prints counts per split and city, how many are annotated, the label counts, and a
 version hash; then every problem, with the file name. Run it after every few files.
 
-Once everything is collected, run it without `--partial`: every itinerary then needs its
-saved reply in `data/evals/raw/`.
+Every itinerary file needs its text in `texts/<id>.md`, with or without `--partial`. Once
+everything is collected, run it without `--partial`: a text with no itinerary file is then
+an error too.
 
-`data/dataset/` and `data/evals/raw/` exist only on your Mac. Copy both somewhere safe
+`data/dataset/` exists only on your Mac, texts included. Copy it somewhere safe
 regularly (an external drive, cloud storage, or a separate **private** GitHub repo). Never put
 them in the public repo.

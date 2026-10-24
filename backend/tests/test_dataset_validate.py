@@ -11,6 +11,12 @@ from trip_feasibility.dataset.validate import dataset_version, itinerary_errors,
 
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "annotation"
 EXAMPLE = DOCS / "example.yaml"
+EXAMPLE_TEXT = (DOCS / "example.md").read_text(encoding="utf-8").rstrip()
+
+
+def example_raw() -> dict:
+    """The example as load_dataset sees it: the YAML plus its text file."""
+    return load_yaml(EXAMPLE) | {"text": EXAMPLE_TEXT}
 
 
 def hotels(**red_flags) -> dict[str, Hotel]:
@@ -23,7 +29,7 @@ def hotels(**red_flags) -> dict[str, Hotel]:
 
 
 def example(**changes) -> DatasetItinerary:
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw.update(changes)
     return DatasetItinerary.model_validate(raw)
 
@@ -57,7 +63,7 @@ def test_example_gold_violations():
 
 
 def test_hotel_red_flags_give_one_label_per_hotel():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["stops"].append(
         {
             "id": "s7",
@@ -75,34 +81,42 @@ def test_hotel_red_flags_give_one_label_per_hotel():
 
 
 def test_template_loads_as_unannotated():
-    itin = DatasetItinerary.model_validate(load_yaml(DOCS / "template.yaml"))
+    itin = DatasetItinerary.model_validate(load_yaml(DOCS / "template.yaml") | {"text": "x"})
     assert not itin.annotated
     assert itinerary_errors(itin, hotels()) == []
 
 
 def test_place_name_must_be_verbatim():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["stops"][1]["place_name"] = "The Louvre"
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
-    assert errors == ["stop s2: place_name 'The Louvre' isn't copied from text"]
+    assert errors == ["stop s2: place_name 'The Louvre' isn't copied from the cleaned text"]
+
+
+def test_text_limits_apply_to_the_cleaned_text():
+    images = "\n[pic](https://images.openai.com/abc?purpose=inline)\n" * 300  # ~17K raw
+    text = EXAMPLE_TEXT
+    assert example(text=text + images).clean_text == example().clean_text
+    with pytest.raises(ValidationError, match="once cleaned"):
+        example(text=text + "Louvre again.\n" * 1100)
 
 
 def test_tight_leg_needs_a_travel_time():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s3"]
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
     assert errors == ["leg s3 → s4: only 15 min apart, so record its real travel time"]
 
 
 def test_leg_must_join_consecutive_stops():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["legs"].append({"from": "s1", "to": "s3", "mode": "walk", "minutes": 4, "source": "x"})
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
     assert errors == ["leg s1 → s3: not consecutive stops on a day"]
 
 
 def test_overlapping_stops_are_a_blocker_without_a_leg():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["stops"][2]["start_time"] = "11:30"  # lunch starts before the Louvre visit ends
     raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
     itin = DatasetItinerary.model_validate(raw)
@@ -112,7 +126,7 @@ def test_overlapping_stops_are_a_blocker_without_a_leg():
 
 
 def test_stops_must_be_in_order():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["stops"][3], raw["stops"][4] = raw["stops"][4], raw["stops"][3]
     raw["legs"] = []
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
@@ -120,7 +134,7 @@ def test_stops_must_be_in_order():
 
 
 def test_violation_targets():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["violations"] = [
         {"check": "opening_hours", "severity": "warning", "stop": "s9", "note": "n"},
         {"check": "daily_load", "severity": "warning", "day": 3, "note": "n"},
@@ -149,7 +163,7 @@ def test_violation_shape(violation, message):
 
 
 def test_hotel_stops():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     raw["stops"][0]["hotel"] = "london-cavendish"
     raw["stops"][1]["hotel"] = "paris-regina"
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
@@ -160,7 +174,7 @@ def test_hotel_stops():
 
 
 def test_annotation_parts_go_together():
-    raw = load_yaml(EXAMPLE)
+    raw = example_raw()
     del raw["legs"]
     with pytest.raises(ValidationError, match="missing: legs"):
         DatasetItinerary.model_validate(raw)
@@ -192,24 +206,27 @@ def test_stop_field_formats():
         example(stops=[stop("a", None, None, "x", osm="Louvre")])
 
 
-def test_text_limit():
-    with pytest.raises(ValidationError, match="5000"):
-        example(text="x" * 5001)
+def test_raw_text_limit():
+    with pytest.raises(ValidationError, match="50000"):
+        example(text="x" * 50_001)
 
 
 @pytest.fixture
 def dataset(tmp_path) -> Path:
     (tmp_path / "itineraries").mkdir()
+    (tmp_path / "texts").mkdir()
     shutil.copy(DOCS / "hotels.yaml", tmp_path / "hotels.yaml")
     return tmp_path
 
 
-def write(root: Path, name: str, **changes) -> None:
-    """The example, renamed and changed, as a dataset file."""
+def write(root: Path, name: str, text: str | None = EXAMPLE_TEXT, **changes) -> None:
+    """The example, renamed and changed, as a dataset file and its text (None: no text)."""
     raw = load_yaml(EXAMPLE) | {"id": name, **changes}
     (root / "itineraries" / f"{name}.yaml").write_text(
         yaml.safe_dump(raw, allow_unicode=True, sort_keys=False)
     )
+    if text is not None:
+        (root / "texts" / f"{name}.md").write_text(text + "\n")  # as save_reply.sh writes it
 
 
 def test_partial_dataset(dataset):
@@ -234,6 +251,7 @@ def test_complete_dataset_needs_everything(dataset):
 def test_file_name_must_match_id(dataset):
     write(dataset, "paris-01")
     (dataset / "itineraries" / "paris-01.yaml").rename(dataset / "itineraries" / "paris-02.yaml")
+    (dataset / "texts" / "paris-01.md").rename(dataset / "texts" / "paris-02.md")
     errors = validate_dataset(dataset, partial=True).errors
     assert errors == ["itineraries/paris-02.yaml: id 'paris-01' doesn't match the file name"]
 
@@ -252,18 +270,32 @@ def test_version_changes_with_content(dataset):
     assert dataset_version(dataset) != before
 
 
-def test_text_must_match_the_saved_reply(dataset, tmp_path_factory):
-    raw = tmp_path_factory.mktemp("raw")
+def test_text_comes_from_the_text_file(dataset):
+    write(dataset, "paris-01", text=EXAMPLE_TEXT + "\n\nExtra line.")
+    [itin] = validate_dataset(dataset, partial=True).itineraries
+    assert itin.text.endswith("Extra line.")
+
+
+def test_text_file_is_required_and_text_stays_out_of_the_yaml(dataset):
+    write(dataset, "paris-01", text=None)
+    write(dataset, "paris-02", text_in_yaml="x")
+    raw = load_yaml(dataset / "itineraries" / "paris-02.yaml")
+    raw["text"] = raw.pop("text_in_yaml")
+    (dataset / "itineraries" / "paris-02.yaml").write_text(yaml.safe_dump(raw))
+    assert validate_dataset(dataset, partial=True).errors == [
+        "itineraries/paris-01.yaml: no text at texts/paris-01.md (scripts/save_reply.sh paris-01)",
+        "itineraries/paris-02.yaml: no `text` here; the reply lives in texts/<id>.md",
+    ]
+
+
+def test_a_text_without_its_yaml_is_fine_until_the_dataset_is_complete(dataset):
+    (dataset / "texts" / "paris-09.md").write_text("Day 1\n")
+    assert validate_dataset(dataset, partial=True).errors == []
+    assert "texts/paris-09.md: no itineraries/paris-09.yaml" in validate_dataset(dataset).errors
+
+
+def test_version_covers_the_texts(dataset):
     write(dataset, "paris-01")
-    text = load_yaml(EXAMPLE)["text"]
-
-    assert validate_dataset(dataset, partial=True, raw_dir=raw).errors == []  # not saved yet
-    missing = validate_dataset(dataset, raw_dir=raw).errors
-    assert any("paris-01.yaml: no saved reply" in e for e in missing)
-
-    (raw / "paris-01.md").write_text(text.rstrip() + "\n")  # as save_reply.sh writes it
-    assert validate_dataset(dataset, partial=True, raw_dir=raw).errors == []
-
-    (raw / "paris-01.md").write_text(text.replace("Louvre Museum", "Louvre"))
-    [error] = validate_dataset(dataset, partial=True, raw_dir=raw).errors
-    assert error.startswith("itineraries/paris-01.yaml: text differs from the saved reply")
+    before = dataset_version(dataset)
+    (dataset / "texts" / "paris-01.md").write_text(EXAMPLE_TEXT + " edited\n")
+    assert dataset_version(dataset) != before

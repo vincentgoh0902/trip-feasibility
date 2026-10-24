@@ -1,5 +1,7 @@
 # Copy to data/dataset/itineraries/<id>.yaml (file name = id). Fill in the top part when
-# you collect the itinerary; add the annotation part later. Guide: docs/ANNOTATION.md.
+# you collect the itinerary; add the annotation part later. The reply itself isn't in this
+# file: scripts/save_reply.sh <id> saves it to data/dataset/texts/<id>.md. Guide:
+# docs/ANNOTATION.md.
 id: paris-01 # <city>-<two digits>; synthetic variants: <parent id>-<suffix>
 city: paris # paris | london | barcelona | vienna
 split: dev # dev | test (Vienna is always test)
@@ -12,8 +14,6 @@ preferences: # leave out to use the defaults (moderate, 10 km, walk + transit)
   pace: moderate # relaxed | moderate | packed
   max_walk_km: 10
   transport_modes: [walk, transit] # any of walk, transit, bike, car
-text: |
-  Paste the model's answer here exactly as it came, indented by two spaces.
 
 # --- annotation: add these three together (use [] when there are none) ---
 # stops:

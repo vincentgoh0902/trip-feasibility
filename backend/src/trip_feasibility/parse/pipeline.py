@@ -1,4 +1,4 @@
-"""The parse pipeline end to end: text → extracted, normalised, geocoded stops.
+"""The parse pipeline end to end: text → cleaned, extracted, normalised, geocoded stops.
 
 Step 5 (the user reviews the stops) happens in the frontend; checks run on the stops the
 user confirms, not on this output directly.
@@ -10,6 +10,7 @@ from datetime import date
 from trip_feasibility.checks.deps import CheckDeps
 from trip_feasibility.config import Settings
 from trip_feasibility.itinerary import Stop
+from trip_feasibility.parse.clean import MAX_CLEAN_CHARS, MAX_RAW_CHARS, clean_text
 from trip_feasibility.parse.extract import (
     ExtractionError,
     ExtractionResult,
@@ -21,7 +22,7 @@ from trip_feasibility.parse.normalise import normalise
 
 
 class ParseError(Exception):
-    """code: city_not_found, or an ExtractionError code."""
+    """code: too_long, city_not_found, or an ExtractionError code."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -32,6 +33,7 @@ class ParseError(Exception):
 @dataclass
 class ParsedItinerary:
     city: City
+    text: str  # the cleaned text extraction saw
     stops: list[Stop]  # with osm/lat/lon where geocoding found the place
     geocodes: dict[str, Geocode]  # by stop id; place is None when unresolved
     extraction: ExtractionResult
@@ -50,6 +52,15 @@ async def parse_itinerary(
     city: str,
     trip_start: date,
 ) -> ParsedItinerary:
+    if len(text) > MAX_RAW_CHARS:
+        raise ParseError("too_long", f"The pasted text is over {MAX_RAW_CHARS:,} characters")
+    text = clean_text(text)
+    if len(text) > MAX_CLEAN_CHARS:
+        raise ParseError(
+            "too_long",
+            f"The itinerary is {len(text):,} characters after removing images and links; "
+            f"the limit is {MAX_CLEAN_CHARS:,}. Ask the chatbot to rewrite it as plain text.",
+        )
     located_city = await locate_city(deps, city)
     if located_city is None:
         raise ParseError("city_not_found", f"Couldn't find the city {city!r} in OpenStreetMap")
@@ -66,4 +77,4 @@ async def parse_itinerary(
         raise ParseError(e.code, str(e)) from e
     stops = normalise(extraction.extraction.stops, trip_start)
     stops, geocodes = await geocode_stops(deps, stops, located_city)
-    return ParsedItinerary(located_city, stops, geocodes, extraction)
+    return ParsedItinerary(located_city, text, stops, geocodes, extraction)

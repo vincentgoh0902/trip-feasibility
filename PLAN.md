@@ -84,6 +84,15 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   separately: on the gold stops (checks alone, no API key) and on the agent's own parsed stops
   (end to end), with parsed stops aligned to gold stops by day, order and name.
 
+- Pasted text is cleaned in code before extraction (parse step 0, `parse/clean.py`): image
+  links, citations, entities, escapes and widget text go. Limits 50,000 characters raw and
+  15,000 cleaned (was one 5,000 limit), so whole ChatGPT replies fit; the dataset keeps raw
+  replies. Extraction prompt `extract-v2`: a checklist repeating scheduled places adds no
+  stops. ARCHITECTURE decision 52. (2026-10-24)
+- Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
+  checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
+  replies moved there. ARCHITECTURE decision 53. (2026-10-24)
+
 ## Open
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
@@ -102,3 +111,6 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
 - Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
   runs live (in memory, or a separate table with a short TTL).
+- Chatbot replies with interactive widgets (e.g. day tabs) paste incomplete. Planned for the
+  paste box: a copyable "rewrite that as plain text" follow-up hint, and a warning when the
+  parsed days don't cover the trip. Screenshot upload is a possible later addition.

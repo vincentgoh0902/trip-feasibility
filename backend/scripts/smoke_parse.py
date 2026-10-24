@@ -63,7 +63,7 @@ async def main() -> None:
 async def smoke_extraction(settings, raw: dict, gold: list[ExtractedStop]) -> None:
     result = await extract_stops(
         make_client(settings),
-        raw["text"],
+        EXAMPLE.with_suffix(".md").read_text(encoding="utf-8"),
         city=raw["city"].title(),
         trip_start=raw["trip_start"],
         model=settings.extraction_model,

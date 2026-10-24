@@ -2,7 +2,8 @@
 
 Layout (under data/dataset/, gitignored):
     hotels.yaml               the 16 test hotels and their red-flag labels
-    itineraries/<id>.yaml     one file per itinerary (see models.py)
+    itineraries/<id>.yaml     one file per itinerary: metadata and labels (see models.py)
+    texts/<id>.md             its text, the reply exactly as copied (scripts/save_reply.sh)
 
 `validate_dataset` returns every problem as a readable message. With `partial=True` (while
 collecting and annotating) it skips the split counts and annotation completeness; every
@@ -23,6 +24,7 @@ from trip_feasibility.dataset.split import split_errors
 
 # A leg with less than this between one stop's end and the next one's start needs its real
 # travel time recorded, so travel-time labels can be derived from it.
+TEXTS = "texts"  # <root>/texts/<id>.md, one per itinerary
 TIGHT_GAP_MIN = 60
 # The travel-time check's default buffer; gold labels assume the default config.
 BUFFER_MIN = 10
@@ -81,7 +83,8 @@ def _messages(where: str, e: ValidationError) -> list[str]:
 def dataset_version(root: Path) -> str:
     """A content hash of every dataset file: eval runs store it as `dataset_version`."""
     digest = hashlib.sha256()
-    for path in sorted([root / "hotels.yaml", *(root / "itineraries").glob("*.yaml")]):
+    files = [root / "hotels.yaml", *(root / "itineraries").glob("*.yaml")]
+    for path in sorted(files + list((root / TEXTS).glob("*.md"))):
         if path.exists():
             digest.update(path.relative_to(root).as_posix().encode() + b"\0")
             digest.update(path.read_bytes() + b"\0")
@@ -113,8 +116,10 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
         if s.id in by_id:
             errors.append(f"stop {s.id}: duplicate id")
         by_id[s.id] = s
-        if s.place_name not in itin.text:
-            errors.append(f"stop {s.id}: place_name {s.place_name!r} isn't copied from text")
+        if s.place_name not in itin.clean_text:
+            errors.append(
+                f"stop {s.id}: place_name {s.place_name!r} isn't copied from the cleaned text"
+            )
         if s.type == "hotel":
             hotel = hotels.get(s.hotel or "")
             if hotel is None:
@@ -194,6 +199,11 @@ def gold_violations(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[Go
     return out
 
 
+def text_path(root: Path, itin_id: str) -> Path:
+    """An itinerary's text: the reply exactly as copied (scripts/save_reply.sh writes it)."""
+    return root / TEXTS / f"{itin_id}.md"
+
+
 def load_dataset(root: Path) -> Report:
     report = Report(version=dataset_version(root))
     hotels_path = root / "hotels.yaml"
@@ -208,10 +218,26 @@ def load_dataset(root: Path) -> Report:
     for path in sorted((root / "itineraries").glob("*.yaml")):
         where = f"itineraries/{path.name}"
         try:
-            itin = DatasetItinerary.model_validate(load_yaml(path))
+            raw = load_yaml(path)
         except yaml.YAMLError as e:
             report.errors.append(f"{where}: not valid YAML: {e}")
             continue
+        if not isinstance(raw, dict):
+            report.errors.append(f"{where}: expected a mapping of fields")
+            continue
+        if "text" in raw:
+            report.errors.append(f"{where}: no `text` here; the reply lives in {TEXTS}/<id>.md")
+            continue
+        text = text_path(root, path.stem)
+        if not text.exists():
+            report.errors.append(
+                f"{where}: no text at {TEXTS}/{path.stem}.md (scripts/save_reply.sh {path.stem})"
+            )
+            continue
+        try:
+            itin = DatasetItinerary.model_validate(
+                raw | {"text": text.read_text(encoding="utf-8").rstrip()}
+            )
         except ValidationError as e:
             report.errors += _messages(where, e)
             continue
@@ -221,26 +247,7 @@ def load_dataset(root: Path) -> Report:
     return report
 
 
-def raw_reply_dir(root: Path) -> Path:
-    """Where scripts/save_reply.sh keeps the chatbots' raw replies: data/evals/raw/<id>.md
-    next to data/dataset/."""
-    return root.parent / "evals" / "raw"
-
-
-def raw_reply_errors(itin: DatasetItinerary, raw_dir: Path, *, partial: bool) -> list[str]:
-    """The YAML text must be the saved reply, unchanged. Synthetic variants have none."""
-    if itin.source == "synthetic":
-        return []
-    path = raw_dir / f"{itin.id}.md"
-    if not path.exists():
-        return [] if partial else [f"no saved reply at {path} (scripts/save_reply.sh)"]
-    if path.read_text(encoding="utf-8").rstrip() != itin.text.rstrip():
-        return [f"text differs from the saved reply {path}; paste it unchanged"]
-    return []
-
-
-def validate_dataset(root: Path, *, partial: bool = False, raw_dir: Path | None = None) -> Report:
-    raw_dir = raw_dir or raw_reply_dir(root)
+def validate_dataset(root: Path, *, partial: bool = False) -> Report:
     report = load_dataset(root)
     hotels: dict[str, Hotel] = {}
     for h in report.hotels:
@@ -250,7 +257,6 @@ def validate_dataset(root: Path, *, partial: bool = False, raw_dir: Path | None 
     for itin in report.itineraries:
         where = f"itineraries/{itin.id}.yaml"
         report.errors += [f"{where}: {e}" for e in itinerary_errors(itin, hotels)]
-        report.errors += [f"{where}: {e}" for e in raw_reply_errors(itin, raw_dir, partial=partial)]
 
     report.errors += split_errors(report.itineraries, complete=not partial)
     if not partial:
@@ -263,5 +269,11 @@ def validate_dataset(root: Path, *, partial: bool = False, raw_dir: Path | None 
             f"hotels.yaml: {h.key} has no red_flags label yet"
             for h in report.hotels
             if h.red_flags is None
+        ]
+        ids = {i.id for i in report.itineraries}
+        report.errors += [
+            f"{TEXTS}/{p.name}: no itineraries/{p.stem}.yaml"
+            for p in sorted((root / TEXTS).glob("*.md"))
+            if p.stem not in ids
         ]
     return report

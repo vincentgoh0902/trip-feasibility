@@ -50,12 +50,12 @@ Requirements use MUST for Tier 1 scope and SHOULD for later tiers. Each one is t
 
 ### FR-1 Itinerary input and parsing
 
-- MUST accept plain text up to 5,000 characters, plus a city and trip start date.
+- MUST accept plain text, plus a city and trip start date: up to 50,000 characters as pasted and 15,000 once chat-interface debris (image links, citations, widget text) is removed in code. Users paste whole chatbot replies, which carry that debris; text still over the limit gets a clear error, never silent truncation.
 - MUST parse it into structured stops: day, start time, end time, place name, and type (venue, transfer, hotel, meal).
 - MUST resolve each place to OpenStreetMap coordinates, and flag any it can't resolve instead of guessing.
 - MUST show the parsed stops to the user, who can correct them before the check runs.
 
-Parsing runs as a five-step pipeline. Only step 1 uses an LLM; in Tier 2, the fine-tuned model replaces the API model in that step alone.
+Parsing runs as a five-step pipeline, after a code-only cleaning step (step 0). Only step 1 uses an LLM; in Tier 2, the fine-tuned model replaces the API model in that step alone.
 
 1. **LLM extraction.** One API call returns stops matching a fixed schema with the fields listed above, enforced with the provider's structured output or tool calling.
 2. **Validation.** Pydantic validates the JSON. On failure, retry once with the validation error; on a second failure, report a parse error instead of guessing.

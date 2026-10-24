@@ -32,7 +32,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 config.py (CheckConfig, FR-5), legs.py (shared by travel_time
                                 and daily_load), hotel_red_flags.py + hotel_themes.json
     sources/                    nominatim.py (OSM tags, coordinates, search), routing.py (OSRM)
-    parse/                      pipeline.py end to end; extract.py (Claude), schema.py,
+    parse/                      pipeline.py end to end; clean.py (step 0: chat debris out,
+                                length limits), extract.py (Claude), schema.py,
                                 normalise.py, geocode.py
     agent/                      graph.py (LangGraph: checks in parallel, then fixes),
                                 fixes.py (propose → apply → re-check → retry), models.py
@@ -42,8 +43,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
 docs/                           PRD, ARCHITECTURE, ANNOTATION, TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
 data/  (gitignored)             postgres/ volume; raw/hotel-reviews/Hotel_Reviews.csv (Kaggle,
-                                CC0); dataset/ (hotels.yaml + itineraries/<id>.yaml);
-                                evals/raw/<id>.md (chatbot replies as copied); evals/runs/
+                                CC0); dataset/ (hotels.yaml + itineraries/<id>.yaml +
+                                texts/<id>.md, the chatbot replies as copied); evals/runs/
                                 (eval details); embeddings/; calibration/ (theme-labelled
                                 reviews from non-dataset hotels)
 ```
@@ -73,11 +74,12 @@ Planned: `frontend/`, `train/` (Tier 2, Mac only).
 - **Don't look at the hotel check's output on the 16 dataset hotels** before I've labelled
   them (`check_itinerary.py --example` skips it, as the example's hotel is one of them), and
   never run it on Vienna hotels. Calibration uses hotels outside the dataset.
-- **Dataset annotations:** one YAML file per itinerary (format in `dataset/models.py`, example
-  in `docs/annotation/example.yaml`); the raw reply is saved first to `data/evals/raw/<id>.md`
-  and the YAML `text` must match it. Gold stops are what extraction should return
-  (`place_name` verbatim); they extend `parse.schema.ExtractedStop`, so changing that schema
-  changes the dataset format. Hand labels: opening_hours (by stop), public_holidays and
+- **Dataset annotations:** per itinerary, `texts/<id>.md` (the reply exactly as copied, saved
+  first with `save_reply.sh`; the only copy of the text) and `itineraries/<id>.yaml`
+  (metadata and labels, no `text`; format in `dataset/models.py`, example in
+  `docs/annotation/example.yaml` + `example.md`). Gold stops are what extraction should
+  return (`place_name` verbatim from the cleaned text, `show_clean.py`); they extend
+  `parse.schema.ExtractedStop`, so changing that schema changes the dataset format. Hand labels: opening_hours (by stop), public_holidays and
   daily_load (by day). travel_time labels are derived from real leg times (blocker if gap <
   minutes, warning if gap < minutes + 10; overlaps always blockers; every leg under 60 min
   needs a real time). hotel_red_flags labels come from hotels.yaml (red flag at about 4+/40
@@ -127,8 +129,9 @@ uv run uvicorn trip_feasibility.main:app --reload --port 8020
 docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 
 # dataset
-scripts/save_reply.sh paris-03                        # clipboard → data/evals/raw/paris-03.md
+scripts/save_reply.sh paris-03                        # clipboard → data/dataset/texts/paris-03.md
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
+uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 
 # running and evaluating
@@ -191,6 +194,9 @@ history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - Fake routing in tests: `tests/fake_osrm.py` (0.01° = 1 km; 5/15/30 km/h).
 
 **Data**
+- The 50,000 / 15,000 limits live in `parse/clean.py`; `scripts/save_reply.sh` repeats the
+  raw one. Bash's `${var//pattern/}` takes minutes on long strings in macOS bash 3.2: use
+  `[[ $var =~ ... ]]` in scripts.
 - Dataset YAML is read with `dataset.validate.load_yaml`, not `yaml.safe_load`: YAML 1.1 reads
   `10:30` as 630 (base 60).
 - The Kaggle CSV mangles accents (`H tel Regina`); hotels.yaml keeps the real `name` and the
@@ -198,7 +204,7 @@ history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - Hotel theme keywords must mean the same in Python's `re` and Postgres `~*`: no `\b`, use
   `(^|[^a-z])`; a test compares both. Changing THEMES' phrasings needs
   `embed_hotel_themes.py`, or the check refuses the stale JSON.
-- `data/dataset/` and `data/evals/raw/` exist only on this Mac until backed up.
+- `data/dataset/` (texts included) exists only on this Mac until backed up.
 
 ## Open decisions
 

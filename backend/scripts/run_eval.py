@@ -32,6 +32,7 @@ from trip_feasibility.dataset.validate import validate_dataset
 from trip_feasibility.db import make_engine
 from trip_feasibility.evals.runner import Outcome, evaluate, summarise
 from trip_feasibility.models import EvalRun
+from trip_feasibility.parse.clean import CLEAN_VERSION
 from trip_feasibility.parse.extract import PROMPT_VERSION, make_client
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -148,6 +149,7 @@ async def main() -> int:
                     "config": config.model_dump(),
                     "fix_model": settings.fix_model if args.fixes else None,
                     "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
+                    "clean_version": CLEAN_VERSION if mode == "parsed" else None,
                     **summary,
                 }
                 model_id = settings.extraction_model if mode == "parsed" else "none (gold stops)"

@@ -1,12 +1,13 @@
 """The annotation file format: one YAML file per itinerary, plus hotels.yaml.
 
-An itinerary file holds the raw text and metadata (written when it's collected) and, once
+An itinerary file holds metadata (written when it's collected) and, once
 annotated, the gold stops, real travel times for tight legs, and hand-labelled violations.
 The guide is docs/ANNOTATION.md; docs/annotation/example.yaml is a filled-in example.
 
 Gold stops are what parse step 1 (LLM extraction) should return, plus annotation-only
 fields (`osm`, `hotel`). Travel-time and hotel violations are not hand-labelled: they are
-derived from `legs` and hotels.yaml (see validate.gold_violations).
+derived from `legs` and hotels.yaml (see validate.gold_violations). The text isn't in the
+YAML: it's the saved reply in texts/<id>.md, which validate.load_dataset reads into `text`.
 """
 
 import re
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from trip_feasibility.dataset.split import City, DatasetEntry
 from trip_feasibility.itinerary import OsmRef, TransportMode, TravelPreferences
+from trip_feasibility.parse.clean import MAX_CLEAN_CHARS, MAX_RAW_CHARS, clean_text
 from trip_feasibility.parse.schema import ExtractedStop
 
 Source = Literal["chatgpt", "claude", "gemini", "synthetic"]
@@ -25,7 +27,6 @@ HotelTheme = Literal["noise", "cleanliness", "safety", "location"]
 LabelledCheck = Literal["opening_hours", "public_holidays", "daily_load"]
 LabelSeverity = Literal["warning", "blocker"]
 
-MAX_TEXT_CHARS = 5000  # PRD FR-1
 _OSM_REF = re.compile(r"(node|way|relation)/(\d+)/?$")
 
 
@@ -97,12 +98,17 @@ class DatasetItinerary(DatasetEntry, _Strict):
     prompt: str | None = None
     trip_start: date
     preferences: TravelPreferences = TravelPreferences()
-    text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    # from texts/<id>.md, as copied; extraction (and so every gold place_name) sees clean_text
+    text: str = Field(min_length=1, max_length=MAX_RAW_CHARS)
     # absent until annotated
     stops: list[AnnotatedStop] | None = None
     legs: list[TravelLeg] | None = None
     violations: list[LabelledViolation] | None = None
     notes: str | None = None
+
+    @property
+    def clean_text(self) -> str:
+        return clean_text(self.text)
 
     @property
     def annotated(self) -> bool:
@@ -116,6 +122,11 @@ class DatasetItinerary(DatasetEntry, _Strict):
             raise ValueError(
                 f"annotated files need stops, legs and violations (use [] for none); "
                 f"missing: {', '.join(missing)}"
+            )
+        if len(self.clean_text) > MAX_CLEAN_CHARS:
+            raise ValueError(
+                f"text is {len(self.clean_text):,} characters once cleaned (limit "
+                f"{MAX_CLEAN_CHARS:,}): regenerate with a shorter word limit, don't cut it"
             )
         if (self.source == "synthetic") != (self.parent_id is not None):
             raise ValueError("synthetic itineraries need a parent_id, and only they have one")
