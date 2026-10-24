@@ -1,4 +1,4 @@
-"""What every check needs: an HTTP client, the Postgres-backed response cache and settings."""
+"""What every check needs: an HTTP client, the database, the response cache and settings."""
 
 import asyncio
 import time
@@ -96,6 +96,7 @@ class RateLimiter:
 @dataclass
 class CheckDeps:
     http: httpx.AsyncClient
+    db: async_sessionmaker[AsyncSession]  # read-only use by checks (hotel reviews)
     cache: ResponseCache
     settings: Settings
     nominatim_limiter: RateLimiter
@@ -129,6 +130,7 @@ def make_check_deps(
     """eval_mode: serve expired cache entries (see ResponseCache)."""
     return CheckDeps(
         http=http,
+        db=sessionmaker,
         cache=ResponseCache(sessionmaker, ignore_expiry=eval_mode),
         settings=settings,
         nominatim_limiter=RateLimiter(

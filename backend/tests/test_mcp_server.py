@@ -6,7 +6,13 @@ from trip_feasibility.mcp_server import server
 async def test_tools_are_listed_with_output_schemas(check_deps):
     async with Client(server) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
-    assert set(tools) == {"public_holidays", "opening_hours", "travel_time", "daily_load"}
+    assert set(tools) == {
+        "public_holidays",
+        "opening_hours",
+        "travel_time",
+        "daily_load",
+        "hotel_red_flags",
+    }
     assert all(t.output_schema for t in tools.values())
 
 

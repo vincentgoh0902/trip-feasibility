@@ -22,14 +22,18 @@ reference only.
   `checks/` one module per check plus models.py (`CheckResult`) and deps.py (HTTP client,
   Postgres cache, `RateLimiter`, `Unavailable`),
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
+  `checks/hotel_red_flags.py` + `hotel_themes.json` (theme query vectors, made on the Mac),
   `parse/` (schema.py extraction schema + validation, normalise.py, geocode.py),
   `sources/nominatim.py` (OSM place tags and search), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
   migrations; `tests/`; `scripts/` (smoke_checks.py live API run, validate_dataset.py,
-  sample_reviews.py, smoke_parse.py live geocoding run); Dockerfile). `docs/annotation/` holds the annotation template, a worked
+  sample_reviews.py, smoke_parse.py live geocoding run, load_reviews.py, embed_hotel_themes.py,
+  calibrate_hotel_themes.py, hotel_theme_base_rates.py); Dockerfile). `docs/annotation/` holds the annotation template, a worked
   example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
-  CC0), and `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset).
+  CC0), `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset),
+  `embeddings/` (cached review vectors) and `calibration/` (reviews hand-labelled by theme, from
+  hotels outside the dataset, for the hotel check).
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
   and review the file. CI runs `alembic check`, so models and migrations must match.
 - **Errors:** every error response is `{"error": {"code", "message"}}`; raise `AppError`.
@@ -92,6 +96,9 @@ uv run python scripts/validate_dataset.py --partial   # drop --partial once all 
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 uv run python scripts/smoke_parse.py               # live geocoding (+ extraction if key set)
 uv run --group embed python scripts/load_reviews.py   # embed + load hotel reviews (Mac only)
+uv run --group embed python scripts/embed_hotel_themes.py      # after editing THEMES phrasings
+uv run --group embed python scripts/calibrate_hotel_themes.py  # theme matcher P/R/F1
+uv run python scripts/hotel_theme_base_rates.py               # per-theme min_share
 docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 ```
 
@@ -149,6 +156,11 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - The Kaggle CSV mangles accents (`H tel Regina`, `Batty Langley s`); hotels.yaml keeps the
   real `name` and the CSV's `csv_name` separately. All 16 csv_names were checked against the CSV.
 - `data/dataset/` is gitignored, so the hand annotations exist only on this Mac until backed up.
+- Hotel theme keywords must mean the same in Python's `re` (calibration) and Postgres `~*`
+  (the check): no `\b`; use `(^|[^a-z])`. A test compares both engines. Changing THEMES'
+  phrasings needs `embed_hotel_themes.py`, or the check refuses the stale JSON.
+- Never tune the hotel check on the 16 dataset hotels' outputs before Vincent labels them, and
+  never run it on Vienna hotels while building; calibration uses hotels outside the dataset.
 
 ## Open decisions
 

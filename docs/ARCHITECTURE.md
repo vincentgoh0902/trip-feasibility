@@ -5,12 +5,12 @@ including the tradeoffs and what was given up. Requirements are in [`PRD.md`](PR
 progress and open decisions are in [`../PLAN.md`](../PLAN.md). Keep this file current when
 the design changes.
 
-**Status (Oct 24, 2026):** backend skeleton, database schema, CI, and four of the five check
-tools (public holidays, opening hours, travel time, daily load) exist, are tested, and work
-against the live data sources. The evaluation dataset's format, validator and annotation
+**Status (Oct 24, 2026):** backend skeleton, database schema, CI, and all five check tools
+(public holidays, opening hours, travel time, daily load, hotel red flags) exist, are tested,
+and work against the live data sources. The evaluation dataset's format, validator and annotation
 guide exist; the itineraries themselves are being collected. Parse steps 1–4 exist (step 1,
 Claude extraction, is untested against the live API until a key is added). Hotel reviews
-are embedded and loaded. The hotel red-flags check, the agent, the API routes, auth and the frontend don't exist yet.
+are embedded and loaded. The agent, the API routes, auth and the frontend don't exist yet.
 
 ---
 
@@ -25,7 +25,7 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
                                                 │        ├─ opening_hours     ✅ built
                                                 │        ├─ travel_time       ✅ built
                                                 │        ├─ daily_load        ✅ built
-                                                │        └─ hotel_red_flags   ⏳
+                                                │        └─ hotel_red_flags   ✅ built
                                                 └──► every external lookup is cached in Postgres
 ```
 
@@ -55,6 +55,9 @@ trip-feasibility/
     ├── scripts/sample_reviews.py     random negative reviews of one hotel (for labelling)
     ├── scripts/smoke_parse.py        parse the example itinerary live (extract if key set)
     ├── scripts/load_reviews.py       embed + load hotel reviews (Mac only, `embed` group)
+    ├── scripts/embed_hotel_themes.py     theme query vectors → checks/hotel_themes.json (Mac)
+    ├── scripts/calibrate_hotel_themes.py scores the theme matcher on hand-labelled reviews (Mac)
+    ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -72,7 +75,8 @@ trip-feasibility/
     │       ├── opening_hours.py  opening hours check (OSM data)
     │       ├── legs.py       legs between consecutive stops + travel options (shared)
     │       ├── travel_time.py    travel time check
-    │       └── daily_load.py     daily load check
+    │       ├── daily_load.py     daily load check
+    │       └── hotel_red_flags.py    hotel red-flags check (+ hotel_themes.json query vectors)
     ├── sources/
     │   ├── nominatim.py  OSM place tags and search via Nominatim (rate-limited, cached)
     │   └── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
@@ -392,7 +396,7 @@ venues and hours, and a note says walking wasn't checked; that's why `CheckResul
 
 ### Hotel reviews (`models.py` Hotel/HotelReview, `scripts/load_reviews.py`)
 
-The data behind the hotel red-flags check (the check itself is next).
+The data behind the hotel red-flags check (next section).
 
 - **Source:** the Kaggle "515K Hotel Reviews Data in Europe" CSV (CC0), in `data/raw/`.
 - **Scope:** every hotel in the four dataset cities: 1,227 hotels and 421K reviews, of which
@@ -415,6 +419,58 @@ The data behind the hotel red-flags check (the check itself is next).
   the hotel name on every review as the PRD sketch did.
 - Probe: searching Hotel Cavendish's reviews for noise returns five noise complaints with
   cosine similarity 0.77–0.80.
+
+### Hotel red-flags check (`checks/hotel_red_flags.py`)
+
+Flags a hotel stop when its reviews keep complaining about one of four themes: noise,
+cleanliness, safety, location. One **warning** per hotel (however many stops name it),
+listing the flagged themes with counts, shares and the three closest example reviews.
+
+**Which hotel.** The stop's name is matched against the city's hotels in the review data:
+accents and the CSV's mangling ("Hôtel Regina" vs `H tel Regina`) are handled, "hotel",
+"the" and the city name don't count, and the exact name beats look-alikes ("Hotel Cavendish"
+vs "The Cavendish London"). Geocoded coordinates settle weak name matches (within 300 m) and
+reject name matches more than 2 km away (another branch). Anything unclear → `unknown`, never
+a guess. All 16 dataset hotels match by name alone.
+
+**Which reviews count.** A review counts towards a theme when it contains one of the theme's
+keywords **and** its embedding is close to one of three short theme phrasings (cosine
+similarity ≥ a per-theme threshold). Measured on hand-labelled reviews from six hotels
+outside the dataset (none in Vienna), labelled by Claude while building, not by Vincent:
+
+| Theme | Embedding only, tuning set | Keyword + embedding, tuning set (240) | Keyword + embedding, held-out (180) |
+| --- | --- | --- | --- |
+| noise | F1 0.85 | F1 0.96 | **F1 0.98** (P 0.95, R 1.00, n=42) |
+| cleanliness | F1 0.78 | F1 0.93 | **F1 0.83** (P 0.79, R 0.88, n=25) |
+| safety | F1 0.50 | F1 0.80 (n=3) | **F1 0.56** (P 0.53, R 0.59, n=17) |
+| location | F1 0.76 | F1 0.91 | **F1 0.47** (P 0.67, R 0.36, n=11) |
+
+Embeddings alone drift into general complaints ("the hotel is dated" lands near "bad
+location"); keywords alone hit "the room was clean". Safety and location are weak: "security
+deposit" still matches safety, and location complaints are phrased too many ways for the
+keyword list. The held-out set was scored twice: once before and once after fixing two
+substring bugs it exposed (`rob` matched "problem", `hair` matched "chair"); no threshold
+was tuned on it. `scripts/calibrate_hotel_themes.py` reproduces the table (the labelled
+reviews are in gitignored `data/calibration/`).
+
+**When a theme is a red flag.** At least `min_reviews` matching reviews (FR-5 strictness:
+3, 5 or 10, default 5) **and** at least the theme's `min_share` of the hotel's negative
+reviews. The count protects small hotels from flags on two reviews; the share protects big
+ones (a hotel with 4,000 complaints has ten about anything). Themes differ a lot: across the
+827 non-dataset hotels in Paris, London and Barcelona with 50+ negative reviews, noise is in
+8% of a typical hotel's complaints and safety in 0.3%. A single 10% share flagged a third of
+all hotels for noise and cleanliness and never fired for safety. So `min_share` is per theme,
+the 90th percentile of those hotels (noise 15.9%, cleanliness 14.4%, safety 1.2%, location
+6.3%): a red flag means more complaints than 90% of comparable hotels. These are defaults;
+they get tuned against the hotel labels on the dev set.
+
+**Serving.** The theme phrasings are embedded once on the Mac (`embed_hotel_themes.py`) and
+shipped as `hotel_themes.json` (43 KB); the check refuses a file that doesn't match the
+current phrasings or model. One SQL query per hotel computes all twelve distances and the
+keyword tests over that hotel's reviews: ~0.1 s for a 1,500-review hotel. Review text in the
+evidence is third-party data: the agent must treat it as data, never as instructions (the
+injection suite tests this later). Every result carries a note that the reviews are from
+2015–2017.
 
 ### Why MCP (`mcp_server.py`)
 
@@ -681,6 +737,9 @@ Postgres. Three things to settle before the first deploy:
 | 36 | Reviews for every hotel in the 4 dataset cities, negative parts only | 16 hotels only; all 515K reviews | Demo can check any hotel in those cities; 295 MB instead of ~2 GB | Hotels outside those cities have no reviews |
 | 37 | `halfvec`, no vector index, exact search per hotel | `vector` + HNSW | Half the storage, no index memory, exact results in ~2 ms | Cross-hotel similarity search would be slow (not needed) |
 | 38 | Embedding libraries in a separate `embed` group; no model on the server | Embed queries at request time | Keeps the API image small and inside 256 MB | Theme queries must be re-embedded here when they change |
+| 39 | A review counts for a theme on keyword **and** embedding similarity | Embedding similarity alone; keywords alone; an LLM classifier | Best F1 on labelled reviews; no API cost per review; explainable | Safety and location are weak (F1 ~0.5 held out); keyword lists need upkeep |
+| 40 | Red flag = count ≥ `min_reviews` and share ≥ the theme's 90th percentile | One fixed share for all themes; count alone (PRD) | Count alone flags every big hotel; one share flags a third of hotels for noise and none for safety | "Red flag" is relative to these cities' hotels; thresholds untuned against labels so far |
+| 41 | Hotel stop → review data by name, coordinates as tie-breaker | Coordinates only; fuzzy search in SQL | Names identify hotels; the Kaggle coordinates and Nominatim's can differ by a block | Unclear names are `unknown`, even when a human could tell |
 
 ## 13. Known gaps and next steps
 
@@ -694,8 +753,9 @@ Postgres. Three things to settle before the first deploy:
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
 - Gold stops have no OSM IDs yet; matching the agent's parsed stops to gold stops will
   need either those IDs or alignment by day, order and name (decided with the eval runner).
-- Next: collect and annotate the dataset (Vincent), parse pipeline (with geocoding via
-  Nominatim), hotel reviews and the hotel check, then the agent. Order and status are in
+- Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
+  `min_share` / `min_reviews` are untuned against the hotel labels.
+- Next: collect and annotate the dataset (Vincent), then the agent. Order and status are in
   `PLAN.md`.
 
 ## Glossary

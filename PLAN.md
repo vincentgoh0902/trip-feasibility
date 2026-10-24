@@ -26,7 +26,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
 - [x] `hotels` + `hotel_reviews` tables; 296K negative reviews from the 4 dataset cities
       embedded with bge-small-en-v1.5 (`scripts/load_reviews.py`, Mac only)
-- [ ] Hotel red-flags tool
+- [x] Hotel red-flags tool: keyword + embedding matching per theme, per-theme share
+      thresholds from base rates over non-dataset hotels (`checks/hotel_red_flags.py`)
 - [x] Parse steps 2–4: extraction schema + validation, normalisation, geocoding (Nominatim
       search inside the city's bounding box, 60 km fallback, unresolved otherwise)
 - [x] Parse step 1: Claude Haiku 5.5 extraction, structured output, one validation retry
@@ -84,6 +85,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
 - Judge model (must not be Anthropic); decide when fixes exist. Demo-mode scope.
 - How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
+- Hotel label rule vs the check (see ARCHITECTURE "Hotel red-flags check"): ANNOTATION.md
+  says a theme is a red flag at ~4 of 40 sampled reviews (10%). Safety comes up in 0.3% of a
+  typical hotel's complaints, so under that rule safety is almost never labelled, even for a
+  hotel with repeated theft reports. Decide before labelling the hotels.
+- Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
 - Eval runner: run checks on gold stops (isolates the checks), on the agent's parsed stops
   (end to end), or both; and how parsed stops are aligned to gold stops.
 - Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
