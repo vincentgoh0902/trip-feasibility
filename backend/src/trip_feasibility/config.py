@@ -1,10 +1,13 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # The repo-root .env (next to .env.example) when run from backend/, then a local .env;
+    # missing files are skipped, and real environment variables win over both.
+    model_config = SettingsConfigDict(env_file=("../.env", ".env"), extra="ignore")
 
     database_url: str = "postgresql+asyncpg://trip:trip@localhost:5432/trip"
     port: int = 8000
@@ -30,6 +33,11 @@ class Settings(BaseSettings):
     cache_ttl_holidays_days: int = 30
     cache_ttl_osm_days: int = 7
     cache_ttl_routes_days: int = 30
+
+    # Parse step 1 (LLM extraction). The key is a secret: .env locally, app.env on the server.
+    anthropic_api_key: SecretStr | None = None
+    extraction_model: str = "claude-haiku-5-5"
+    extraction_effort: str = "low"
 
 
 @lru_cache
