@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from trip_feasibility.checks.deps import ResponseCache
+
 
 async def test_put_then_get(check_deps):
     await check_deps.cache.put("test", "k1", [1, 2], timedelta(minutes=5))
@@ -29,3 +31,10 @@ async def test_cached_only_fetches_once(check_deps):
     second = await check_deps.cached("test", "k2", timedelta(minutes=5), fetch)
     assert first == second == {"v": 1}
     assert calls == 1
+
+
+async def test_eval_mode_serves_expired_entries(check_deps):
+    await check_deps.cache.put("test", "k3", {"a": 1}, timedelta(seconds=-1))
+    eval_cache = ResponseCache(check_deps.cache._sessionmaker, ignore_expiry=True)
+    assert await eval_cache.get("k3") == {"a": 1}
+    assert await check_deps.cache.get("k3") is None

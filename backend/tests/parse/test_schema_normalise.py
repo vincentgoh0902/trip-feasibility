@@ -1,0 +1,44 @@
+from datetime import date, time
+
+from trip_feasibility.parse.normalise import normalise
+from trip_feasibility.parse.schema import ExtractedStop, Extraction, validate_extraction
+
+TUE = date(2026, 12, 8)
+
+
+def test_valid_extraction_from_json():
+    raw = '{"stops": [{"day": 1, "start_time": "9:00", "place_name": "Louvre", "type": "venue"}]}'
+    result = validate_extraction(raw)
+    assert isinstance(result, Extraction)
+    assert result.stops[0].start_time == time(9)
+
+
+def test_invalid_extraction_returns_the_error_for_a_retry():
+    result = validate_extraction({"stops": [{"day": 0, "place_name": "x", "type": "museum"}]})
+    assert isinstance(result, str)
+    assert "day" in result and "type" in result
+
+
+def test_unknown_fields_are_rejected():
+    result = validate_extraction({"stops": [{"day": 1, "place_name": "x", "type": "venue",
+                                             "lat": 48.8}]})  # fmt: skip
+    assert isinstance(result, str) and "lat" in result
+
+
+def test_normalise_dates_ids_and_time_windows():
+    stops = normalise(
+        [
+            ExtractedStop(
+                day=1, start_time="09:00", end_time="12:00", place_name="A", type="venue"
+            ),  # fmt: skip
+            ExtractedStop(day=2, time_of_day="afternoon", place_name="B", type="venue"),
+            ExtractedStop(day=3, place_name="C", type="meal"),
+        ],
+        TUE,
+    )
+    assert [s.id for s in stops] == ["s1", "s2", "s3"]
+    assert [s.date for s in stops] == [TUE, date(2026, 12, 9), date(2026, 12, 10)]
+    assert (stops[0].start_time, stops[0].end_time) == (time(9), time(12))
+    assert (stops[1].start_time, stops[1].end_time) == (time(13), time(17))
+    assert (stops[2].start_time, stops[2].end_time) == (None, None)
+    assert all(s.osm is None and s.lat is None for s in stops)

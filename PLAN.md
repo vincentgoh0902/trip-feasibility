@@ -23,10 +23,12 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Switched from Overpass to Nominatim; 1 req/s throttle and 60 s back-off on 429/403/503
 - [x] Travel time tool (FOSSGIS OSRM table service; transit estimated)
 - [x] Daily load tool (pace limits, walking distance)
-- [ ] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
+- [x] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
 - [ ] Choose embedding model; `hotel_reviews` table; load reviews and embeddings
 - [ ] Hotel red-flags tool
-- [ ] Parse pipeline (LLM extraction → validation → normalisation → geocoding)
+- [x] Parse steps 2–4: extraction schema + validation, normalisation, geocoding (Nominatim
+      search inside the city's bounding box, 60 km fallback, unresolved otherwise)
+- [ ] Parse step 1: LLM extraction with structured output (needs the agent model chosen)
 - [ ] LangGraph agent run from a CLI; first baseline eval on the dev set
 - [ ] Fixes with re-checks
 - [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits

@@ -10,19 +10,14 @@ derived from `legs` and hotels.yaml (see validate.gold_violations).
 """
 
 import re
-from datetime import date, time
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from trip_feasibility.dataset.split import City, DatasetEntry
-from trip_feasibility.itinerary import (
-    OsmRef,
-    StopType,
-    TimeOfDay,
-    TransportMode,
-    TravelPreferences,
-)
+from trip_feasibility.itinerary import OsmRef, TransportMode, TravelPreferences
+from trip_feasibility.parse.schema import ExtractedStop
 
 Source = Literal["chatgpt", "claude", "gemini", "synthetic"]
 HotelTheme = Literal["noise", "cleanliness", "safety", "location"]
@@ -32,7 +27,6 @@ LabelSeverity = Literal["warning", "blocker"]
 
 MAX_TEXT_CHARS = 5000  # PRD FR-1
 _OSM_REF = re.compile(r"(node|way|relation)/(\d+)/?$")
-_SHORT_TIME = re.compile(r"^\d:\d\d$")
 
 
 class _Strict(BaseModel):
@@ -49,24 +43,13 @@ class Hotel(_Strict):
     note: str | None = None
 
 
-class AnnotatedStop(_Strict):
+class AnnotatedStop(ExtractedStop, _Strict):
+    """A gold stop: what parse step 1 should return, plus annotation-only fields."""
+
     id: str = Field(min_length=1, max_length=50)
-    day: int = Field(ge=1)
-    start_time: time | None = None
-    end_time: time | None = None
-    time_of_day: TimeOfDay | None = None
-    place_name: str = Field(min_length=1, max_length=300)
-    type: StopType
-    # annotation-only: the real place, and for hotel stops the key in hotels.yaml
+    # the real place, and for hotel stops the key in hotels.yaml
     osm: OsmRef | None = None
     hotel: str | None = None
-
-    @field_validator("start_time", "end_time", mode="before")
-    @classmethod
-    def _pad_hour(cls, v):
-        if isinstance(v, str) and _SHORT_TIME.match(v):
-            return f"0{v}"
-        return v
 
     @field_validator("osm", mode="before")
     @classmethod
@@ -77,12 +60,6 @@ class AnnotatedStop(_Strict):
                 raise ValueError('expected "node/123", "way/123" or "relation/123"')
             return {"type": m[1], "id": int(m[2])}
         return v
-
-    @model_validator(mode="after")
-    def _one_kind_of_time(self):
-        if self.time_of_day and (self.start_time or self.end_time):
-            raise ValueError("use start/end times or time_of_day, not both")
-        return self
 
 
 class TravelLeg(_Strict):

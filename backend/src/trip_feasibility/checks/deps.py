@@ -21,20 +21,26 @@ class Unavailable(Exception):
 
 
 class ResponseCache:
-    """api_cache table. Values are wrapped as {"body": ...} so lists and nulls can be cached."""
+    """api_cache table. Values are wrapped as {"body": ...} so lists and nulls can be cached.
 
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+    ignore_expiry=True (eval runs) serves expired entries too, so re-running an eval makes no
+    new external calls and sees the same data as the first run.
+    """
+
+    def __init__(
+        self, sessionmaker: async_sessionmaker[AsyncSession], *, ignore_expiry: bool = False
+    ) -> None:
         self._sessionmaker = sessionmaker
+        self._ignore_expiry = ignore_expiry
 
     async def get_many(self, keys: list[str]) -> dict[str, Any]:
         if not keys:
             return {}
+        query = select(ApiCache.key, ApiCache.response).where(ApiCache.key.in_(keys))
+        if not self._ignore_expiry:
+            query = query.where(ApiCache.expires_at > datetime.now(UTC))
         async with self._sessionmaker() as session:
-            rows = await session.execute(
-                select(ApiCache.key, ApiCache.response).where(
-                    ApiCache.key.in_(keys), ApiCache.expires_at > datetime.now(UTC)
-                )
-            )
+            rows = await session.execute(query)
             return {key: response["body"] for key, response in rows}
 
     async def get(self, key: str) -> Any | None:
@@ -114,11 +120,16 @@ def make_http_client(settings: Settings) -> httpx.AsyncClient:
 
 
 def make_check_deps(
-    http: httpx.AsyncClient, sessionmaker: async_sessionmaker[AsyncSession], settings: Settings
+    http: httpx.AsyncClient,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    *,
+    eval_mode: bool = False,
 ) -> CheckDeps:
+    """eval_mode: serve expired cache entries (see ResponseCache)."""
     return CheckDeps(
         http=http,
-        cache=ResponseCache(sessionmaker),
+        cache=ResponseCache(sessionmaker, ignore_expiry=eval_mode),
         settings=settings,
         nominatim_limiter=RateLimiter(
             "Nominatim", settings.nominatim_min_interval_s, settings.rate_limit_cooldown_s

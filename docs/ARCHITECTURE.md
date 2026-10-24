@@ -8,8 +8,9 @@ the design changes.
 **Status (Oct 24, 2026):** backend skeleton, database schema, CI, and four of the five check
 tools (public holidays, opening hours, travel time, daily load) exist, are tested, and work
 against the live data sources. The evaluation dataset's format, validator and annotation
-guide exist; the itineraries themselves are being collected. Hotel red flags, the parse
-pipeline, the agent, the API routes, auth and the frontend don't exist yet.
+guide exist; the itineraries themselves are being collected. Parse steps 2–4 (validation,
+normalisation, geocoding) exist; step 1 (LLM extraction) waits on the model choice. Hotel
+red flags, the agent, the API routes, auth and the frontend don't exist yet.
 
 ---
 
@@ -52,6 +53,7 @@ trip-feasibility/
     ├── scripts/smoke_checks.py   runs the tools once against the real APIs
     ├── scripts/validate_dataset.py   validates data/dataset, prints its version
     ├── scripts/sample_reviews.py     random negative reviews of one hotel (for labelling)
+    ├── scripts/smoke_parse.py        normalise + geocode the example itinerary, live
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -59,6 +61,7 @@ trip-feasibility/
     │   ├── errors.py         the single error response shape
     │   ├── models.py         database tables (SQLAlchemy)
     │   ├── itinerary.py      the Stop schema every check takes as input
+    │   ├── parse/            parse pipeline: schema.py (steps 1–2), normalise.py, geocode.py
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
     │   └── checks/
@@ -70,7 +73,7 @@ trip-feasibility/
     │       ├── travel_time.py    travel time check
     │       └── daily_load.py     daily load check
     ├── sources/
-    │   ├── nominatim.py  OSM place tags via Nominatim (rate-limited); geocoding goes here too
+    │   ├── nominatim.py  OSM place tags and search via Nominatim (rate-limited, cached)
     │   └── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
     └── tests/                pytest; real Postgres, mocked HTTP
 ```
@@ -115,7 +118,7 @@ hotel reviews (for the hotel red-flags check), combined with ordinary filters (t
 this city). pgvector does both in one SQL query, inside the same database as everything
 else. SQLite would need a separate vector store; that's a second service to run and keep in
 sync. The cost: Postgres is a separate container with more memory than SQLite, which
-complicates hosting (section 10).
+complicates hosting (section 11).
 
 ### Schema (`models.py`, PRD "Data model")
 
@@ -403,7 +406,57 @@ client can call it.
 - **SDK version:** this uses MCP Python SDK 2.x (`MCPServer`, `mcp.Client`), which is newer
   than most tutorials (they show `FastMCP` from 1.x).
 
-## 6. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
+## 6. The parse pipeline (`parse/`)
+
+PRD FR-1 turns pasted text into located stops in five steps. Only step 1 uses an LLM.
+
+| Step | Where | Status |
+|---|---|---|
+| 1. Extraction | LLM with structured output, returning `Extraction` | Waits on the model choice |
+| 2. Validation | `schema.validate_extraction`: the model, or the error text for one retry | Built |
+| 3. Normalisation | `normalise.normalise` | Built |
+| 4. Geocoding | `geocode.locate_city`, `geocode.geocode_stops` | Built, works live |
+| 5. User review | Frontend table | Later |
+
+### Extraction schema (`schema.py`)
+
+`ExtractedStop` has exactly the PRD's fields: day, start/end time, time of day, place name and
+type. Unknown fields are rejected, so the model can't slip in coordinates. The dataset's
+gold stops extend this class, so parse accuracy compares the same fields on both sides and
+the two can't drift apart. Times like `9:00` are padded to `09:00`.
+
+### Normalisation (`normalise.py`)
+
+Day *n* becomes `trip_start + n − 1`; "morning", "afternoon" and "evening" become the fixed
+windows in `itinerary.TIME_OF_DAY_WINDOWS` (09–12, 13–17, 18–21), the same ones annotators
+use. Stops get ids `s1`, `s2`, ... in text order.
+
+### Geocoding (`geocode.py`, `sources/nominatim.py`)
+
+1. **Locate the city** (Nominatim search, `featureType=settlement`). Its bounding box scopes
+   every search, and its country code is what the holiday check needs. London resolves to
+   Greater London, Paris to the city proper, Barcelona and Vienna to their municipalities.
+2. **Search each place name inside the city's box** (`bounded=1`), taking the top result.
+3. **Otherwise search the whole country**, accepting the first result within 60 km of the
+   centre, marked `outside_city` (day trips such as Versailles).
+4. **Otherwise leave it unresolved** with a reason. The PRD says flag, never guess.
+
+Each distinct name is searched once per itinerary; results, including "no results", are
+cached for `CACHE_TTL_OSM_DAYS`, and every request goes through the Nominatim rate limiter.
+Live, the example itinerary resolves fully (12 s cold, 0.5 s cached), including the café
+inside the Louvre and Versailles as outside the city.
+
+Why the top result: Nominatim ranks by importance, which favours the famous place a tourist
+means. The cost is ambiguity (two cafés with the same name in one city); the user-review
+step is where that gets corrected.
+
+### Eval mode (`checks/deps.py`)
+
+`make_check_deps(..., eval_mode=True)` makes the response cache serve expired entries too,
+so re-running an eval makes no new external calls and sees the same data as the first run
+(PRD: "eval reruns make no new external calls").
+
+## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
 Every reported number is measured against a hand-annotated dataset, so its design decides
 what the numbers mean.
@@ -475,7 +528,7 @@ verbatim place names, stop order, that every tight leg has a real time, that lab
 real stops and days, hotel keys and cities, file names, and the split rules (counts, Vienna
 in test, variants in their parent's split). It prints counts, label totals and the version.
 
-## 7. Testing
+## 8. Testing
 
 - **Real Postgres, not mocks.** Tests run against a real database, because the cache upsert,
   constraints and migrations are exactly the things mocks get wrong.
@@ -501,14 +554,14 @@ in test, variants in their parent's split). It prints counts, label totals and t
   Paris day got four travel-time violations and an overloaded-day warning), about 12 s for
   the first run, and a rerun made zero external requests.
 
-## 8. CI (`.github/workflows/ci.yml`)
+## 9. CI (`.github/workflows/ci.yml`)
 
 On every push to `main` and every PR: ruff lint + format check → apply migrations →
 `alembic check` → pytest against a pgvector Postgres service → gitleaks over full git
 history. Actions are pinned to specific versions. In Tier 3 this gains the eval regression
 gate (fail a PR if precision or recall drops).
 
-## 9. Docker
+## 10. Docker
 
 - **Multi-stage build:** the first stage installs dependencies with uv; the final image is
   `python:3.12-slim` with only the installed environment, no uv or build tools (327 MB on
@@ -519,7 +572,7 @@ gate (fail a PR if precision or recall drops).
   publishes it on 8020 because 8000 is in use on the Mac.
 - **Memory:** the API idles around 60 MB.
 
-## 10. Hosting: the unresolved part
+## 11. Hosting: the unresolved part
 
 The homelab default is one image, one port, 256 MB. The PRD describes Next.js + FastAPI +
 Postgres. Three things to settle before the first deploy:
@@ -533,7 +586,7 @@ Postgres. Three things to settle before the first deploy:
 3. **Langfuse:** use Langfuse Cloud's free tier rather than self-hosting it; self-hosted
    Langfuse needs several more services.
 
-## 11. Decision log
+## 12. Decision log
 
 | # | Decision | Alternatives | Why | Cost |
 | --- | --- | --- | --- | --- |
@@ -566,10 +619,13 @@ Postgres. Three things to settle before the first deploy:
 | 26 | Labels are judged against reality, not our data sources | Label against OSM / Nager.Date | Measures the whole system, data gaps included | Lower scores where OSM data is poor |
 | 27 | Labels name a stop, a leg, a day or a hotel, like the checks | Free-form spans | On gold stops, matching predictions to labels is a lookup | Parsed stops must first be aligned to gold stops; only warning/blocker counted |
 | 28 | Dataset version = hash of the dataset files | Git tags; manual version numbers | Changes with any edit, no git needed for a gitignored folder | Not human-readable |
+| 29 | Geocode inside the city's bounding box, then within 60 km in the same country | Unbounded search; bias only (`viewbox` without `bounded`) | Stops "Louvre" matching a Louvre elsewhere, while still finding day trips | A place just outside the box but over 60 km away stays unresolved |
+| 30 | Take Nominatim's top result | Ask an LLM to pick; always show candidates | Importance ranking favours the famous place; no LLM touches coordinates | Same-name places can be wrong; the user-review step corrects them |
+| 31 | Gold stops extend the extraction schema | Separate gold format | Parse accuracy compares identical fields; the formats can't drift | Changing the extraction schema changes the dataset format |
+| 32 | Eval mode serves expired cache entries | Separate eval cache; snapshot files | Reruns are free and see identical data, using the cache that already exists | An eval rerun weeks later uses old opening hours (intended: same data) |
 
-## 12. Known gaps and next steps
+## 13. Known gaps and next steps
 
-- Eval runs should ignore cache expiry (section 5, caching).
 - Where demo runs are stored (section 4).
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
 - Nominatim's 1 request/second limit is per process; fine for one API container, but several

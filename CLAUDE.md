@@ -22,10 +22,11 @@ reference only.
   `checks/` one module per check plus models.py (`CheckResult`) and deps.py (HTTP client,
   Postgres cache, `RateLimiter`, `Unavailable`),
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
-  `sources/nominatim.py` (OSM place tags; geocoding goes here too), `sources/routing.py`
+  `parse/` (schema.py extraction schema + validation, normalise.py, geocode.py),
+  `sources/nominatim.py` (OSM place tags and search), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
   migrations; `tests/`; `scripts/` (smoke_checks.py live API run, validate_dataset.py,
-  sample_reviews.py); Dockerfile). `docs/annotation/` holds the annotation template, a worked
+  sample_reviews.py, smoke_parse.py live geocoding run); Dockerfile). `docs/annotation/` holds the annotation template, a worked
   example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
   CC0), and `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset).
@@ -33,7 +34,11 @@ reference only.
   and review the file. CI runs `alembic check`, so models and migrations must match.
 - **Errors:** every error response is `{"error": {"code", "message"}}`; raise `AppError`.
 - **Parsing:** only step 1 (extraction) uses an LLM. The LLM never produces
-  coordinates; geocoding is code. Parse accuracy measures step 1 only.
+  coordinates; geocoding is code. Parse accuracy measures step 1 only. The dataset's gold
+  stops extend `parse.schema.ExtractedStop`, so changing that schema changes the dataset
+  format. Geocoding never guesses: no match in the city box or within 60 km → unresolved.
+- **Eval runs** use `make_check_deps(..., eval_mode=True)`: expired cache entries are served,
+  so reruns make no external calls.
 - **Checks:** each is a plain async function `(CheckDeps, stops, ...) -> CheckResult` in
   `checks/`, wrapped as an MCP tool in mcp_server.py (MCP SDK 2.x: `MCPServer`,
   in-process `mcp.Client(server)`). Never free text. Missing data goes in `unknown`, not

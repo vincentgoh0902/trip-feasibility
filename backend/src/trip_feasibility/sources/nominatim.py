@@ -1,14 +1,16 @@
-"""Nominatim (OpenStreetMap's search service): tags of known OSM places.
+"""Nominatim (OpenStreetMap's search service): tags of known OSM places, and geocoding.
 
 Used instead of Overpass, whose public servers are overloaded and ask automated clients to
 self-host (see docs/ARCHITECTURE.md). Usage policy: identify the app, at most 1 request per
 second, cache results, no bulk downloads. https://operations.osmfoundation.org/policies/nominatim/
 """
 
+import json
 from datetime import timedelta
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.itinerary import OsmRef
@@ -33,17 +35,13 @@ def _place_tags(place: dict[str, Any]) -> dict[str, Any]:
     return tags
 
 
-async def _lookup(deps: CheckDeps, refs: list[OsmRef]) -> list[dict[str, Any]]:
+async def _get(deps: CheckDeps, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
+    """One rate-limited request; every failure becomes Unavailable (and 403/429/503 a pause)."""
     await deps.nominatim_limiter.wait()
-    params = {
-        "osm_ids": ",".join(f"{_PREFIX[r.type]}{r.id}" for r in refs),
-        "format": "jsonv2",
-        "extratags": "1",
-    }
     try:
         r = await deps.http.get(
-            f"{deps.settings.nominatim_base_url}/lookup",
-            params=params,
+            f"{deps.settings.nominatim_base_url}/{path}",
+            params={**params, "format": "jsonv2"},
             timeout=deps.settings.nominatim_timeout_s,
         )
     except httpx.HTTPError as e:
@@ -60,6 +58,11 @@ async def _lookup(deps: CheckDeps, refs: list[OsmRef]) -> list[dict[str, Any]]:
     if not isinstance(body, list):
         raise Unavailable(f"Nominatim returned an unexpected response: {str(body)[:200]}")
     return body
+
+
+async def _lookup(deps: CheckDeps, refs: list[OsmRef]) -> list[dict[str, Any]]:
+    osm_ids = ",".join(f"{_PREFIX[r.type]}{r.id}" for r in refs)
+    return await _get(deps, "lookup", {"osm_ids": osm_ids, "extratags": "1"})
 
 
 async def fetch_osm_tags(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any] | None]:
@@ -79,3 +82,65 @@ async def fetch_osm_tags(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[
         )
         found.update(fetched)
     return {k: (None if v.get("missing") else v["tags"]) for k, v in found.items()}
+
+
+class Place(BaseModel):
+    """One Nominatim search result."""
+
+    osm: OsmRef
+    lat: float
+    lon: float
+    name: str
+    display_name: str
+    category: str
+    type: str
+    country_code: str | None = None
+    # south, north, west, east
+    bbox: tuple[float, float, float, float] | None = None
+
+
+def _place(raw: dict[str, Any]) -> Place | None:
+    if raw.get("osm_type") not in _PREFIX:
+        return None
+    bbox = raw.get("boundingbox")
+    return Place(
+        osm=OsmRef(type=raw["osm_type"], id=raw["osm_id"]),
+        lat=float(raw["lat"]),
+        lon=float(raw["lon"]),
+        name=raw.get("name") or "",
+        display_name=raw.get("display_name") or "",
+        category=raw.get("category") or "",
+        type=raw.get("type") or "",
+        country_code=(raw.get("address") or {}).get("country_code"),
+        bbox=tuple(float(x) for x in bbox) if bbox and len(bbox) == 4 else None,
+    )
+
+
+async def search(
+    deps: CheckDeps,
+    query: str,
+    *,
+    viewbox: tuple[float, float, float, float] | None = None,
+    country_code: str | None = None,
+    feature_type: str | None = None,
+    limit: int = 5,
+) -> list[Place]:
+    """Free-text search, best match first. viewbox (south, north, west, east) restricts results
+    to that box. Cached, including "no results"; never use it for autocomplete (policy)."""
+    params = {"q": query, "limit": str(limit), "addressdetails": "1"}
+    if viewbox is not None:
+        south, north, west, east = viewbox
+        params |= {"viewbox": f"{west},{north},{east},{south}", "bounded": "1"}
+    if country_code:
+        params["countrycodes"] = country_code.lower()
+    if feature_type:
+        params["featureType"] = feature_type
+    key = "nominatim-search:" + json.dumps(params, sort_keys=True, ensure_ascii=False)
+
+    async def fetch() -> list[dict[str, Any]]:
+        return await _get(deps, "search", params)
+
+    raw = await deps.cached(
+        "nominatim", key, timedelta(days=deps.settings.cache_ttl_osm_days), fetch
+    )
+    return [p for p in map(_place, raw) if p is not None]
