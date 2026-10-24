@@ -177,7 +177,11 @@ Navigo pass"), alternatives ("or, if it rains, ..."), and vague meals without a 
 `place_name`; it won't get an opening-hours label.
 
 A booking checklist, summary or recap at the end that names places already in the schedule
-adds no stops: each visit is one stop, from the schedule.
+adds no stops: each visit is one stop, from the schedule. Places only recommended outside the
+day-by-day schedule ("Where to eat: Cal Pep, Bar Mut", "If you have more time: Park Güell")
+aren't stops either, even when named: a stop belongs to a day because the schedule puts it
+there. A place the schedule names inside a day ("lunch at one of the tapas bars below")
+points to the list without picking one, so it's a meal with no place: not a stop.
 
 Keep stops in the order of the text; if the text's own order is impossible (an afternoon
 stop listed before a morning one), keep the text's order and mention it in `notes`.

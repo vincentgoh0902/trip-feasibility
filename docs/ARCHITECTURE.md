@@ -533,7 +533,8 @@ follows a fixed pattern:
 
 Prose that isn't a schedule (intro, tips, a booking checklist) stays: telling it apart from
 the schedule is reading, so extraction does it (the prompt says a checklist that repeats
-scheduled places adds no stops). The rules are conservative: a line that might be itinerary
+scheduled places adds no stops, and places only recommended outside the day-by-day schedule,
+such as a "where to eat" list, aren't stops). The rules are conservative: a line that might be itinerary
 stays.
 
 Limits (PRD FR-1): 50,000 characters raw, only against abuse; 15,000 once cleaned, which is

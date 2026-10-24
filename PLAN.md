@@ -11,9 +11,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Test-set cities and hotels picked (`docs/TEST_CITIES.md`)
 - [x] Annotation format (`dataset/`), validator (`scripts/validate_dataset.py`), review
       sampler, guide (`docs/ANNOTATION.md`), template and worked example (`docs/annotation/`)
-- [ ] **Vincent: collect** 40 itineraries from ChatGPT, Claude and Gemini (10 per city), then
-      assign splits at random (ANNOTATION.md steps 1–2). **← now**
-- [ ] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3)
+- [x] **Vincent: collect** 40 itineraries from ChatGPT, Claude and Gemini (10 per city), then
+      assign splits at random (ANNOTATION.md steps 1–2). Done 2026-10-24: texts saved, YAML
+      skeletons written (all default preferences), splits drawn with seed 39991414. Dev:
+      paris 02 05 07 08 09; london 04 05 08 09 10; barcelona 02 06 07 08 10.
+- [ ] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3) **← now**
 - [ ] **Vincent: annotate** the itineraries (step 4); must be done before the first baseline
       eval, i.e. by the time the agent runs from a CLI
 - [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
@@ -88,7 +90,7 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   links, citations, entities, escapes and widget text go. Limits 50,000 characters raw and
   15,000 cleaned (was one 5,000 limit), so whole ChatGPT replies fit; the dataset keeps raw
   replies. Extraction prompt `extract-v2`: a checklist repeating scheduled places adds no
-  stops. ARCHITECTURE decision 52. (2026-10-24)
+  stops; `extract-v3`: nor do places recommended outside the schedule ("where to eat"). ARCHITECTURE decision 52. (2026-10-24)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)
