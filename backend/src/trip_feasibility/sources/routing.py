@@ -83,25 +83,26 @@ async def route_pairs(
 ) -> dict[tuple[Point, Point], Route | None]:
     """Route for each (from, to) pair; None when OSRM finds no route between them."""
     wanted = {_key(profile, a, b): (a, b) for a, b in dict.fromkeys(pairs)}
-    found: dict[str, Any] = await deps.cache.get_many(list(wanted))
-    missing = [pair for k, pair in wanted.items() if k not in found]
-    for chunk in _chunks(missing):
-        points = list(dict.fromkeys(p for pair in chunk for p in pair))
-        index = {p: i for i, p in enumerate(points)}
-        body = await _table(deps, profile, points)
-        fetched = {}
-        for a, b in chunk:
-            duration = body["durations"][index[a]][index[b]]
-            distance = body["distances"][index[a]][index[b]]
-            fetched[_key(profile, a, b)] = (
-                {"distance_m": distance, "duration_s": duration}
-                if duration is not None and distance is not None
-                else {"no_route": True}
+    async with deps.routing_lock:
+        found: dict[str, Any] = await deps.cache.get_many(list(wanted))
+        missing = [pair for k, pair in wanted.items() if k not in found]
+        for chunk in _chunks(missing):
+            points = list(dict.fromkeys(p for pair in chunk for p in pair))
+            index = {p: i for i, p in enumerate(points)}
+            body = await _table(deps, profile, points)
+            fetched = {}
+            for a, b in chunk:
+                duration = body["durations"][index[a]][index[b]]
+                distance = body["distances"][index[a]][index[b]]
+                fetched[_key(profile, a, b)] = (
+                    {"distance_m": distance, "duration_s": duration}
+                    if duration is not None and distance is not None
+                    else {"no_route": True}
+                )
+            await deps.cache.put_many(
+                "osrm", fetched, timedelta(days=deps.settings.cache_ttl_routes_days)
             )
-        await deps.cache.put_many(
-            "osrm", fetched, timedelta(days=deps.settings.cache_ttl_routes_days)
-        )
-        found.update(fetched)
+            found.update(fetched)
     return {
         pair: None if found[k].get("no_route") else Route(**found[k]) for k, pair in wanted.items()
     }

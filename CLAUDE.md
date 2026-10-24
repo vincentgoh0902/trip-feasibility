@@ -23,12 +23,14 @@ reference only.
   Postgres cache, `RateLimiter`, `Unavailable`),
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
   `checks/hotel_red_flags.py` + `hotel_themes.json` (theme query vectors, made on the Mac),
-  `parse/` (schema.py extraction schema + validation, normalise.py, geocode.py),
+  `parse/` (pipeline.py end to end, extract.py, schema.py extraction schema + validation,
+  normalise.py, geocode.py), `agent/graph.py` (LangGraph check graph: enabled checks in
+  parallel through `mcp_server.create_server(deps)`), `checks/config.py` (CheckConfig, FR-5),
   `sources/nominatim.py` (OSM place tags and search), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
   migrations; `tests/`; `scripts/` (smoke_checks.py live API run, validate_dataset.py,
   sample_reviews.py, smoke_parse.py live geocoding run, load_reviews.py, embed_hotel_themes.py,
-  calibrate_hotel_themes.py, hotel_theme_base_rates.py); Dockerfile). `docs/annotation/` holds the annotation template, a worked
+  calibrate_hotel_themes.py, hotel_theme_base_rates.py, check_itinerary.py CLI); Dockerfile). `docs/annotation/` holds the annotation template, a worked
   example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
   CC0), `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset),
@@ -95,6 +97,8 @@ uv run ruff check . && uv run ruff format --check .
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 uv run python scripts/smoke_parse.py               # live geocoding (+ extraction if key set)
+uv run python scripts/check_itinerary.py --example  # all checks on the example (no key)
+uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
 uv run --group embed python scripts/load_reviews.py   # embed + load hotel reviews (Mac only)
 uv run --group embed python scripts/embed_hotel_themes.py      # after editing THEMES phrasings
 uv run --group embed python scripts/calibrate_hotel_themes.py  # theme matcher P/R/F1
@@ -138,6 +142,8 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
   service routes public transport. Pace limits in `checks/daily_load.py` are untuned
   defaults; tune both from the dev set, not by guessing.
 - Fake routing in tests: `tests/fake_osrm.py` (0.01° = 1 km; 5/15/30 km/h).
+- The agent runs checks in parallel. Shared external lookups need the cache-check-and-fetch
+  under a lock (`deps.routing_lock`), or both checks fetch and the service sees a burst.
 - `opening-hours-py` rejects common-but-invalid hours like `Mo-Fr 9-17` (→ unknown), and uses
   its own holiday calendar for `PH`, separate from Nager.Date.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).

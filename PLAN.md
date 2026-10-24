@@ -34,7 +34,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       (`parse/extract.py`)
 - [ ] **Vincent: add `ANTHROPIC_API_KEY`** to the repo-root `.env`, after setting a monthly
       spend cap in the Anthropic Console; then `uv run python scripts/smoke_parse.py`
-- [ ] LangGraph agent run from a CLI; first baseline eval on the dev set
+- [x] LangGraph check graph (enabled checks in parallel via in-process MCP), parse pipeline
+      end to end, CLI (`scripts/check_itinerary.py`)
+- [ ] Eval runner; first baseline eval on the dev set (needs the annotated dev set)
+- [ ] Langfuse tracing, cost per run, `check_runs` rows
 - [ ] Fixes with re-checks
 - [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits
 - [ ] Judge calibration (20+ hand-rated fixes)

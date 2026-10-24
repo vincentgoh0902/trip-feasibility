@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 
 import httpx
@@ -200,3 +201,19 @@ def test_chunks_keep_each_table_under_the_point_limit():
     chunks = _chunks(pairs)
     assert sum(len(c) for c in chunks) == 60
     assert all(len({p for pair in c for p in pair}) <= 50 for c in chunks)
+
+
+async def test_parallel_checks_route_each_leg_once(check_deps, osrm):
+    """travel_time and daily_load run in parallel in the agent and need the same legs."""
+    from trip_feasibility.checks.daily_load import check_daily_load
+
+    async def slow(request):
+        await asyncio.sleep(0.05)  # a real server takes a while; both checks miss the cache
+        return fake_osrm.respond(request)
+
+    osrm.mock(side_effect=slow)
+    stops = two_stops("10:00", "10:30")
+    await asyncio.gather(
+        check_travel_time(check_deps, stops, WALK), check_daily_load(check_deps, stops, WALK)
+    )
+    assert osrm.call_count == 1

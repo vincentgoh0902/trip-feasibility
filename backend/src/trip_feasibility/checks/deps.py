@@ -3,7 +3,7 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -101,6 +101,10 @@ class CheckDeps:
     settings: Settings
     nominatim_limiter: RateLimiter
     routing_limiter: RateLimiter
+    # Checks run in parallel; travel_time and daily_load route the same legs. Holding this
+    # around cache-check + fetch lets the second one find the first one's cached result,
+    # and keeps one routing request in flight at a time.
+    routing_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def cached(
         self, source: str, key: str, ttl: timedelta, fetch: Callable[[], Awaitable[Any]]

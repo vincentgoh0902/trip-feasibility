@@ -10,7 +10,9 @@ the design changes.
 and work against the live data sources. The evaluation dataset's format, validator and annotation
 guide exist; the itineraries themselves are being collected. Parse steps 1–4 exist (step 1,
 Claude extraction, is untested against the live API until a key is added). Hotel reviews
-are embedded and loaded. The agent, the API routes, auth and the frontend don't exist yet.
+are embedded and loaded. The agent runs parse + all checks from a CLI
+(`scripts/check_itinerary.py`); fixes, the eval runner, the API routes, auth and the frontend
+don't exist yet.
 
 ---
 
@@ -58,6 +60,7 @@ trip-feasibility/
     ├── scripts/embed_hotel_themes.py     theme query vectors → checks/hotel_themes.json (Mac)
     ├── scripts/calibrate_hotel_themes.py scores the theme matcher on hand-labelled reviews (Mac)
     ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
+    ├── scripts/check_itinerary.py    parse + check one itinerary from the command line
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -65,11 +68,14 @@ trip-feasibility/
     │   ├── errors.py         the single error response shape
     │   ├── models.py         database tables (SQLAlchemy), incl. hotels + hotel_reviews
     │   ├── itinerary.py      the Stop schema every check takes as input
-    │   ├── parse/            parse pipeline: extract.py, schema.py, normalise.py, geocode.py
+    │   ├── parse/            parse pipeline: pipeline.py (end to end), extract.py, schema.py,
+    │   │                     normalise.py, geocode.py
+    │   ├── agent/graph.py    the check graph (LangGraph): enabled checks in parallel via MCP
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
     │   └── checks/
     │       ├── models.py     CheckResult / Violation / UnknownStop
+    │       ├── config.py     CheckConfig: enabled checks + strictness (FR-5)
     │       ├── deps.py       HTTP client, Postgres response cache, RateLimiter, Unavailable
     │       ├── holidays.py   public holidays check (Nager.Date)
     │       ├── opening_hours.py  opening hours check (OSM data)
@@ -564,6 +570,48 @@ One call to Claude Haiku 5.5 (`EXTRACTION_MODEL`, effort `low`) per itinerary:
 so re-running an eval makes no new external calls and sees the same data as the first run
 (PRD: "eval reruns make no new external calls").
 
+### End to end (`pipeline.py`)
+
+`parse_itinerary` runs steps 1–4: locate the city (unknown city → `ParseError
+city_not_found`, before any LLM call), extract, normalise, geocode. It returns the stops,
+every stop's geocode (unresolved ones listed), and the extraction's model, prompt version
+and token counts. Step 5 (the user confirms the stops) sits between this and the checks, which
+is why parsing and checking are separate calls, as in the PRD's API (`/itineraries/parse`,
+then `/checks`).
+
+## 6b. The agent (`agent/graph.py`)
+
+Takes confirmed stops plus city, country, preferences and a `CheckConfig`, and runs every
+enabled check through the MCP tool server, in parallel, as a LangGraph graph:
+
+```
+START ─► run_check(opening_hours) ─┐
+      ├► run_check(travel_time) ───┼─► END   → CheckReport (worst first)
+      └► … one Send per enabled check
+```
+
+- **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
+  would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
+  the agent are extraction (before) and fixes (next, after).
+- **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
+  server, so an eval run's cache-only mode reaches the tools.
+- **A failed tool never sinks the run:** a tool error, a broken call or a missing country
+  becomes `unavailable` for that check (PRD reliability requirement).
+- **Report:** results in a fixed check order; violations sorted blocker → warning → info, then
+  by the first stop they name.
+- **Routing under parallel checks:** travel_time and daily_load need the same legs. Routing
+  lookups now hold a lock around "check cache, fetch, store", so the second check reads the
+  first one's cached result, and only one routing request is in flight at a time. Before the
+  lock, the first live run sent the same table twice and FOSSGIS answered 429.
+- **CLI:** `scripts/check_itinerary.py` parses a text file with Claude (or uses the example's
+  hand-written stops with `--example`, no key needed), prints the stops and the report, and
+  can write the report as JSON. The example skips hotel_red_flags: its hotel is a dataset hotel.
+  Live run on the example: Louvre closed on Tuesday (blocker), Orsay → Eiffel Tower 21 min by
+  transit in a 10-minute gap (blocker), a 12.5 h day (warning), two tight walks (warnings).
+  0.8 s with a warm cache.
+- Not yet: Langfuse tracing, cost per run, saving runs to `check_runs`, streaming progress
+  (LangGraph's `astream` gives per-check updates for SSE later).
+
 ## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
 Every reported number is measured against a hand-annotated dataset, so its design decides
@@ -740,6 +788,9 @@ Postgres. Three things to settle before the first deploy:
 | 39 | A review counts for a theme on keyword **and** embedding similarity | Embedding similarity alone; keywords alone; an LLM classifier | Best F1 on labelled reviews; no API cost per review; explainable | Safety and location are weak (F1 ~0.5 held out); keyword lists need upkeep |
 | 40 | Red flag = count ≥ `min_reviews` and share ≥ the theme's 90th percentile | One fixed share for all themes; count alone (PRD) | Count alone flags every big hotel; one share flags a third of hotels for noise and none for safety | "Red flag" is relative to these cities' hotels; thresholds untuned against labels so far |
 | 41 | Hotel stop → review data by name, coordinates as tie-breaker | Coordinates only; fuzzy search in SQL | Names identify hotels; the Kaggle coordinates and Nominatim's can differ by a block | Unclear names are `unknown`, even when a human could tell |
+| 42 | The check graph runs every enabled check; no LLM chooses tools | A ReAct-style agent picking tools | Deterministic, cheaper, can't skip a check; LangGraph still gives parallel branches and streaming | The "agent" has no LLM until fixes land |
+| 43 | Parsing and checking are separate calls | One graph from text to report | The user confirms stops in between (FR-1 step 5) | Two round trips in the UI |
+| 44 | Routing lookups serialised with a lock | Let parallel checks route independently | Legs are shared through the cache; overlapping requests got a 429 | Routing for two checks can't overlap (it's 1 request/second anyway) |
 
 ## 13. Known gaps and next steps
 
