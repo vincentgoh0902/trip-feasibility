@@ -1,6 +1,8 @@
 """Database schema (docs/PRD.md, "Data model").
 
-hotel_reviews is added once the embedding model (and so the vector dimension) is chosen.
+Hotels and their reviews come from the Kaggle "515K Hotel Reviews Data in Europe" set, loaded
+by scripts/load_reviews.py: only the four dataset cities, and only reviews with a negative
+part (the only part that can evidence a red flag), embedded with REVIEW_EMBEDDING_MODEL.
 """
 
 import uuid
@@ -8,11 +10,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from pgvector.sqlalchemy import HALFVEC
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     MetaData,
@@ -26,6 +31,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 PACES = ("relaxed", "moderate", "packed")
+# bge-small-en-v1.5: 384 dimensions, stored as halfvec (half precision) to halve the size.
+REVIEW_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+REVIEW_EMBEDDING_DIM = 384
 VERSION_SOURCES = ("user", "fix")
 RUN_STATUSES = ("queued", "running", "done", "error")
 SEVERITIES = ("info", "warning", "blocker")
@@ -180,3 +188,31 @@ class EvalRun(Base):
     prompt_version: Mapped[str] = mapped_column(String(50))
     metrics: Mapped[dict[str, Any]]
     created_at: Mapped[datetime] = _created_at()
+
+
+class Hotel(Base):
+    __tablename__ = "hotels"
+    __table_args__ = (UniqueConstraint("name", "address"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))  # as in the CSV (accents are mangled)
+    address: Mapped[str] = mapped_column(String(300))
+    city: Mapped[str] = mapped_column(String(50), index=True)
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    average_score: Mapped[Decimal] = mapped_column(Numeric(3, 1))
+    total_reviews: Mapped[int] = mapped_column(Integer)  # on Booking.com when scraped
+
+
+class HotelReview(Base):
+    """One review's negative part. Searched per hotel (a few thousand rows at most), so an
+    exact scan is fast and there is no vector index to keep in memory."""
+
+    __tablename__ = "hotel_reviews"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    hotel_id: Mapped[int] = mapped_column(ForeignKey("hotels.id", ondelete="CASCADE"), index=True)
+    review_date: Mapped[date] = mapped_column(Date)
+    reviewer_score: Mapped[Decimal] = mapped_column(Numeric(3, 1))
+    negative_text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[Any] = mapped_column(HALFVEC(REVIEW_EMBEDDING_DIM))

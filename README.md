@@ -55,6 +55,9 @@ After changing `src/trip_feasibility/models.py`:
 | `ROUTING_MIN_INTERVAL_S` | `1.0` | Minimum gap between routing requests (its usage policy) |
 | `RATE_LIMIT_COOLDOWN_S` | `60` | Pause after a service answers 429/403/503 |
 | `HTTP_USER_AGENT` | `trip-feasibility/0.1 (+repo URL)` | Identifies the app to OSM services |
+| `ANTHROPIC_API_KEY` | none | Claude API key for parse step 1 (secret; `.env` only) |
+| `EXTRACTION_MODEL` | `claude-haiku-5-5` | Model for parse step 1 |
+| `EXTRACTION_EFFORT` | `low` | Effort level for parse step 1 |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 
 Secrets go in `.env` (gitignored), never in the repo. CI runs gitleaks on every push.

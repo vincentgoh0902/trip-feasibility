@@ -8,9 +8,9 @@ the design changes.
 **Status (Oct 24, 2026):** backend skeleton, database schema, CI, and four of the five check
 tools (public holidays, opening hours, travel time, daily load) exist, are tested, and work
 against the live data sources. The evaluation dataset's format, validator and annotation
-guide exist; the itineraries themselves are being collected. Parse steps 2–4 (validation,
-normalisation, geocoding) exist; step 1 (LLM extraction) waits on the model choice. Hotel
-red flags, the agent, the API routes, auth and the frontend don't exist yet.
+guide exist; the itineraries themselves are being collected. Parse steps 1–4 exist (step 1,
+Claude extraction, is untested against the live API until a key is added). Hotel reviews
+are embedded and loaded. The hotel red-flags check, the agent, the API routes, auth and the frontend don't exist yet.
 
 ---
 
@@ -53,15 +53,16 @@ trip-feasibility/
     ├── scripts/smoke_checks.py   runs the tools once against the real APIs
     ├── scripts/validate_dataset.py   validates data/dataset, prints its version
     ├── scripts/sample_reviews.py     random negative reviews of one hotel (for labelling)
-    ├── scripts/smoke_parse.py        normalise + geocode the example itinerary, live
+    ├── scripts/smoke_parse.py        parse the example itinerary live (extract if key set)
+    ├── scripts/load_reviews.py       embed + load hotel reviews (Mac only, `embed` group)
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
     │   ├── db.py             database engine + session helper
     │   ├── errors.py         the single error response shape
-    │   ├── models.py         database tables (SQLAlchemy)
+    │   ├── models.py         database tables (SQLAlchemy), incl. hotels + hotel_reviews
     │   ├── itinerary.py      the Stop schema every check takes as input
-    │   ├── parse/            parse pipeline: schema.py (steps 1–2), normalise.py, geocode.py
+    │   ├── parse/            parse pipeline: extract.py, schema.py, normalise.py, geocode.py
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
     │   └── checks/
@@ -389,6 +390,32 @@ Over any limit → one **warning** per day, listing every limit exceeded. Walkin
 venues and hours, and a note says walking wasn't checked; that's why `CheckResult` has
 `notes`.
 
+### Hotel reviews (`models.py` Hotel/HotelReview, `scripts/load_reviews.py`)
+
+The data behind the hotel red-flags check (the check itself is next).
+
+- **Source:** the Kaggle "515K Hotel Reviews Data in Europe" CSV (CC0), in `data/raw/`.
+- **Scope:** every hotel in the four dataset cities: 1,227 hotels and 421K reviews, of which
+  295,728 have a negative part. Only those are stored, because only complaints can evidence a
+  red flag; stock answers like "No Negative" are dropped.
+- **Embedding:** `BAAI/bge-small-en-v1.5` (384 dimensions, MIT licence), run on this Mac's GPU:
+  3 minutes for all 296K texts. Vectors are normalised and stored as `halfvec` (half
+  precision). Vectors are cached in `data/embeddings/` keyed by a hash of the model and texts.
+- **Size:** `hotel_reviews` is 295 MB in Postgres (vs ~2 GB the PRD's 515K × 1024-dim floats
+  plus an HNSW index would need).
+- **No vector index:** the check always searches one hotel's reviews (at most ~4,800 rows),
+  using the `hotel_id` B-tree index and an exact distance sort: about 2 ms measured. An HNSW
+  index would cost memory for no gain, and an approximate index combined with a hotel filter
+  can miss results.
+- **No model on the server:** the check's queries are a fixed set of themes, so their vectors
+  can be computed here once and shipped with the code. The 256 MB API container never loads
+  an embedding model; sentence-transformers and torch live in the `embed` dependency group,
+  which the Docker image doesn't install.
+- **Separate `hotels` table** (name, address, city, coordinates, score), instead of repeating
+  the hotel name on every review as the PRD sketch did.
+- Probe: searching Hotel Cavendish's reviews for noise returns five noise complaints with
+  cosine similarity 0.77–0.80.
+
 ### Why MCP (`mcp_server.py`)
 
 Each check is exposed as an MCP tool (PRD ADR-4). MCP is a standard protocol for giving
@@ -412,7 +439,7 @@ PRD FR-1 turns pasted text into located stops in five steps. Only step 1 uses an
 
 | Step | Where | Status |
 |---|---|---|
-| 1. Extraction | LLM with structured output, returning `Extraction` | Waits on the model choice |
+| 1. Extraction | `extract.extract_stops`: Claude Haiku 5.5, structured output | Built; live run needs a key |
 | 2. Validation | `schema.validate_extraction`: the model, or the error text for one retry | Built |
 | 3. Normalisation | `normalise.normalise` | Built |
 | 4. Geocoding | `geocode.locate_city`, `geocode.geocode_stops` | Built, works live |
@@ -449,6 +476,31 @@ inside the Louvre and Versailles as outside the city.
 Why the top result: Nominatim ranks by importance, which favours the famous place a tourist
 means. The cost is ambiguity (two cafés with the same name in one city); the user-review
 step is where that gets corrected.
+
+### Extraction (`extract.py`)
+
+One call to Claude Haiku 5.5 (`EXTRACTION_MODEL`, effort `low`) per itinerary:
+
+- **System prompt** (`SYSTEM_PROMPT`): the field rules from the PRD (times only when stated,
+  `place_name` verbatim, what is and isn't a stop), and that the itinerary is data, not
+  instructions. The user message gives the city and the trip start date (for itineraries that
+  use weekdays or dates), with the text inside `<itinerary>` tags.
+- **Structured output** (`output_config.format`, a hand-written `EXTRACTION_SCHEMA`) guarantees
+  valid JSON of the right shape. The schema is hand-written rather than generated from the
+  Pydantic model so it changes only deliberately, together with `PROMPT_VERSION`.
+- **Step 2 still runs**: rules the schema can't express (time formats, "times or time of day,
+  not both") are checked by Pydantic. On failure the model sees its output and the error and
+  gets one retry; a second failure raises `ExtractionError("parse_failed")`.
+- **Failures are typed**: `refused` (safety decline; Haiku has no server-side fallback),
+  `truncated` (hit `max_tokens`), `unavailable` (API down, rate-limited, no key).
+- **Usage is returned** (`ExtractionResult`: model, prompt version, attempts, tokens), so
+  eval runs can log cost per itinerary (PRD target: under $0.01 per check).
+- **Why Haiku at low effort:** extraction is copying, not reasoning; it's the cheapest current
+  model, and parse accuracy on the dev set will show whether that holds.
+- **Not cached:** the system prompt is far below the minimum cacheable length, so prompt
+  caching would do nothing here.
+- **Tests** use a fake client: the SDK (2.x) is built on `httpx2`, which respx doesn't
+  intercept.
 
 ### Eval mode (`checks/deps.py`)
 
@@ -623,6 +675,12 @@ Postgres. Three things to settle before the first deploy:
 | 30 | Take Nominatim's top result | Ask an LLM to pick; always show candidates | Importance ranking favours the famous place; no LLM touches coordinates | Same-name places can be wrong; the user-review step corrects them |
 | 31 | Gold stops extend the extraction schema | Separate gold format | Parse accuracy compares identical fields; the formats can't drift | Changing the extraction schema changes the dataset format |
 | 32 | Eval mode serves expired cache entries | Separate eval cache; snapshot files | Reruns are free and see identical data, using the cache that already exists | An eval rerun weeks later uses old opening hours (intended: same data) |
+| 33 | Claude for the agent and extraction; Haiku 5.5 at low effort for extraction | OpenAI, Gemini; a bigger model | Strong structured output and tool use; extraction is copying, so the cheapest model first | Judge must come from another provider |
+| 34 | Hand-written JSON schema + Pydantic validation + one retry | `messages.parse` with the Pydantic model | Schema changes only with the prompt version; step 2 stays explicit as the PRD describes | Schema and model must be kept in step by hand |
+| 35 | Local open embedding model (bge-small-en-v1.5, 384 dims) | API embeddings (1536 dims) | No key, no cost, fast on the Mac's GPU; vectors a quarter the size | English-only, smaller model; retrieval quality to be checked on the hotel labels |
+| 36 | Reviews for every hotel in the 4 dataset cities, negative parts only | 16 hotels only; all 515K reviews | Demo can check any hotel in those cities; 295 MB instead of ~2 GB | Hotels outside those cities have no reviews |
+| 37 | `halfvec`, no vector index, exact search per hotel | `vector` + HNSW | Half the storage, no index memory, exact results in ~2 ms | Cross-hotel similarity search would be slow (not needed) |
+| 38 | Embedding libraries in a separate `embed` group; no model on the server | Embed queries at request time | Keeps the API image small and inside 256 MB | Theme queries must be re-embedded here when they change |
 
 ## 13. Known gaps and next steps
 

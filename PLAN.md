@@ -24,11 +24,15 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Travel time tool (FOSSGIS OSRM table service; transit estimated)
 - [x] Daily load tool (pace limits, walking distance)
 - [x] Eval mode: read the cache regardless of expiry, so eval reruns make no external calls
-- [ ] Choose embedding model; `hotel_reviews` table; load reviews and embeddings
+- [x] `hotels` + `hotel_reviews` tables; 296K negative reviews from the 4 dataset cities
+      embedded with bge-small-en-v1.5 (`scripts/load_reviews.py`, Mac only)
 - [ ] Hotel red-flags tool
 - [x] Parse steps 2–4: extraction schema + validation, normalisation, geocoding (Nominatim
       search inside the city's bounding box, 60 km fallback, unresolved otherwise)
-- [ ] Parse step 1: LLM extraction with structured output (needs the agent model chosen)
+- [x] Parse step 1: Claude Haiku 5.5 extraction, structured output, one validation retry
+      (`parse/extract.py`)
+- [ ] **Vincent: add `ANTHROPIC_API_KEY`** to the repo-root `.env`, after setting a monthly
+      spend cap in the Anthropic Console; then `uv run python scripts/smoke_parse.py`
 - [ ] LangGraph agent run from a CLI; first baseline eval on the dev set
 - [ ] Fixes with re-checks
 - [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits
@@ -60,6 +64,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   The validator enforces the counts, Vienna-in-test and variant-with-parent
   (`dataset.split_errors`).
 
+- **Models (decided 2026-10-24):** Anthropic Claude for the agent and parse step 1 (Haiku 5.5
+  for extraction); judge from another provider, chosen later; review embeddings from a local
+  open model (bge-small-en-v1.5, 384 dims); reviews loaded for all hotels in the 4 dataset
+  cities.
+
 ## Open
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
@@ -73,7 +82,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 
 - Hosting shape (see CLAUDE.md "Hosting"): Auth.js needs a running Next.js server, so a
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
-- Embedding model / vector dimension; agent and judge models; demo-mode scope.
+- Judge model (must not be Anthropic); decide when fixes exist. Demo-mode scope.
+- How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
 - Eval runner: run checks on gold stops (isolates the checks), on the agent's parsed stops
   (end to end), or both; and how parsed stops are aligned to gold stops.
 - Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
