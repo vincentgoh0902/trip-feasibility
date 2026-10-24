@@ -36,7 +36,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       spend cap in the Anthropic Console; then `uv run python scripts/smoke_parse.py`
 - [x] LangGraph check graph (enabled checks in parallel via in-process MCP), parse pipeline
       end to end, CLI (`scripts/check_itinerary.py`)
-- [ ] Eval runner; first baseline eval on the dev set (needs the annotated dev set)
+- [x] Eval runner (`scripts/run_eval.py`): gold-stop and parsed modes, alignment, parse
+      accuracy, eval_runs rows; checked live on the example annotation
+- [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
 - [ ] Langfuse tracing, cost per run, `check_runs` rows
 - [ ] Fixes with re-checks
 - [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits
@@ -73,6 +75,13 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   open model (bge-small-en-v1.5, 384 dims); reviews loaded for all hotels in the 4 dataset
   cities.
 
+- **Hotel label rule (decided 2026-10-24):** out of 40 sampled reviews, a theme is a red flag
+  at about 4+ for noise and cleanliness, 3+ for location, 2+ for safety (ANNOTATION.md step 3).
+  Rarer themes count at fewer reviews.
+- **Eval scoring (decided 2026-10-24):** the eval runner scores checks two ways, reported
+  separately: on the gold stops (checks alone, no API key) and on the agent's own parsed stops
+  (end to end), with parsed stops aligned to gold stops by day, order and name.
+
 ## Open
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
@@ -88,12 +97,6 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
 - Judge model (must not be Anthropic); decide when fixes exist. Demo-mode scope.
 - How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
-- Hotel label rule vs the check (see ARCHITECTURE "Hotel red-flags check"): ANNOTATION.md
-  says a theme is a red flag at ~4 of 40 sampled reviews (10%). Safety comes up in 0.3% of a
-  typical hotel's complaints, so under that rule safety is almost never labelled, even for a
-  hotel with repeated theft reports. Decide before labelling the hotels.
 - Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
-- Eval runner: run checks on gold stops (isolates the checks), on the agent's parsed stops
-  (end to end), or both; and how parsed stops are aligned to gold stops.
 - Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
   runs live (in memory, or a separate table with a short TTL).

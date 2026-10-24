@@ -11,7 +11,8 @@ and work against the live data sources. The evaluation dataset's format, validat
 guide exist; the itineraries themselves are being collected. Parse steps 1–4 exist (step 1,
 Claude extraction, is untested against the live API until a key is added). Hotel reviews
 are embedded and loaded. The agent runs parse + all checks from a CLI
-(`scripts/check_itinerary.py`); fixes, the eval runner, the API routes, auth and the frontend
+(`scripts/check_itinerary.py`), and the eval runner scores it on the annotated dataset
+(`scripts/run_eval.py`, waiting for annotations). Fixes, the API routes, auth and the frontend
 don't exist yet.
 
 ---
@@ -61,6 +62,7 @@ trip-feasibility/
     ├── scripts/calibrate_hotel_themes.py scores the theme matcher on hand-labelled reviews (Mac)
     ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
     ├── scripts/check_itinerary.py    parse + check one itinerary from the command line
+    ├── scripts/run_eval.py           score the checks on the dataset, log to eval_runs
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: /health, error handlers
     │   ├── config.py         all settings, read from environment variables
@@ -71,6 +73,7 @@ trip-feasibility/
     │   ├── parse/            parse pipeline: pipeline.py (end to end), extract.py, schema.py,
     │   │                     normalise.py, geocode.py
     │   ├── agent/graph.py    the check graph (LangGraph): enabled checks in parallel via MCP
+    │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
     │   └── checks/
@@ -684,6 +687,41 @@ verbatim place names, stop order, that every tight leg has a real time, that lab
 real stops and days, hotel keys and cities, file names, and the split rules (counts, Vienna
 in test, variants in their parent's split). It prints counts, label totals and the version.
 
+### The eval runner (`evals/`, `scripts/run_eval.py`)
+
+Scores the checks against the labels, in two modes reported separately (decided 2026-10-24):
+
+- **gold:** the checks run on the gold stops, located from their OSM refs (the truth) or,
+  for stops without one, geocoded by name. Scores measure the checks alone. No API key.
+- **parsed:** the full pipeline on the raw text. Parsed stops are aligned one to one with
+  gold stops within the same day by place name, order breaking ties (`align.py`). An
+  unaligned parsed stop is extra; an unaligned gold stop was missed. Parse accuracy is scored
+  on the aligned pairs, field by field (stop recall, stop precision, field accuracy, exact
+  stops, errors by field). A parse failure counts every label of that itinerary as missed.
+
+**Matching.** Predictions are turned into the labels' terms: a stop (opening_hours), a leg
+(travel_time), a day (public_holidays, daily_load), a hotel key (hotel_red_flags). Only
+warning and blocker count. A prediction matches a label with the same check and target,
+whatever its severity; severity agreement is reported separately. A prediction on a stop
+that wasn't aligned can't match anything, so it's a false positive. Counts are summed over
+itineraries (micro-averaged); precision with nothing predicted is "n/a", not 0. Hotels
+still unlabelled (`red_flags: null`) are left out of both sides.
+
+**Reported numbers** are counts with percentages ("2 of 3 (67%)"), per check and overall,
+plus coverage (runs where a check was unavailable, stops it couldn't judge), parse metrics,
+tokens and time per itinerary. When Vienna is in the run, seen and unseen cities are also
+reported apart.
+
+**Rules it enforces.** Eval mode (expired cache entries served, so reruns make no external
+calls once cached). Only annotated itineraries run, so it works on a partial dev set. The
+test split needs `--final`, and prints no per-itinerary lines. Every run writes an
+`eval_runs` row (dataset version, model, prompt version, config, all metrics) unless
+`--no-save`; per-itinerary details go to gitignored `data/evals/`.
+
+**Checked on the example** (as a one-itinerary dataset): all 3 labels found (Louvre closed,
+two travel-time problems), 2 false positives (a 12.5 h day the example calls fine, and a
+hotel → Louvre walk the check estimates at 8 min where the annotation says 5).
+
 ## 8. Testing
 
 - **Real Postgres, not mocks.** Tests run against a real database, because the cache upsert,
@@ -791,6 +829,10 @@ Postgres. Three things to settle before the first deploy:
 | 42 | The check graph runs every enabled check; no LLM chooses tools | A ReAct-style agent picking tools | Deterministic, cheaper, can't skip a check; LangGraph still gives parallel branches and streaming | The "agent" has no LLM until fixes land |
 | 43 | Parsing and checking are separate calls | One graph from text to report | The user confirms stops in between (FR-1 step 5) | Two round trips in the UI |
 | 44 | Routing lookups serialised with a lock | Let parallel checks route independently | Legs are shared through the cache; overlapping requests got a 429 | Routing for two checks can't overlap (it's 1 request/second anyway) |
+| 45 | Hotel labels: red flag at 4+/40 reviews (noise, cleanliness), 3+ (location), 2+ (safety) (2026-10-24) | 4+/40 for every theme | Safety is ~0.3% of a typical hotel's complaints; at 4/40 repeated theft reports would never be labelled | Labels for rare themes rest on 2–3 reviews |
+| 46 | Eval scores checks on gold stops and on parsed stops, separately (2026-10-24) | Gold only; end to end only | Separates check errors from parse errors; gold mode needs no API key | Parsed stops must be aligned to gold stops |
+| 47 | Predictions match labels on check + target, severity scored separately | Require the same severity | A blocker reported as a warning still found the problem; both numbers stay visible | Detection scores look better than severity accuracy alone |
+| 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Alignment by position; by OSM ID | Names are copied verbatim, so they match; positions shift when a stop is added or dropped | Two same-day stops with near-identical names can swap (order breaks the tie) |
 
 ## 13. Known gaps and next steps
 
@@ -802,8 +844,7 @@ Postgres. Three things to settle before the first deploy:
   guesses until the dev set exists.
 - The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
-- Gold stops have no OSM IDs yet; matching the agent's parsed stops to gold stops will
-  need either those IDs or alignment by day, order and name (decided with the eval runner).
+- Parsed-mode evals need the API key; neither mode has run on real annotations yet.
 - Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
   `min_share` / `min_reviews` are untuned against the hotel labels.
 - Next: collect and annotate the dataset (Vincent), then the agent. Order and status are in

@@ -65,23 +65,46 @@ async def _lookup(deps: CheckDeps, refs: list[OsmRef]) -> list[dict[str, Any]]:
     return await _get(deps, "lookup", {"osm_ids": osm_ids, "extratags": "1"})
 
 
-async def fetch_osm_tags(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any] | None]:
-    """Tags per tags_key(ref); None when Nominatim doesn't know the place (deleted from OSM,
-    or not something Nominatim indexes). Cached; only uncached places are requested."""
+async def _cached_lookup(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any]]:
+    """Cached /lookup result per tags_key(ref): {"tags", "lat", "lon"} or {"missing": True}.
+    Only uncached places (or entries cached before coordinates were stored) are requested."""
     keys = {tags_key(r): r for r in refs}
     found: dict[str, Any] = await deps.cache.get_many(list(keys))
+    found = {k: v for k, v in found.items() if v.get("missing") or "lat" in v}
     missing = [r for k, r in keys.items() if k not in found]
     for i in range(0, len(missing), LOOKUP_BATCH):
         batch = missing[i : i + LOOKUP_BATCH]
         fetched: dict[str, Any] = {tags_key(r): {"missing": True} for r in batch}
         for place in await _lookup(deps, batch):
             ref = OsmRef(type=place["osm_type"], id=place["osm_id"])
-            fetched[tags_key(ref)] = {"tags": _place_tags(place)}
+            fetched[tags_key(ref)] = {
+                "tags": _place_tags(place),
+                "lat": float(place["lat"]) if "lat" in place else None,
+                "lon": float(place["lon"]) if "lon" in place else None,
+            }
         await deps.cache.put_many(
             "nominatim", fetched, timedelta(days=deps.settings.cache_ttl_osm_days)
         )
         found.update(fetched)
+    return found
+
+
+async def fetch_osm_tags(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any] | None]:
+    """Tags per tags_key(ref); None when Nominatim doesn't know the place (deleted from OSM,
+    or not something Nominatim indexes)."""
+    found = await _cached_lookup(deps, refs)
     return {k: (None if v.get("missing") else v["tags"]) for k, v in found.items()}
+
+
+async def fetch_osm_points(
+    deps: CheckDeps, refs: list[OsmRef]
+) -> dict[str, tuple[float, float] | None]:
+    """(lat, lon) per tags_key(ref); None when Nominatim doesn't know the place."""
+    found = await _cached_lookup(deps, refs)
+    return {
+        k: None if v.get("missing") or v["lat"] is None else (v["lat"], v["lon"])
+        for k, v in found.items()
+    }
 
 
 class Place(BaseModel):

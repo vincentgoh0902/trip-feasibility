@@ -104,8 +104,16 @@ Then set `red_flags` to the themes that are real red flags, or `[]` if none:
 
 - Themes: `noise`, `cleanliness`, `safety`, `location`.
 - A theme is a red flag when several different reviewers complain about the same thing and
-  a traveller would want a warning before booking. As a rule of thumb, about 4 or more of
-  the 40 reviews.
+  a traveller would want a warning before booking. Rule of thumb, out of the 40 reviews:
+  | Theme | Red flag at about |
+  | --- | --- |
+  | `noise`, `cleanliness` | 4 or more |
+  | `location` | 3 or more |
+  | `safety` (theft, feeling unsafe, strangers getting in) | 2 or more |
+
+  Rarer themes count at fewer reviews because they come up far less often: a typical hotel's
+  complaints are ~8% about noise but ~0.3% about safety, and two theft reports are already
+  unusual.
 - One-off complaints, things a hotel can't help (street works in 2016), and taste ("decor
   tired") don't count.
 - Add a `note` with the counts, e.g. `noise 7/40 (street-facing rooms), cleanliness 5/40`.

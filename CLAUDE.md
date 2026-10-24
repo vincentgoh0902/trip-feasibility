@@ -26,11 +26,13 @@ reference only.
   `parse/` (pipeline.py end to end, extract.py, schema.py extraction schema + validation,
   normalise.py, geocode.py), `agent/graph.py` (LangGraph check graph: enabled checks in
   parallel through `mcp_server.create_server(deps)`), `checks/config.py` (CheckConfig, FR-5),
+  `evals/` (runner.py, align.py parsed ↔ gold stops, score.py),
   `sources/nominatim.py` (OSM place tags and search), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
   migrations; `tests/`; `scripts/` (smoke_checks.py live API run, validate_dataset.py,
   sample_reviews.py, smoke_parse.py live geocoding run, load_reviews.py, embed_hotel_themes.py,
-  calibrate_hotel_themes.py, hotel_theme_base_rates.py, check_itinerary.py CLI); Dockerfile). `docs/annotation/` holds the annotation template, a worked
+  calibrate_hotel_themes.py, hotel_theme_base_rates.py, check_itinerary.py CLI, run_eval.py);
+  Dockerfile). `docs/annotation/` holds the annotation template, a worked
   example and the unlabelled hotels.yaml. Planned: `frontend/`, `train/` (Tier 2, Mac only).
   `data/` is gitignored: local Postgres volume, `raw/hotel-reviews/Hotel_Reviews.csv` (Kaggle,
   CC0), `dataset/` (hotels.yaml + itineraries/<id>.yaml, the hand-annotated dataset),
@@ -68,7 +70,9 @@ reference only.
   warning/blocker only; info isn't counted. Truth is reality (official sites, Google Maps),
   never our own checks or data sources.
 - **Evals:** every run writes model ID, prompt version, config and dataset version to
-  `eval_runs`. The held-out test set is touched only for reported results. The judge
+  `eval_runs`. Two modes, reported apart: gold stops (checks alone) and parsed (end to end,
+  stops aligned to gold by day + name). A prediction matches a label on check + target;
+  severity agreement is separate. Details per itinerary in gitignored `data/evals/`. The held-out test set is touched only for reported results. The judge
   model is from a different provider than the agent model.
 - **Styling:** follows `../Vincent Goh Branding Kit.pdf`. Colours as tokens, not hardcoded.
 - **Port:** API listens on 8000 in the container (override with `PORT`); `GET /health` →
@@ -99,6 +103,8 @@ uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name fro
 uv run python scripts/smoke_parse.py               # live geocoding (+ extraction if key set)
 uv run python scripts/check_itinerary.py --example  # all checks on the example (no key)
 uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
+uv run python scripts/run_eval.py [--mode gold|parsed|both]   # dev split; logs to eval_runs
+uv run python scripts/run_eval.py --split test --final         # reported results only
 uv run --group embed python scripts/load_reviews.py   # embed + load hotel reviews (Mac only)
 uv run --group embed python scripts/embed_hotel_themes.py      # after editing THEMES phrasings
 uv run --group embed python scripts/calibrate_hotel_themes.py  # theme matcher P/R/F1
