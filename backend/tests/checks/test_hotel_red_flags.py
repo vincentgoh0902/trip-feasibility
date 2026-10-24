@@ -1,9 +1,9 @@
 import json
+import math
 import re
 from datetime import date
 from decimal import Decimal
 
-import numpy as np
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -20,10 +20,10 @@ from trip_feasibility.checks.hotel_red_flags import (
 from trip_feasibility.config import get_settings
 
 DAY = date(2026, 7, 1)
-VECTORS = {n: [np.array(json.loads(v)) for v in vs] for n, vs in theme_vectors().items()}
-# far from every theme phrasing
-NEUTRAL = -sum(v for vs in VECTORS.values() for v in vs)
-NEUTRAL /= np.linalg.norm(NEUTRAL)
+VECTORS = {n: [json.loads(v) for v in vs] for n, vs in theme_vectors().items()}
+# far from every theme phrasing (numpy is only in the Mac-only embed group)
+_sum = [-sum(xs) for xs in zip(*(v for vs in VECTORS.values() for v in vs), strict=True)]
+NEUTRAL = [x / math.sqrt(sum(y * y for y in _sum)) for x in _sum]
 
 
 def hotel_stop(stop_id, name, at=None):

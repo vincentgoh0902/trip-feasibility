@@ -156,7 +156,9 @@ full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
   environment variables win. Put `ANTHROPIC_API_KEY` in the root `.env`.
 - Embedding libraries (sentence-transformers, torch) are in the `embed` dependency group:
   `uv run --group embed ...`. The Docker image (`uv sync --no-dev`) never installs them, and
-  the API never embeds at request time.
+  the API never embeds at request time. `uv run --group embed` leaves numpy etc. in the venv,
+  so tests can pass locally and fail in CI: run `uv sync` before pytest, and never import
+  numpy in `src/` or `tests/`.
 - Dataset YAML is read with `dataset.validate.load_yaml`, not `yaml.safe_load`: plain YAML 1.1
   reads `10:30` as the number 630 (base 60). The custom loader keeps times as text.
 - The Kaggle CSV mangles accents (`H tel Regina`, `Batty Langley s`); hotels.yaml keeps the
