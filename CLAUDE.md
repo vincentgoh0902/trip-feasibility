@@ -24,8 +24,9 @@ reference only.
   `checks/legs.py` (legs + travel options, shared by travel_time and daily_load),
   `checks/hotel_red_flags.py` + `hotel_themes.json` (theme query vectors, made on the Mac),
   `parse/` (pipeline.py end to end, extract.py, schema.py extraction schema + validation,
-  normalise.py, geocode.py), `agent/graph.py` (LangGraph check graph: enabled checks in
-  parallel through `mcp_server.create_server(deps)`), `checks/config.py` (CheckConfig, FR-5),
+  normalise.py, geocode.py), `agent/` (graph.py LangGraph: enabled checks in parallel through
+  `mcp_server.create_server(deps)`, then a fix node; fixes.py propose → apply → re-check →
+  retry; models.py CheckInput/CheckReport), `checks/config.py` (CheckConfig, FR-5),
   `evals/` (runner.py, align.py parsed ↔ gold stops, score.py),
   `sources/nominatim.py` (OSM place tags and search), `sources/routing.py`
   (FOSSGIS OSRM table service); `alembic/`
@@ -43,6 +44,9 @@ reference only.
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
   and review the file. CI runs `alembic check`, so models and migrations must match.
 - **Errors:** every error response is `{"error": {"code", "message"}}`; raise `AppError`.
+- **Fixes:** the LLM returns operations (move/remove/replace/add_transport_mode), never a new
+  itinerary; code applies them and re-runs every check. Only valid fixes (targets gone, no new
+  blocker) are shown. Hotel review text never goes into the fix prompt.
 - **Parsing:** only step 1 (extraction) uses an LLM. The LLM never produces
   coordinates; geocoding is code. Parse accuracy measures step 1 only. The dataset's gold
   stops extend `parse.schema.ExtractedStop`, so changing that schema changes the dataset
@@ -83,7 +87,8 @@ reference only.
   `NAGER_BASE_URL`, `NOMINATIM_BASE_URL`, `NOMINATIM_MIN_INTERVAL_S` (1.0),
   `NOMINATIM_TIMEOUT_S`, `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S` (1.0),
   `ROUTING_TIMEOUT_S`, `RATE_LIMIT_COOLDOWN_S` (60), `ANTHROPIC_API_KEY` (secret),
-  `EXTRACTION_MODEL` (claude-haiku-5-5), `EXTRACTION_EFFORT` (low), `CACHE_TTL_HOLIDAYS_DAYS`,
+  `EXTRACTION_MODEL` (claude-haiku-5-5), `EXTRACTION_EFFORT` (low), `FIX_MODEL`
+  (claude-haiku-5-5), `FIX_EFFORT` (medium), `CACHE_TTL_HOLIDAYS_DAYS`,
   `CACHE_TTL_OSM_DAYS`, `CACHE_TTL_ROUTES_DAYS`; tests only: `TEST_DATABASE_URL`. Secrets in `.env` / server `app.env`.
 - **Memory:** API idles at ~60 MB. Postgres holds ~300 MB of review data (below).
 - **Visibility:** homelab starts `private`. GitHub repo is **public**: never commit

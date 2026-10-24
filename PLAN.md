@@ -40,7 +40,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       accuracy, eval_runs rows; checked live on the example annotation
 - [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
 - [ ] Langfuse tracing, cost per run, `check_runs` rows
-- [ ] Fixes with re-checks
+- [x] Fixes with re-checks (`agent/fixes.py`): Claude proposes operations, code applies and
+      re-runs every check, one retry; fix validity in `run_eval.py --fixes`. Untested live
+      (needs the key)
 - [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits
 - [ ] Judge calibration (20+ hand-rated fixes)
 - [ ] Next.js pages, preferences, check settings, saved trips

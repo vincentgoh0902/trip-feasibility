@@ -156,3 +156,65 @@ async def test_real_tool_server_end_to_end(check_deps, respx_mock):
     report = await run_checks(check_deps, inp)
     [v] = report.violations
     assert (v.check_name, v.severity, v.stop_ids) == ("public_holidays", "warning", ["a", "b"])
+
+
+class ClosedOnDayOne(FakeMcp):
+    """opening_hours reports stop "a" as closed whenever it's on day 1."""
+
+    async def call_tool(self, name, args):
+        self.calls.setdefault(name, []).append(args)
+        violations = []
+        if name == "opening_hours" and any(s["id"] == "a" and s["day"] == 1 for s in args["stops"]):
+            violations = [violation("opening_hours", "blocker", ["a"])]
+        result = CheckResult(check_name=name, status="ok", violations=violations)
+        return SimpleNamespace(
+            is_error=False, structured_content=result.model_dump(mode="json"), content=[]
+        )
+
+
+async def test_fix_node_proposes_and_rechecks_through_the_tools(check_deps):
+    from tests.parse.test_extract import FakeClient, reply
+    from trip_feasibility.agent.graph import Fixer
+
+    two_days = [
+        *STOPS,
+        stop("c", date(2026, 7, 15), "10:00", "11:00").model_copy(update={"day": 2}),
+    ]
+    inp = CheckInput(
+        stops=two_days,
+        city="Paris",
+        country_code="FR",
+        config=CheckConfig(enabled=["opening_hours"]),
+    )
+    move = {
+        "op": "move",
+        "stop_id": "a",
+        "day": 2,
+        "start_time": "13:00",
+        "end_time": "15:00",
+        "place_name": None,
+        "type": None,
+        "mode": None,
+    }
+    client = FakeClient(
+        reply({"fixes": [{"violation_ids": ["v1"], "description": "Day 2", "operations": [move]}]})
+    )
+    mcp = ClosedOnDayOne()
+    state = await GRAPH.ainvoke(
+        {"input": inp, "results": {}},
+        context=AgentContext(
+            mcp=mcp, deps=check_deps, fixer=Fixer(client=client, model="m", effort="low", city=None)
+        ),
+    )
+    fixes = state["fixes"]
+    [f] = fixes.fixes
+    assert f.valid and fixes.unfixed == []
+    assert len(mcp.calls["opening_hours"]) == 2  # the check, then the fix's re-check
+
+
+async def test_no_fixer_no_fixes():
+    state = await GRAPH.ainvoke(
+        {"input": CheckInput(stops=STOPS, city="Paris", country_code="FR"), "results": {}},
+        context=AgentContext(mcp=FakeMcp()),
+    )
+    assert state["fixes"] is None

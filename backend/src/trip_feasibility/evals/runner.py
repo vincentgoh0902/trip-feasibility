@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from trip_feasibility.agent.graph import CheckInput, CheckReport, run_checks
+from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, run_agent
 from trip_feasibility.checks.config import CheckConfig
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.config import Settings
@@ -48,6 +48,12 @@ class Outcome:
     seconds: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
+    # fixes (PRD "fix validity"), when the run proposes them
+    fixes_proposed: int = 0
+    fixes_valid: int = 0
+    fixable: int = 0  # warnings and blockers found
+    fixed: int = 0  # of those, how many got a valid fix
+    fix_tokens: tuple[int, int] = (0, 0)
     predicted: dict[str, str] = field(default_factory=dict)  # "check target" -> severity
     gold: dict[str, str] = field(default_factory=dict)
 
@@ -92,6 +98,7 @@ async def evaluate_itinerary(
     config: CheckConfig,
     settings: Settings,
     client: MessagesClient | None = None,
+    fixes: bool = False,
 ) -> Outcome:
     assert itin.stops is not None
     out = Outcome(id=itin.id, city=itin.city)
@@ -119,7 +126,12 @@ async def evaluate_itinerary(
             pairs = align(x.extraction.stops, itin.stops)
             id_map = {stops[i].id: itin.stops[j].id for i, j in pairs.items()}
             out.parse = parse_counts(x.extraction.stops, _gold_extracted(itin), pairs)
-        report: CheckReport = await run_checks(
+        fixer = None
+        if fixes:
+            assert client is not None
+            fixer = Fixer(client, settings.fix_model, settings.fix_effort, city)
+        report: CheckReport
+        report, fix_report = await run_agent(
             deps,
             CheckInput(
                 stops=stops,
@@ -128,7 +140,14 @@ async def evaluate_itinerary(
                 preferences=itin.preferences,
                 config=config,
             ),
+            fixer,
         )
+        if fix_report is not None:
+            out.fixes_proposed = len(fix_report.fixes)
+            out.fixes_valid = sum(f.valid for f in fix_report.fixes)
+            out.fixable = len(fix_report.violation_ids)
+            out.fixed = out.fixable - len(fix_report.unfixed)
+            out.fix_tokens = (fix_report.input_tokens, fix_report.output_tokens)
     except (ParseError, Unavailable) as e:
         out.error = e.code if isinstance(e, ParseError) else f"unavailable: {e}"
         if isinstance(e, ParseError):
@@ -165,6 +184,7 @@ async def evaluate(
     config: CheckConfig,
     settings: Settings,
     client: MessagesClient | None = None,
+    fixes: bool = False,
     progress: Any = None,
 ) -> list[Outcome]:
     cities: dict[str, City | None] = {}
@@ -177,7 +197,15 @@ async def evaluate(
             outcome = Outcome(id=itin.id, city=itin.city, error="city_not_found")
         else:
             outcome = await evaluate_itinerary(
-                deps, itin, hotels, city, mode=mode, config=config, settings=settings, client=client
+                deps,
+                itin,
+                hotels,
+                city,
+                mode=mode,
+                config=config,
+                settings=settings,
+                client=client,
+                fixes=fixes,
             )
         outcomes.append(outcome)
         if progress:
@@ -226,6 +254,21 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
         summary["tokens"] = {
             "input": sum(o.input_tokens for o in outcomes),
             "output": sum(o.output_tokens for o in outcomes),
+        }
+    proposed = sum(o.fixes_proposed for o in outcomes)
+    if proposed or any(o.fixable for o in outcomes):
+        fixable = sum(o.fixable for o in outcomes)
+        summary["fixes"] = {
+            "proposed": proposed,
+            "valid": sum(o.fixes_valid for o in outcomes),
+            "validity": sum(o.fixes_valid for o in outcomes) / proposed if proposed else None,
+            "violations": fixable,
+            "violations_fixed": sum(o.fixed for o in outcomes),
+            "coverage": sum(o.fixed for o in outcomes) / fixable if fixable else None,
+            "tokens": {
+                "input": sum(o.fix_tokens[0] for o in outcomes),
+                "output": sum(o.fix_tokens[1] for o in outcomes),
+            },
         }
     seconds = sorted(o.seconds for o in outcomes)
     if seconds:

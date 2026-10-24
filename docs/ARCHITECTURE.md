@@ -73,7 +73,8 @@ trip-feasibility/
     │   ├── itinerary.py      the Stop schema every check takes as input
     │   ├── parse/            parse pipeline: pipeline.py (end to end), extract.py, schema.py,
     │   │                     normalise.py, geocode.py
-    │   ├── agent/graph.py    the check graph (LangGraph): enabled checks in parallel via MCP
+    │   ├── agent/            graph.py (LangGraph: checks in parallel via MCP, then fixes),
+    │   │                     fixes.py (propose → apply → re-check → retry), models.py
     │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
@@ -590,13 +591,13 @@ enabled check through the MCP tool server, in parallel, as a LangGraph graph:
 
 ```
 START ─► run_check(opening_hours) ─┐
-      ├► run_check(travel_time) ───┼─► END   → CheckReport (worst first)
+      ├► run_check(travel_time) ───┼─► fix ─► END   → CheckReport (worst first) + FixReport
       └► … one Send per enabled check
 ```
 
 - **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
   would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
-  the agent are extraction (before) and fixes (next, after).
+  the agent are extraction (before) and fixes (the `fix` node, below).
 - **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
   server, so an eval run's cache-only mode reaches the tools.
 - **A failed tool never sinks the run:** a tool error, a broken call or a missing country
@@ -615,6 +616,40 @@ START ─► run_check(opening_hours) ─┐
   0.8 s with a warm cache.
 - Not yet: Langfuse tracing, cost per run, saving runs to `check_runs`, streaming progress
   (LangGraph's `astream` gives per-check updates for SSE later).
+
+### Fixes (`agent/fixes.py`, the `fix` node)
+
+PRD FR-3: at least one fix per warning or blocker, each re-checked so a fix never creates a
+new blocker. The same split as parsing: **the LLM proposes, code applies and decides.**
+
+1. **Propose.** One Claude call (`FIX_MODEL`, default Haiku 5.5 at medium effort) gets the
+   stops, the traveller's preferences and every warning/blocker (as `v1`, `v2`, …), and
+   returns fixes in a fixed JSON schema. A fix is a description for the traveller plus
+   operations: `move` (new day and/or times: reorder, move to another day, shorten),
+   `remove`, `replace` (another place of the same kind, same times), `add_transport_mode`
+   (e.g. allow a taxi). Never a rewritten itinerary, never coordinates.
+2. **Apply.** Code applies the operations to a copy of the stops: days must be the trip's
+   days, times must make sense, and a replacement place is geocoded in the city like any
+   stop. An unknown place makes the fix invalid rather than guessed. Stops are re-sorted by
+   day and time.
+3. **Re-check.** Every enabled check re-runs on the patched stops, through the same MCP tools.
+   A fix is **valid** when the violations it targets are gone (or the stop they were about was
+   removed) and no new blocker appeared. New warnings are allowed but shown with the fix;
+   changed stops a check couldn't judge are marked "not verified". A check that is
+   unavailable during the re-check makes the fix invalid: it couldn't be verified.
+4. **Retry once.** Violations still without a valid fix go back to the model with the failed
+   fixes and their reasons. After that a violation can stay unfixed; the report says so.
+
+Only valid fixes are meant to be shown; invalid ones are kept with their reasons, because
+fix validity (valid ÷ proposed) is a PRD metric. `run_eval.py --fixes` measures it, plus the
+share of violations that got a valid fix.
+
+**Prompt injection.** Hotel review excerpts never reach the model: hotel evidence goes in as
+theme counts only. All other tool output is wrapped in `<violations>` and declared data.
+The injection suite will test this.
+
+**Untested live:** like extraction, fixes have only run against a fake model so far (no API
+key yet). Model and effort are settings, tuned once the fix-quality judge exists.
 
 ## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
@@ -838,6 +873,9 @@ Postgres. Three things to settle before the first deploy:
 | 46 | Eval scores checks on gold stops and on parsed stops, separately (2026-10-24) | Gold only; end to end only | Separates check errors from parse errors; gold mode needs no API key | Parsed stops must be aligned to gold stops |
 | 47 | Predictions match labels on check + target, severity scored separately | Require the same severity | A blocker reported as a warning still found the problem; both numbers stay visible | Detection scores look better than severity accuracy alone |
 | 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Alignment by position; by OSM ID | Names are copied verbatim, so they match; positions shift when a stop is added or dropped | Two same-day stops with near-identical names can swap (order breaks the tie) |
+| 49 | Fixes are operations applied by code, not rewritten itineraries | LLM returns a new itinerary | Small, checkable, explainable changes; no invented coordinates or silently changed stops | Only four kinds of change can be expressed |
+| 50 | Every enabled check re-runs on each fix; one retry for unfixed violations | Re-run only the target check; no retry | A fix that moves a stop can break other checks; a retry with reasons recovers many failures cheaply | Re-checks cost routing lookups; at most two LLM calls per run |
+| 51 | Hotel review text kept out of the fix prompt | Send full evidence | Review text is untrusted third-party content (PRD injection goal) | The model can't quote reviews in a fix |
 
 ## 13. Known gaps and next steps
 
@@ -850,6 +888,7 @@ Postgres. Three things to settle before the first deploy:
 - The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
 - Parsed-mode evals need the API key; neither mode has run on real annotations yet.
+- Extraction and fixes have only run against fake models; both need the API key for a live run.
 - Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
   `min_share` / `min_reviews` are untuned against the hotel labels.
 - Next: collect and annotate the dataset (Vincent), then the agent. Order and status are in

@@ -1,4 +1,4 @@
-"""Check an itinerary from the command line: parse (Claude) → stops → all checks → report.
+"""Check an itinerary from the command line: parse (Claude) → stops → checks → fixes.
 
     uv run python scripts/check_itinerary.py --example        # no API key needed
     uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
@@ -7,13 +7,15 @@
 
 --example checks the made-up example itinerary (docs/annotation/example.yaml) on its
 hand-written stops, skipping extraction. Otherwise the text is parsed with Claude first
-(needs ANTHROPIC_API_KEY). Real lookups (Nominatim, routing, Nager.Date) go through the
+(needs ANTHROPIC_API_KEY). With a key, Claude also proposes fixes, each re-checked before it
+is shown (--no-fixes to skip them). Real lookups (Nominatim, routing, Nager.Date) go through the
 Postgres cache; --eval-mode also serves expired cache entries. Don't use this on dataset
 itineraries: the eval runner does that, and keeps Vienna out of sight.
 """
 
 import argparse
 import asyncio
+import json
 import sys
 import time
 from datetime import date
@@ -21,7 +23,8 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from trip_feasibility.agent.graph import CheckInput, CheckReport, run_checks
+from trip_feasibility.agent.fixes import FixReport
+from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, run_agent
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
@@ -65,6 +68,27 @@ def print_report(report: CheckReport) -> None:
         print(f"  [{v.severity.upper():7}] {v.check_name:16} {','.join(v.stop_ids)}: {v.message}")
 
 
+def print_fixes(fixes: FixReport, report: CheckReport) -> None:
+    print(f"\nFixes ({fixes.model}, {fixes.prompt_version}, {fixes.calls} call(s), "
+          f"{fixes.input_tokens} in / {fixes.output_tokens} out tokens)")  # fmt: skip
+    if fixes.error:
+        print(f"  Couldn't propose fixes: {fixes.error}")
+    for f in fixes.fixes:
+        mark = "OK " if f.valid else "-- "
+        print(f"  {mark}{f.id} for {', '.join(f.violation_ids)} (round {f.round}): {f.description}")
+        for op in f.operations:
+            print(f"        {op.model_dump(exclude_none=True)}")
+        for p in f.problems:
+            print(f"        rejected: {p}")
+        for w in f.new_warnings:
+            print(f"        new warning: {w}")
+        for u in f.unverified:
+            print(f"        not verified: {u}")
+    for vid in fixes.unfixed:
+        v = report.violations[fixes.violation_ids[vid]]
+        print(f"  no working fix for {vid}: {v.message}")
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("file", nargs="?", type=Path, help="itinerary text file")
@@ -77,6 +101,7 @@ async def main() -> int:
     parser.add_argument("--buffer", type=int, choices=[0, 10, 20], default=10)
     parser.add_argument("--min-reviews", type=int, choices=[3, 5, 10], default=5)
     parser.add_argument("--disable", default="", help=f"comma-separated: {','.join(CHECK_NAMES)}")
+    parser.add_argument("--no-fixes", action="store_true")
     parser.add_argument("--eval-mode", action="store_true")
     parser.add_argument("--json", type=Path, help="write the full report here")
     args = parser.parse_args()
@@ -146,13 +171,27 @@ async def main() -> int:
                 preferences=preferences,
                 config=config,
             )
-            report = await run_checks(deps, inp)
+            fixer = None
+            if settings.anthropic_api_key is not None and not args.no_fixes:
+                fixer = Fixer(
+                    client=make_client(settings),
+                    model=settings.fix_model,
+                    effort=settings.fix_effort,
+                    city=city,
+                )
+            report, fixes = await run_agent(deps, inp, fixer)
     finally:
         await engine.dispose()
     print_report(report)
+    if fixes is not None:
+        print_fixes(fixes, report)
+    elif report.violations and not args.no_fixes:
+        print("\nNo fixes: ANTHROPIC_API_KEY is not set.")
     print(f"\n{time.monotonic() - started:.1f}s")
     if args.json:
-        args.json.write_text(report.model_dump_json(indent=2))
+        out = {"report": report.model_dump(mode="json"),
+               "fixes": fixes.model_dump(mode="json") if fixes else None}  # fmt: skip
+        args.json.write_text(json.dumps(out, indent=2))
         print(f"Report written to {args.json}")
     return 0
 

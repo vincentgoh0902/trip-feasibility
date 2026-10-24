@@ -1,44 +1,44 @@
-"""The check graph (LangGraph): one branch per enabled check, run in parallel through the
-in-process MCP tool server, then a report.
+"""The agent graph (LangGraph): one branch per enabled check, run in parallel through the
+in-process MCP tool server, then fixes.
 
     START ─► run_check (opening_hours) ─┐
-          ├► run_check (travel_time) ───┼─► END
+          ├► run_check (travel_time) ───┼─► fix ─► END
           └► ... one per enabled check ─┘
 
 Each branch calls one MCP tool and stores its CheckResult. A tool error or a broken call
 becomes an "unavailable" result for that check, so the run always finishes (PRD:
-reliability). No LLM is involved: which checks run is configuration, not a model's choice.
+reliability). Which checks run is configuration, not a model's choice. The fix node
+(agent/fixes.py) is where the LLM comes in: it proposes fixes, and code re-checks them. It's
+skipped when the run has no fixer (no API key) or nothing to fix.
 """
 
+import asyncio
 import operator
 from dataclasses import dataclass
 from typing import Annotated, Any, TypedDict
 
-from langgraph.graph import START, StateGraph
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import Send
 from mcp import Client
-from pydantic import BaseModel
 
-from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig, CheckName
+from trip_feasibility.agent.fixes import FixReport, propose_fixes
+from trip_feasibility.agent.models import CheckInput, CheckReport
+from trip_feasibility.checks.config import CHECK_NAMES, CheckName
 from trip_feasibility.checks.deps import CheckDeps
-from trip_feasibility.checks.models import SEVERITY_RANK, CheckResult, Violation
-from trip_feasibility.itinerary import Stop, TravelPreferences
+from trip_feasibility.checks.models import CheckResult
 from trip_feasibility.mcp_server import create_server
+from trip_feasibility.parse.extract import MessagesClient
+from trip_feasibility.parse.geocode import City
+
+__all__ = ["CheckInput", "CheckReport", "run_checks", "run_agent"]
 
 
-class CheckInput(BaseModel):
-    stops: list[Stop]
-    city: str  # in English, e.g. "Paris"
-    country_code: str | None  # ISO 3166-1 alpha-2; holiday checks need it
-    preferences: TravelPreferences = TravelPreferences()
-    config: CheckConfig = CheckConfig()
-
-
-class CheckState(TypedDict):
+class CheckState(TypedDict, total=False):
     input: CheckInput
     results: Annotated[dict[str, CheckResult], operator.or_]
+    fixes: FixReport | None
 
 
 class CheckTask(TypedDict):
@@ -47,8 +47,20 @@ class CheckTask(TypedDict):
 
 
 @dataclass
+class Fixer:
+    """What the fix node needs; absent when fixes are off."""
+
+    client: MessagesClient
+    model: str
+    effort: str
+    city: City | None  # to geocode replacement places
+
+
+@dataclass
 class AgentContext:
     mcp: Client  # connected
+    deps: CheckDeps | None = None
+    fixer: Fixer | None = None
 
 
 def tool_arguments(check: CheckName, inp: CheckInput) -> dict[str, Any] | str:
@@ -74,6 +86,27 @@ def tool_arguments(check: CheckName, inp: CheckInput) -> dict[str, Any] | str:
             return {"stops": stops, "city": inp.city, "min_reviews": inp.config.hotel_min_reviews}
 
 
+async def call_check(mcp: Client, name: CheckName, inp: CheckInput) -> CheckResult:
+    args = tool_arguments(name, inp)
+    if isinstance(args, str):
+        return CheckResult.unavailable(name, args)
+    try:
+        called = await mcp.call_tool(name, args)
+    except Exception as e:  # a broken call must not sink the run
+        return CheckResult.unavailable(name, f"tool call failed: {e!r}")
+    if called.is_error or called.structured_content is None:
+        detail = " ".join(getattr(c, "text", "") for c in called.content).strip()
+        return CheckResult.unavailable(name, detail or "tool error")
+    return CheckResult.model_validate(called.structured_content)
+
+
+async def check_all(mcp: Client, inp: CheckInput) -> CheckReport:
+    """Every enabled check at once, outside the graph (fix re-checks)."""
+    names = [n for n in CHECK_NAMES if n in inp.config.enabled]
+    results = await asyncio.gather(*(call_check(mcp, n, inp) for n in names))
+    return CheckReport.from_results(inp, dict(zip(names, results, strict=True)))
+
+
 def fan_out(state: CheckState) -> list[Send]:
     enabled = state["input"].config.enabled
     return [
@@ -85,48 +118,52 @@ def fan_out(state: CheckState) -> list[Send]:
 
 async def run_check(task: CheckTask, runtime: Runtime[AgentContext]) -> dict:
     name = task["check"]
-    args = tool_arguments(name, task["input"])
-    if isinstance(args, str):
-        return {"results": {name: CheckResult.unavailable(name, args)}}
-    try:
-        called = await runtime.context.mcp.call_tool(name, args)
-    except Exception as e:  # a broken call must not sink the run
-        return {"results": {name: CheckResult.unavailable(name, f"tool call failed: {e!r}")}}
-    if called.is_error or called.structured_content is None:
-        detail = " ".join(getattr(c, "text", "") for c in called.content).strip()
-        return {"results": {name: CheckResult.unavailable(name, detail or "tool error")}}
-    return {"results": {name: CheckResult.model_validate(called.structured_content)}}
+    return {"results": {name: await call_check(runtime.context.mcp, name, task["input"])}}
+
+
+async def fix(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
+    ctx = runtime.context
+    report = CheckReport.from_results(state["input"], state["results"])
+    if ctx.fixer is None or ctx.deps is None or not report.violations:
+        return {"fixes": None}
+    fixes = await propose_fixes(
+        ctx.deps,
+        ctx.fixer.client,
+        state["input"],
+        report,
+        lambda inp: check_all(ctx.mcp, inp),
+        city=ctx.fixer.city,
+        model=ctx.fixer.model,
+        effort=ctx.fixer.effort,
+    )
+    return {"fixes": fixes}
 
 
 def build_graph() -> CompiledStateGraph:
     graph = StateGraph(CheckState, context_schema=AgentContext)
     graph.add_node("run_check", run_check)
+    graph.add_node("fix", fix)
     graph.add_conditional_edges(START, fan_out, ["run_check"])
+    graph.add_edge("run_check", "fix")
+    graph.add_edge("fix", END)
     return graph.compile()
 
 
 GRAPH = build_graph()
 
 
-class CheckReport(BaseModel):
-    input: CheckInput
-    results: dict[str, CheckResult]  # in CHECK_NAMES order, enabled checks only
-    violations: list[Violation]  # all checks, most severe first, then by first stop
-
-    @classmethod
-    def from_results(cls, inp: CheckInput, results: dict[str, CheckResult]) -> "CheckReport":
-        order = {s.id: i for i, s in enumerate(inp.stops)}
-
-        def key(v: Violation) -> tuple:
-            first = min((order.get(i, len(order)) for i in v.stop_ids), default=len(order))
-            return (-SEVERITY_RANK[v.severity], first, v.check_name)
-
-        results = {n: results[n] for n in CHECK_NAMES if n in results}
-        violations = sorted((v for r in results.values() for v in r.violations), key=key)
-        return cls(input=inp, results=results, violations=violations)
+async def run_agent(
+    deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None
+) -> tuple[CheckReport, FixReport | None]:
+    async with Client(create_server(deps)) as client:
+        state = await GRAPH.ainvoke(
+            {"input": inp, "results": {}},
+            context=AgentContext(mcp=client, deps=deps, fixer=fixer),
+        )
+    return CheckReport.from_results(inp, state["results"]), state.get("fixes")
 
 
 async def run_checks(deps: CheckDeps, inp: CheckInput) -> CheckReport:
-    async with Client(create_server(deps)) as client:
-        state = await GRAPH.ainvoke({"input": inp, "results": {}}, context=AgentContext(mcp=client))
-    return CheckReport.from_results(inp, state["results"])
+    """Checks only, no fixes."""
+    report, _ = await run_agent(deps, inp)
+    return report

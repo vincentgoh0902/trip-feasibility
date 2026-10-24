@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     extraction_model: str = "claude-haiku-5-5"
     extraction_effort: str = "low"
+    # Fix proposals (agent/fixes.py): same provider; untuned until the fix-quality judge exists.
+    fix_model: str = "claude-haiku-5-5"
+    fix_effort: str = "medium"
 
 
 @lru_cache

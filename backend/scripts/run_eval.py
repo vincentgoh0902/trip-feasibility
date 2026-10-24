@@ -3,6 +3,7 @@
     uv run python scripts/run_eval.py                         # gold stops, dev split
     uv run python scripts/run_eval.py --mode parsed           # full pipeline (needs API key)
     uv run python scripts/run_eval.py --mode both
+    uv run python scripts/run_eval.py --fixes                 # + fix validity (needs API key)
     uv run python scripts/run_eval.py --ids paris-01,london-03 --no-save   # trying things out
     uv run python scripts/run_eval.py --split test --final    # reported results only
 
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
 from trip_feasibility.checks.config import CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
@@ -80,6 +82,7 @@ async def main() -> int:
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--final", action="store_true", help="required for --split test")
     parser.add_argument("--ids", default="", help="comma-separated subset (dev only)")
+    parser.add_argument("--fixes", action="store_true", help="also propose and re-check fixes")
     parser.add_argument("--no-save", action="store_true", help="don't write eval_runs")
     parser.add_argument("--dir", type=Path, default=DATASET)
     args = parser.parse_args()
@@ -113,8 +116,8 @@ async def main() -> int:
 
     settings = get_settings()
     modes = ["gold", "parsed"] if args.mode == "both" else [args.mode]
-    if "parsed" in modes and settings.anthropic_api_key is None:
-        print("Parsed mode needs ANTHROPIC_API_KEY (repo-root .env).", file=sys.stderr)
+    if ("parsed" in modes or args.fixes) and settings.anthropic_api_key is None:
+        print("Parsed mode and --fixes need ANTHROPIC_API_KEY (repo-root .env).", file=sys.stderr)
         return 1
     hotels = {h.key: h for h in report.hotels}
     config = CheckConfig()
@@ -133,7 +136,8 @@ async def main() -> int:
                     mode=mode,
                     config=config,
                     settings=settings,
-                    client=make_client(settings) if mode == "parsed" else None,
+                    client=make_client(settings) if mode == "parsed" or args.fixes else None,
+                    fixes=args.fixes,
                     progress=progress(args.split),
                 )
                 summary = summarise(outcomes)
@@ -142,6 +146,8 @@ async def main() -> int:
                     "split": args.split,
                     "ids": sorted(ids) or None,
                     "config": config.model_dump(),
+                    "fix_model": settings.fix_model if args.fixes else None,
+                    "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
                     **summary,
                 }
                 model_id = settings.extraction_model if mode == "parsed" else "none (gold stops)"
@@ -180,6 +186,11 @@ async def main() -> int:
                     print(f"  parse: stop recall {p['stop_recall']}, precision "
                           f"{p['stop_precision']}, field accuracy {p['field_accuracy']}, "
                           f"errors by field {p['field_errors']}")  # fmt: skip
+                if "fixes" in summary:
+                    fx = summary["fixes"]
+                    valid = _of(fx["valid"], fx["proposed"])
+                    fixed = _of(fx["violations_fixed"], fx["violations"])
+                    print(f"  fixes: {valid} valid; {fixed} violations got one")
                 cov = summary["coverage"]
                 print(f"  unavailable runs {cov['unavailable_runs']}")
                 print(f"  unknown stops {cov['unknown_stops']}")

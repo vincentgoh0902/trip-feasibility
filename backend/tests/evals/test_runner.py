@@ -40,7 +40,7 @@ ITIN = DatasetItinerary.model_validate(
                 "type": "venue",
                 "osm": "way/2",
             },
-        ],  # fmt: skip
+        ],
         # 5 min gap, 12 min walk: a derived travel_time blocker
         "legs": [{"from": "s1", "to": "s2", "mode": "walk", "minutes": 12, "source": "test"}],
         "violations": [
@@ -73,8 +73,9 @@ def services(respx_mock):
 
 
 async def run(check_deps, mode, client=None):
-    return await evaluate(check_deps, [ITIN], {}, mode=mode, config=CONFIG,
-                          settings=get_settings(), client=client)  # fmt: skip
+    return await evaluate(
+        check_deps, [ITIN], {}, mode=mode, config=CONFIG, settings=get_settings(), client=client
+    )
 
 
 async def test_gold_mode_scores_the_checks(check_deps, services):
@@ -125,15 +126,30 @@ async def test_parse_failure_misses_everything(check_deps, services):
 
 async def test_unlabelled_hotel_is_left_out_of_the_scores(check_deps, services, respx_mock):
     search_route(respx_mock, q="Hôtel Regina").respond(json=[])
-    stops = [{"id": "s0", "day": 1, "start_time": "08:00", "end_time": "08:15",
-              "place_name": "Hôtel Regina", "type": "hotel", "hotel": "paris-regina"},
-             *[s.model_dump(mode="json", exclude_none=True) for s in ITIN.stops]]  # fmt: skip
-    itin = ITIN.model_copy(update={"stops": DatasetItinerary.model_validate(
-        {**ITIN.model_dump(mode="json", by_alias=True), "stops": stops}).stops})  # fmt: skip
+    stops = [
+        {
+            "id": "s0",
+            "day": 1,
+            "start_time": "08:00",
+            "end_time": "08:15",
+            "place_name": "Hôtel Regina",
+            "type": "hotel",
+            "hotel": "paris-regina",
+        },
+        *[s.model_dump(mode="json", exclude_none=True) for s in ITIN.stops],
+    ]
+    itin = ITIN.model_copy(
+        update={
+            "stops": DatasetItinerary.model_validate(
+                {**ITIN.model_dump(mode="json", by_alias=True), "stops": stops}
+            ).stops
+        }
+    )
     hotel = Hotel(key="paris-regina", city="paris", name="Hôtel Regina", csv_name="H tel Regina")
     config = CheckConfig(enabled=["opening_hours", "travel_time", "hotel_red_flags"])
-    [o] = await evaluate(check_deps, [itin], {hotel.key: hotel}, mode="gold", config=config,
-                         settings=get_settings())  # fmt: skip
+    [o] = await evaluate(
+        check_deps, [itin], {hotel.key: hotel}, mode="gold", config=config, settings=get_settings()
+    )
     assert o.hotel_unlabelled
     assert not any(k.startswith("hotel_red_flags") for k in {**o.gold, **o.predicted})
 
@@ -147,5 +163,45 @@ async def test_gold_stop_without_osm_ref_is_geocoded_with_its_ref(check_deps, se
 
 
 async def run_itin(check_deps, itin):
-    return await evaluate(check_deps, [itin], {}, mode="gold", config=CONFIG,
-                          settings=get_settings())  # fmt: skip
+    return await evaluate(
+        check_deps, [itin], {}, mode="gold", config=CONFIG, settings=get_settings()
+    )
+
+
+async def test_fix_validity_is_measured(check_deps, services):
+    remove = {
+        "op": "remove",
+        "stop_id": "s1",
+        "day": None,
+        "start_time": None,
+        "end_time": None,
+        "place_name": None,
+        "type": None,
+        "mode": None,
+    }
+    client = FakeClient(
+        reply(
+            {
+                "fixes": [
+                    {
+                        "violation_ids": ["v1", "v2"],
+                        "description": "Skip Museum A",
+                        "operations": [remove],
+                    }
+                ]
+            }
+        )
+    )
+    [o] = await evaluate(
+        check_deps,
+        [ITIN],
+        {},
+        mode="gold",
+        config=CONFIG,
+        settings=get_settings(),
+        client=client,
+        fixes=True,
+    )
+    assert (o.fixes_proposed, o.fixes_valid, o.fixable, o.fixed) == (1, 1, 2, 2)
+    fx = summarise([o])["fixes"]
+    assert (fx["validity"], fx["coverage"]) == (1.0, 1.0)
