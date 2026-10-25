@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -127,6 +128,9 @@ class ItineraryVersion(Base):
     raw_text: Mapped[str] = mapped_column(Text)
     parsed_stops: Mapped[list[Any]]
     source: Mapped[str] = mapped_column(String(10))
+    # Set when an accepted fix allowed another travel mode; overrides the traveller's
+    # preferences for this version only.
+    transport_modes: Mapped[list[str] | None] = mapped_column(ARRAY(String(30)))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -143,7 +147,12 @@ class CheckRun(Base):
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
     latency_ms: Mapped[int | None]
     trace_id: Mapped[str | None] = mapped_column(String(100))
+    # Per-check status, unknown stops and notes, and the fix step's usage; violations and
+    # fixes have their own tables.
+    report: Mapped[dict[str, Any] | None]
+    error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Violation(Base):
@@ -155,18 +164,27 @@ class Violation(Base):
     check_name: Mapped[str] = mapped_column(String(50))
     severity: Mapped[str] = mapped_column(String(10))
     stop_ids: Mapped[list[str]] = mapped_column(ARRAY(String(50)))
+    message: Mapped[str] = mapped_column(Text)
     evidence: Mapped[dict[str, Any]]
     source: Mapped[str] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer)  # in the run's report: most severe first
 
 
 class Fix(Base):
+    """A proposed fix (agent/fixes.py). One fix can target several violations; invalid ones
+    are kept too (fix validity is a metric), but only valid ones are shown or accepted."""
+
     __tablename__ = "fixes"
     __table_args__ = (one_of("status", FIX_STATUSES),)
 
     id: Mapped[uuid.UUID] = _id()
-    violation_id: Mapped[uuid.UUID] = _owner("violations.id")
+    run_id: Mapped[uuid.UUID] = _owner("check_runs.id")
+    violation_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid))
     description: Mapped[str] = mapped_column(Text)
     patched_stops: Mapped[list[Any]]
+    valid: Mapped[bool]
+    # operations, transport_modes, new_warnings, unverified, problems, round
+    details: Mapped[dict[str, Any]]
     status: Mapped[str] = mapped_column(String(10), default="proposed")
 
 

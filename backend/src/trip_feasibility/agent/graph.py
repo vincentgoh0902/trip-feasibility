@@ -14,8 +14,9 @@ skipped when the run has no fixer (no API key) or nothing to fix.
 
 import asyncio
 import operator
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -32,7 +33,7 @@ from trip_feasibility.mcp_server import create_server
 from trip_feasibility.parse.extract import MessagesClient
 from trip_feasibility.parse.geocode import City
 
-__all__ = ["CheckInput", "CheckReport", "run_checks", "run_agent"]
+__all__ = ["CheckInput", "CheckReport", "run_checks", "run_agent", "stream_agent"]
 
 
 class CheckState(TypedDict, total=False):
@@ -58,7 +59,7 @@ class Fixer:
 
 @dataclass
 class AgentContext:
-    mcp: Client  # connected
+    mcp: Client  # connected (or anything with its call_tool, e.g. tracing.TracedMcp)
     deps: CheckDeps | None = None
     fixer: Fixer | None = None
 
@@ -161,6 +162,28 @@ async def run_agent(
             context=AgentContext(mcp=client, deps=deps, fixer=fixer),
         )
     return CheckReport.from_results(inp, state["results"]), state.get("fixes")
+
+
+CheckDone = tuple[Literal["check"], CheckResult]
+FixesDone = tuple[Literal["fixes"], FixReport | None]
+
+
+async def stream_agent(
+    mcp: Any, deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None
+) -> AsyncIterator[CheckDone | FixesDone]:
+    """The graph's progress as it happens, for the API's live feed: each check's result as it
+    finishes, then the fixes (None when skipped). `mcp` is a connected client, so the caller
+    can wrap it (tracing)."""
+    context = AgentContext(mcp=mcp, deps=deps, fixer=fixer)
+    async for update in GRAPH.astream(
+        {"input": inp, "results": {}}, context=context, stream_mode="updates"
+    ):
+        for node, value in update.items():
+            if node == "run_check":
+                for result in value["results"].values():
+                    yield ("check", result)
+            elif node == "fix":
+                yield ("fixes", value["fixes"])
 
 
 async def run_checks(deps: CheckDeps, inp: CheckInput) -> CheckReport:

@@ -34,6 +34,11 @@ os.environ["NOMINATIM_BASE_URL"] = "https://nominatim.test"
 os.environ["NOMINATIM_MIN_INTERVAL_S"] = "0"
 os.environ["ROUTING_BASE_URL"] = "https://routing.test"
 os.environ["ROUTING_MIN_INTERVAL_S"] = "0"
+# Never the real Claude API or Langfuse, whatever .env holds; tests pass fakes instead.
+os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["API_JWT_SECRET"] = "test-secret-at-least-32-bytes-long!!"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

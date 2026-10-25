@@ -23,8 +23,14 @@ Auth.js, openapi-typescript; Langfuse tracing; MLflow for Tier 2 training (Mac o
 ```
 backend/                        uv project; Dockerfile, start.sh, alembic/, tests/
   src/trip_feasibility/
-    main.py config.py db.py     FastAPI app, env settings, engine/session
+    main.py config.py db.py     FastAPI app (lifespan wires Services), env settings, engine/session
     errors.py models.py         error shape, database schema
+    api/                        routes under /api/v1: itineraries.py, checks.py (runs, SSE,
+                                demo), fixes.py, me.py; schemas.py, common.py (ownership)
+    auth.py                     verifies the per-call token the Next.js server signs
+    runs.py                     RunService: background runs, LiveRun event log, saving
+    ratelimit.py tracing.py     hourly limits; Langfuse + TracedClient/TracedMcp + Usage
+    pricing.py demo/            model prices; demo samples (samples.yaml)
     itinerary.py                the Stop schema every check takes
     mcp_server.py               checks as MCP tools; create_server(deps) for in-process use
     checks/                     one module per check; models.py (CheckResult), deps.py (HTTP
@@ -38,7 +44,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     agent/                      graph.py (LangGraph: checks in parallel, then fixes),
                                 fixes.py (propose → apply → re-check → retry), models.py
     dataset/                    annotation format (models.py), split rules, validation + gold labels
-    evals/                      runner.py, align.py (parsed ↔ gold stops), score.py
+    evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
+                                injection.py (prompt-injection suite)
   scripts/                      see Commands
 docs/                           PRD, ARCHITECTURE, ANNOTATION, TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
@@ -86,6 +93,13 @@ Planned: `frontend/`, `train/` (Tier 2, Mac only).
   sampled reviews for noise and cleanliness, 3+ location, 2+ safety), one per hotel per
   itinerary. warning/blocker only. Truth is reality (official sites, Google Maps), never our
   own checks or data sources.
+- **API:** every query for user data filters by the caller (another user's thing is a 404).
+  Sign-in routes take `CurrentUser`; demo-capable ones `OptionalUser` (a bad token is still
+  401). The demo checks samples only and saves nothing. Runs go through `RunService`, never
+  the request: tests swap `services.runs.stream` for `tests/api/conftest.fake_stream`.
+- **Third-party text never reaches a prompt:** review excerpts, free-text OSM tags and
+  opening-hours comments are filtered by `agent.fixes.safe_evidence`. Changing what the fix
+  prompt sees bumps `FIX_PROMPT_VERSION`; the injection suite measures it.
 - **Evals:** eval mode (`make_check_deps(..., eval_mode=True)`) serves expired cache entries,
   so reruns make no external calls. Every run writes model ID, prompt version, config and
   dataset version to `eval_runs`. Two modes, reported apart: gold stops (checks alone) and
@@ -104,14 +118,21 @@ Planned: `frontend/`, `train/` (Tier 2, Mac only).
 
 - **Port:** the API listens on 8000 in the container (`PORT`); `GET /health` → 200 with a DB
   check (503 if unreachable). Compose publishes it on 8020 locally (8000 is taken on this Mac).
-- **Memory:** the API idles at ~60 MB; Postgres holds ~300 MB of review data.
+- **Memory:** the API idles at ~145 MB (the agent stack loads at startup), ~155 MB after runs;
+  under the 256 MB default. Langfuse adds ~12 MB when on. Postgres holds ~300 MB of reviews.
 - **Env vars:** `DATABASE_URL`, `PORT`, `HTTP_USER_AGENT`, `HTTP_TIMEOUT_S`, `NAGER_BASE_URL`,
   `NOMINATIM_BASE_URL`, `NOMINATIM_MIN_INTERVAL_S` (1.0), `NOMINATIM_TIMEOUT_S`,
   `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S` (1.0), `ROUTING_TIMEOUT_S`,
   `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`, `CACHE_TTL_OSM_DAYS`,
   `CACHE_TTL_ROUTES_DAYS`, `ANTHROPIC_API_KEY` (secret), `EXTRACTION_MODEL`
   (claude-haiku-5-5), `EXTRACTION_EFFORT` (low), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
-  (medium); tests only: `TEST_DATABASE_URL`.
+  (medium), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
+  `API_JWT_AUDIENCE`, `RATE_LIMIT_CHECKS_PER_HOUR` (20), `RATE_LIMIT_PARSES_PER_HOUR` (20),
+  `RATE_LIMIT_DEMO_PER_HOUR` (10), `MAX_CONCURRENT_RUNS` (4), `DEMO_RUN_TTL_S` (3600),
+  `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (secret; tracing off without both),
+  `LANGFUSE_BASE_URL`, `TRACE_CONTENT` (false: no itinerary text in traces),
+  `FORWARDED_ALLOW_IPS` (uvicorn: trust the proxy's X-Forwarded-For); tests only:
+  `TEST_DATABASE_URL`. Empty values count as unset.
 - **Secrets** go in the repo-root `.env` locally (read as `../.env` from backend/, then
   `backend/.env`; real env vars win) and in `app.env` on the server.
 
@@ -139,6 +160,7 @@ uv run python scripts/check_itinerary.py --example    # checks on the example (n
 uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
 uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev split
 uv run python scripts/run_eval.py --split test --final  # reported results only
+uv run python scripts/run_injection_suite.py          # needs the key; --defended-only, --no-save
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
 
@@ -173,6 +195,9 @@ history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - Autogenerated migrations write `pgvector.sqlalchemy.halfvec.HALFVEC(...)` without importing
   it: add `from pgvector.sqlalchemy import HALFVEC` by hand (CI's `alembic upgrade` would fail).
 - The API container runs `alembic upgrade head` on every start (`backend/start.sh`).
+- Tests blank `ANTHROPIC_API_KEY` and the Langfuse keys in conftest, so a real `.env` can't
+  leak into them; API tests set `services.llm` / `services.runs.llm` to a `FakeClient`.
+- Run state (live runs, demo runs, rate-limit counts) is per process: one API container.
 - `astral-sh/setup-uv` has no floating major tag (`@v10` fails); pin an exact release.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).
 
@@ -209,8 +234,8 @@ history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 ## Open decisions
 
 Tracked in `PLAN.md` ("Open"): judge model (another provider, decided when fixes are
-judged); demo-mode scope and where demo runs live (`check_runs.version_id` is required, but
-demo mode must save nothing); hosting shape (below).
+judged); more demo samples; whether parse cost counts toward the per-check cost target;
+hosting shape (below).
 
 ## Hosting (open questions)
 
@@ -222,7 +247,9 @@ The PRD's shape doesn't match the default homelab project (one Dockerfile, one p
   multi-container project type on the server. Postgres is separate either way.
 - Review data: `hotels` + `hotel_reviews` are 295 MB (296K halfvec(384) rows, no vector index).
   The server gets them from a dump of those tables, not by re-embedding.
-- Langfuse: Langfuse Cloud rather than self-hosting.
+- Langfuse: Langfuse Cloud rather than self-hosting (optional; no traveller content sent).
+- `app.env` needs `API_JWT_SECRET` (same value as the Next.js server) and `ANTHROPIC_API_KEY`;
+  the Next.js proxy must be trusted via `FORWARDED_ALLOW_IPS` for per-IP demo limits.
 - Email magic links need an email provider secret (not in the stack yet).
 
 ## Deployment

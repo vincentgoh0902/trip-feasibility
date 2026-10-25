@@ -12,15 +12,19 @@
 4. Violations still without a valid fix get one more call, with the failed attempts and why
    they failed. After that, a violation can stay without a fix.
 
-Third-party text (hotel review excerpts) is not sent to the model: the hotel evidence goes
-in as theme counts only, so a malicious review can't steer the fixes. Other tool output is
-wrapped as data.
+Third-party free text is not sent to the model, so a malicious review or map edit can't
+steer the fixes: hotel evidence goes in as theme counts only (no review excerpts), OSM tags
+only as the few that say what a place is and whether it still operates (anyone can edit a
+place's name, description or note), and opening hours without their quoted comments. The
+rest of the tool output is wrapped as data. evals/injection.py measures how well this holds.
 
-FIX_PROMPT_VERSION changes whenever FIX_SYSTEM_PROMPT or FIX_SCHEMA changes.
+FIX_PROMPT_VERSION changes whenever FIX_SYSTEM_PROMPT, FIX_SCHEMA or what the evidence
+passes on changes.
 """
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import time, timedelta
@@ -36,7 +40,8 @@ from trip_feasibility.itinerary import Stop, StopType, TransportMode
 from trip_feasibility.parse.extract import MessagesClient
 from trip_feasibility.parse.geocode import City, geocode_place
 
-FIX_PROMPT_VERSION = "fixes-v1"
+# v2: free-text OSM tags and opening-hours comments filtered out of the evidence
+FIX_PROMPT_VERSION = "fixes-v2"
 MAX_TOKENS = 8000
 MAX_FIXES = 20
 EVIDENCE_CHARS = 600
@@ -196,9 +201,33 @@ def fixable(report: CheckReport) -> dict[str, Violation]:
     return {f"v{i}": v for i, v in enumerate(found, 1)}
 
 
+# OSM tags that say what a place is and whether it still operates, with vocabulary values
+# ("cafe", "museum"); a lifecycle prefix ("disused:amenity") counts as the same key.
+_OSM_KINDS = {"amenity", "shop", "tourism", "leisure", "craft", "office", "historic"}
+_OSM_LIFECYCLE = ("disused:", "abandoned:", "demolished:", "razed:", "removed:", "was:")
+_OSM_VALUE = re.compile(r"^[a-z0-9_;]{1,40}$")
+_HOURS_COMMENT = re.compile(r'"[^"]*"')  # opening_hours allows free-text comments in quotes
+
+
+def _osm_tag_kept(key: str, value: object) -> bool:
+    for prefix in _OSM_LIFECYCLE:
+        key = key.removeprefix(prefix)
+    return key in _OSM_KINDS and isinstance(value, str) and bool(_OSM_VALUE.match(value))
+
+
+def safe_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    """Evidence without third-party free text (see the module docstring)."""
+    out = dict(evidence)
+    out.pop("examples", None)  # hotel review excerpts
+    if isinstance(out.get("tags"), dict):
+        out["tags"] = {k: v for k, v in out["tags"].items() if _osm_tag_kept(k, v)}
+    if isinstance(out.get("opening_hours"), str):
+        out["opening_hours"] = _HOURS_COMMENT.sub('""', out["opening_hours"])
+    return out
+
+
 def _evidence(v: Violation) -> str:
-    evidence = dict(v.evidence)
-    evidence.pop("examples", None)  # review excerpts: third-party text stays out
+    evidence = safe_evidence(v.evidence)
     return json.dumps(evidence, ensure_ascii=False, default=str)[:EVIDENCE_CHARS]
 
 

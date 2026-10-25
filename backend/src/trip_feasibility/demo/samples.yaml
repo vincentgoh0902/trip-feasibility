@@ -1,0 +1,24 @@
+# Demo itineraries (PRD FR-6: demo mode, no sign-in, nothing saved). Made up for the demo,
+# never taken from the evaluation dataset. Stops are already extracted, so a demo run makes
+# no extraction call; they are geocoded at run time like any stop. Times are quoted: YAML
+# 1.1 reads 10:30 as a number.
+- id: paris-one-day
+  title: One day in Paris
+  city: Paris
+  start_date: 2026-12-08 # a Tuesday
+  preferences: { pace: moderate, max_walk_km: 10, transport_modes: [walk, transit] }
+  text: |
+    **Day 1 – Art and icons**
+    - 8:30 – 8:45: Drop your bags at Hôtel Regina, right by the Tuileries.
+    - 9:00 – 12:00: Louvre Museum. Head straight for the Mona Lisa before the crowds.
+    - 12:15 – 13:30: Lunch at Café Marly, overlooking the glass pyramid.
+    - 13:45 – 16:00: Musée d'Orsay for the Impressionists.
+    - 16:10 – 17:30: Eiffel Tower, up to the summit for the view.
+    - Evening: Dinner cruise on the Seine with Bateaux Parisiens.
+  stops:
+    - { day: 1, start_time: "08:30", end_time: "08:45", place_name: Hôtel Regina, type: hotel }
+    - { day: 1, start_time: "09:00", end_time: "12:00", place_name: Louvre Museum, type: venue }
+    - { day: 1, start_time: "12:15", end_time: "13:30", place_name: Café Marly, type: meal }
+    - { day: 1, start_time: "13:45", end_time: "16:00", place_name: Musée d'Orsay, type: venue }
+    - { day: 1, start_time: "16:10", end_time: "17:30", place_name: Eiffel Tower, type: venue }
+    - { day: 1, time_of_day: evening, place_name: Bateaux Parisiens, type: meal }

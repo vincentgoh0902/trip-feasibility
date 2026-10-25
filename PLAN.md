@@ -15,9 +15,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       assign splits at random (ANNOTATION.md steps 1–2). Done 2026-10-24: texts saved, YAML
       skeletons written (all default preferences), splits drawn with seed 39991414. Dev:
       paris 02 05 07 08 09; london 04 05 08 09 10; barcelona 02 06 07 08 10.
-- [ ] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3) **← now**
+- [x] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3). Done 2026-10-25.
 - [ ] **Vincent: annotate** the itineraries (step 4); must be done before the first baseline
-      eval, i.e. by the time the agent runs from a CLI
+      eval **← now**
 - [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
@@ -41,14 +41,21 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Eval runner (`scripts/run_eval.py`): gold-stop and parsed modes, alignment, parse
       accuracy, eval_runs rows; checked live on the example annotation
 - [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
-- [ ] Langfuse tracing, cost per run, `check_runs` rows
+- [x] Langfuse tracing (optional, no traveller content by default), cost per run and per
+      parse, `check_runs` rows with violations and fixes (`tracing.py`, `pricing.py`, `runs.py`)
+- [ ] **Vincent: Langfuse Cloud** project keys in `.env` (optional; tracing stays off without)
 - [x] Fixes with re-checks (`agent/fixes.py`): Claude proposes operations, code applies and
       re-runs every check, one retry; fix validity in `run_eval.py --fixes`. Untested live
       (needs the key)
-- [ ] FastAPI routes, SSE, auth (verify Auth.js JWT), rate limits
+- [x] FastAPI routes (PRD table), SSE live feed with replay, sign-in via a per-call token
+      signed by the Next.js server, demo mode (samples, in memory), rate limits (`api/`,
+      `auth.py`, `runs.py`, `ratelimit.py`); checked live on the demo sample
 - [ ] Judge calibration (20+ hand-rated fixes)
 - [ ] Next.js pages, preferences, check settings, saved trips
-- [ ] Injection suite
+- [x] Injection suite: 4 vectors × 6 attacks, with and without defences, judged in code
+      (`evals/injection.py`); closed a gap it exposed (free-text OSM tags in fix evidence)
+- [ ] Run the injection suite live (needs the key) and put the numbers in the README
+- [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
 
 ## Decisions
@@ -86,6 +93,17 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   separately: on the gold stops (checks alone, no API key) and on the agent's own parsed stops
   (end to end), with parsed stops aligned to gold stops by day, order and name.
 
+- **API (decided 2026-10-25):** the Next.js server signs a short-lived HS256 token per API
+  call (`API_JWT_SECRET`); FastAPI verifies it and creates users by email. Check runs are
+  background tasks with in-memory event logs replayed over SSE; saved runs go to the database
+  when they finish. ARCHITECTURE section 6c, decisions 54–61.
+- **Demo mode (decided 2026-10-25):** ready-made sample itineraries only (no pasted text, so no
+  extraction cost), every check at default settings, fixes on; runs kept in memory for an
+  hour, never in the database (settles the `version_id` question). 10 demo runs per IP per
+  hour.
+- **Injection suite (decided 2026-10-25):** judged in code from structured output, on the demo
+  sample (no dataset, no Vienna); free-text OSM tags and opening-hours comments are kept out of
+  the fix prompt (`fixes-v2`). ARCHITECTURE section 6d, decision 62.
 - Pasted text is cleaned in code before extraction (parse step 0, `parse/clean.py`): image
   links, citations, entities, escapes and widget text go. Limits 50,000 characters raw and
   15,000 cleaned (was one 5,000 limit), so whole ChatGPT replies fit; the dataset keeps raw
@@ -108,11 +126,13 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 
 - Hosting shape (see CLAUDE.md "Hosting"): Auth.js needs a running Next.js server, so a
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
-- Judge model (must not be Anthropic); decide when fixes exist. Demo-mode scope.
+- Judge model (must not be Anthropic); decide when fixes exist.
 - How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
 - Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
-- Demo runs "save nothing", but `check_runs.version_id` is required: decide where demo
-  runs live (in memory, or a separate table with a short TTL).
+- More demo samples (one Paris day today); each must be made up, never from the dataset.
+- Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
+  per check" means parse + run, and if so carry the parse usage into the saved version.
+- Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.
 - Chatbot replies with interactive widgets (e.g. day tabs) paste incomplete. Planned for the
   paste box: a copyable "rewrite that as plain text" follow-up hint, and a warning when the
   parsed days don't cover the trip. Screenshot upload is a possible later addition.

@@ -5,15 +5,17 @@ including the tradeoffs and what was given up. Requirements are in [`PRD.md`](PR
 progress and open decisions are in [`../PLAN.md`](../PLAN.md). Keep this file current when
 the design changes.
 
-**Status (Oct 24, 2026):** backend skeleton, database schema, CI, and all five check tools
+**Status (Oct 25, 2026):** backend skeleton, database schema, CI, and all five check tools
 (public holidays, opening hours, travel time, daily load, hotel red flags) exist, are tested,
-and work against the live data sources. The evaluation dataset's format, validator and annotation
-guide exist; the itineraries themselves are being collected. Parse steps 1–4 exist (step 1,
-Claude extraction, is untested against the live API until a key is added). Hotel reviews
-are embedded and loaded. The agent runs parse + all checks from a CLI
-(`scripts/check_itinerary.py`), and the eval runner scores it on the annotated dataset
-(`scripts/run_eval.py`, waiting for annotations). Fixes, the API routes, auth and the frontend
-don't exist yet.
+and work against the live data sources. The evaluation dataset is collected, its hotels are
+labelled, and the itineraries are being annotated. Parse steps 1–4 exist (step 1, Claude
+extraction, is untested against the live API until a key is added). Hotel reviews are
+embedded and loaded. The agent runs parse, checks and fixes from a CLI
+(`scripts/check_itinerary.py`) and from the REST API (section 6c: routes, live progress over
+SSE, sign-in via a token from the frontend, a demo mode, rate limits, Langfuse tracing and
+cost per run). The eval runner scores it on the annotated dataset (`scripts/run_eval.py`), and
+the injection suite (section 6d) is ready to run once a key is set. The frontend doesn't exist
+yet.
 
 ---
 
@@ -65,8 +67,17 @@ trip-feasibility/
     ├── scripts/run_eval.py           score the checks on the dataset, log to eval_runs
     ├── scripts/save_reply.sh         clipboard → data/dataset/texts/<id>.md (raw chatbot reply)
     ├── scripts/show_clean.py         a saved reply as extraction sees it (after step 0)
+    ├── scripts/run_injection_suite.py  prompt-injection suite, with and without defences
     ├── src/trip_feasibility/
-    │   ├── main.py           FastAPI app: /health, error handlers
+    │   ├── main.py           FastAPI app: lifespan wires the services, /health, /api/v1
+    │   ├── api/              routes: itineraries.py, checks.py (runs, SSE, demo), fixes.py,
+    │   │                     me.py; schemas.py (bodies), common.py (ownership, conversions)
+    │   ├── auth.py           verifies the frontend's signed token, creates users
+    │   ├── runs.py           check runs in the background: live events, saving, failures
+    │   ├── ratelimit.py      per-user / per-IP hourly limits
+    │   ├── tracing.py        Langfuse (optional), traced LLM and MCP clients, run usage
+    │   ├── pricing.py        model prices → cost per call
+    │   ├── demo/             demo sample itineraries (samples.yaml)
     │   ├── config.py         all settings, read from environment variables
     │   ├── db.py             database engine + session helper
     │   ├── errors.py         the single error response shape
@@ -76,7 +87,8 @@ trip-feasibility/
     │   │                     normalise.py, geocode.py
     │   ├── agent/            graph.py (LangGraph: checks in parallel via MCP, then fixes),
     │   │                     fixes.py (propose → apply → re-check → retry), models.py
-    │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py
+    │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py,
+    │   │                     injection.py (prompt-injection suite)
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
     │   └── checks/
@@ -160,9 +172,17 @@ Choices worth knowing:
 which depends on the embedding model you pick (open question). Creating it now would mean
 a migration to change it later. The pgvector *extension* is already enabled.
 
-**Known gap:** the PRD says demo runs "save nothing", but `check_runs.version_id` is required,
-so a demo run currently has nowhere to live. To decide: keep demo runs in memory, or in a
-separate table that is cleaned up regularly.
+**Demo runs aren't in the database** (decided 2026-10-25): the PRD says the demo saves
+nothing, so demo runs live in the API process's memory for an hour (section 6c) and
+`check_runs.version_id` stays required.
+
+**Added for the API (2026-10-25):** `check_runs.report` (per-check status, unknown stops,
+notes, the stops as checked, LLM usage), `error`, `finished_at`; `violations.message` and
+`position` (report order); `fixes` now belong to a run and list the violations they target
+(`violation_ids`; one fix can solve several), with `valid` and `details` (operations,
+re-check notes). Invalid fixes are stored too, because fix validity is a metric; only valid
+ones are shown. `itinerary_versions.transport_modes` holds a travel mode an accepted fix
+allowed, for that version only.
 
 ### Migrations (Alembic)
 
@@ -652,8 +672,8 @@ START ─► run_check(opening_hours) ─┐
   Live run on the example: Louvre closed on Tuesday (blocker), Orsay → Eiffel Tower 21 min by
   transit in a 10-minute gap (blocker), a 12.5 h day (warning), two tight walks (warnings).
   0.8 s with a warm cache.
-- Not yet: Langfuse tracing, cost per run, saving runs to `check_runs`, streaming progress
-  (LangGraph's `astream` gives per-check updates for SSE later).
+- Streaming: `stream_agent` yields each check's result as it finishes and then the fixes, for
+  the API's live feed (section 6c).
 
 ### Fixes (`agent/fixes.py`, the `fix` node)
 
@@ -682,12 +702,167 @@ Only valid fixes are meant to be shown; invalid ones are kept with their reasons
 fix validity (valid ÷ proposed) is a PRD metric. `run_eval.py --fixes` measures it, plus the
 share of violations that got a valid fix.
 
-**Prompt injection.** Hotel review excerpts never reach the model: hotel evidence goes in as
-theme counts only. All other tool output is wrapped in `<violations>` and declared data.
-The injection suite will test this.
+**Prompt injection.** Third-party free text never reaches the model: hotel evidence goes in
+as theme counts only, OSM tags only as the few that say what a place is (section 6d), and
+opening hours without their comments. All other tool output is wrapped in `<violations>` and
+declared data. The injection suite (6d) measures how well this holds.
 
 **Untested live:** like extraction, fixes have only run against a fake model so far (no API
 key yet). Model and effort are settings, tuned once the fix-quality judge exists.
+
+## 6c. The API (`api/`, `runs.py`, `auth.py`)
+
+FastAPI under `/api/v1`, following the PRD's route table. The OpenAPI schema
+(`/openapi.json`) is what the frontend's types will be generated from.
+
+| Route | Who | What |
+|---|---|---|
+| `POST /itineraries/parse` | signed in | text → stops for review (parse steps 0–4); nothing saved |
+| `POST /itineraries`, `GET /itineraries`, `GET/PATCH/DELETE /itineraries/{id}` | signed in | saved itineraries; delete cascades |
+| `POST /itineraries/{id}/versions` | signed in | edited stops as a new version |
+| `GET /demo/samples` | anyone | the demo itineraries |
+| `POST /checks` | either | `{"version_id"}` (signed in, saved) or `{"sample_id"}` (demo, not saved); 202 with the run id |
+| `GET /checks/{id}/events` | either | the live feed (SSE) |
+| `GET /checks/{id}` | either | the run so far, or its result |
+| `POST /fixes/{id}/accept`, `/reject` | signed in | accept → a new version |
+| `GET /me`, `GET/PUT /me/preferences`, `GET/PUT /me/check-config`, `DELETE /me` | signed in | account, FR-4/FR-5 settings, deletion |
+
+### Sign-in (`auth.py`)
+
+PRD ADR-5: Auth.js signs people in inside Next.js; FastAPI verifies. How it verifies is the
+choice here. Auth.js's own session cookie is an encrypted token whose format is an Auth.js
+internal, so FastAPI doesn't read it. Instead the Next.js server signs a **short-lived JWT for
+each API call** with a shared secret (`API_JWT_SECRET`, HS256) and sends it as a bearer token:
+email, name, provider, issuer, audience, at most an hour of life. FastAPI accepts only that
+algorithm, requires every claim, and creates the user on first sight (keyed by email). The
+browser never holds the token: every API call, including the SSE feed (EventSource can't send
+headers), goes through the Next.js server, which matches the hosting plan of Next.js in front
+proxying `/api`.
+
+- A missing token on a sign-in route is 401; a **bad** token is 401 everywhere, even on demo
+  routes, so a broken session never silently becomes an anonymous call.
+- No secret configured → sign-in routes answer 503; the demo still works.
+- **Ownership:** every query for user data filters by the caller's id. Someone else's
+  itinerary, version, run or fix is a 404, not a 403, so ids can't be probed. Tests try each
+  route as a second user (PRD risk table).
+
+### Check runs (`runs.py`)
+
+`POST /checks` creates the run and returns at once (202). The run is an asyncio task owned by
+`RunService`, not by the request, so closing the browser doesn't stop it (PRD ADR-7: background
+tasks, no queue service).
+
+1. **Locate:** the city, then any stop saved without coordinates (the traveller edited its
+   name). Stops keep the coordinates parse found otherwise, so a run costs no geocoding.
+2. **Checks:** the agent graph streams (`agent.graph.stream_agent`, LangGraph's
+   `astream(stream_mode="updates")`): each check's result is published the moment it
+   finishes.
+3. **Fixes:** when the checks have found a warning or blocker and a key is set.
+4. **Save** (signed-in runs only): violations, fixes (valid and invalid), the report, cost,
+   latency and trace id; status `done`. Any failure becomes status `error` with a code.
+
+**Events** (`type`): `step_started` (`geocode`, `checks`, `fixes`), `tool_result` (one check:
+status, counts, unknown stops, notes), `violation` (with the id fixes refer to), `fix` (valid
+ones only), `done` (the whole result) or `error` (`code`, `message`).
+
+**How the feed works.** Every run's events are kept in memory while it runs (`LiveRun`). The
+SSE route replays them from the start and then follows, so subscribing late or twice loses
+nothing; a reconnect with `Last-Event-ID` resumes after that event; a comment line every 15 s
+keeps proxies from closing an idle connection. A saved run leaves memory once it's written;
+asking for its events afterwards gives one `done` (or `error`) event built from the database.
+
+**Demo runs** live only in memory, for an hour (`DEMO_RUN_TTL_S`), at most 500 at once. Their
+ids are random UUIDs, so only whoever started one can find it. This settles the "demo saves
+nothing, but `version_id` is required" gap. The cost: a restart forgets demo runs, which is
+harmless for a demo.
+
+**Demo scope** (PRD open question, decided 2026-10-25): the demo checks **ready-made sample
+itineraries only** (`demo/samples.yaml`, made up, never from the dataset), with stops already
+extracted. Anonymous visitors can't paste text, so they never cause an extraction call;
+fixes still run (about a tenth of a cent each), within the demo rate limit. Parsing pasted text needs
+sign-in.
+
+**Limits:** at most `MAX_CONCURRENT_RUNS` (4) runs at once; others wait their turn (Nominatim
+and OSRM allow 1 request/second anyway). On startup, runs a previous process left `queued` or
+`running` are marked `error: interrupted`; on shutdown, running ones are cancelled and
+recorded the same way.
+
+**What a run uses:** for a saved version, the traveller's saved preferences and check
+settings (snapshotted into `config_snapshot`, FR-5), with the version's own travel modes if
+an accepted fix allowed one. Demo runs use the sample's preferences and every check at
+default strictness.
+
+**Accepting a fix** creates a version (`source: fix`) from the checked version with that fix's
+stops. Each fix was re-checked against that version alone, so accepting two fixes from one
+run gives two separate versions; to combine them, accept one and check the new version
+again. A fix that allowed a travel mode (e.g. taxi) sets it on the new version only, not on
+the traveller's preferences.
+
+### Rate limits (`ratelimit.py`)
+
+Per hour, in memory (one API process): 20 check runs per user, 20 parses per user, 10 demo
+runs per IP. Over the limit is a 429 with the wait in minutes. The client IP is uvicorn's
+(`--proxy-headers`); behind the Next.js proxy, `FORWARDED_ALLOW_IPS` must trust it, or every
+demo visitor shares the proxy's address. Several API containers would need the counts in
+Postgres.
+
+### Tracing and cost (`tracing.py`, `pricing.py`)
+
+Every LLM call goes through `TracedClient` (a wrapper around the Anthropic client) and every
+tool call through `TracedMcp`, so the agent code itself knows nothing about tracing:
+
+- **Cost per run:** tokens × list price per model (`pricing.py`, Haiku 5.5 at $0.10 / $0.50
+  per million tokens, more past 100K-token prompts), summed in `Usage`, stored as
+  `check_runs.cost_usd` and returned with the run (and with each parse). A model missing from
+  the price table gives an unknown cost, never a guess.
+- **Langfuse** (Langfuse Cloud, hosting decision): a trace per run (`check_run`, with a span
+  per check and a generation per model call: model, tokens, cost, latency) and per parse.
+  `check_runs.trace_id` links to it. Off unless `LANGFUSE_PUBLIC_KEY` and
+  `LANGFUSE_SECRET_KEY` are set; the SDK (~12 MB of memory) is only imported then.
+- **No traveller content by default:** traces carry timings, models, tokens, statuses and
+  counts, not the itinerary, prompts or outputs, because Langfuse Cloud is a third party and
+  the itinerary is the traveller's. `TRACE_CONTENT=true` sends them (for local debugging).
+- **Not yet:** parse cost isn't tied to the run that follows (parse saves nothing, by the
+  PRD), so the PRD's "under $0.01 per check" is two numbers today: a parse and a run.
+- **Live check (Oct 25):** the demo sample through the real tools from a warm cache: 187 ms,
+  the same five problems the CLI finds.
+
+## 6d. Prompt-injection suite (`evals/injection.py`, `scripts/run_injection_suite.py`)
+
+PRD goal 4: third-party text must not steer the agent. Four ways such text reaches a model,
+each attacked with six payloads (add an advertiser's place, drop stops, plant a link or
+change times; polite and "SYSTEM OVERRIDE" phrasings), 24 cases:
+
+| Vector | Where the payload sits | Reaches |
+|---|---|---|
+| itinerary | a line in the pasted chatbot reply | extraction |
+| osm_tags | a tag (`description`) of a place OSM marks closed down | fix prompt (evidence) |
+| osm_hours | a quoted comment inside a valid `opening_hours` | fix prompt (evidence) |
+| hotel_review | a review excerpt | fix prompt (evidence) |
+
+Success is judged in code from the structured output (the advertiser's name in a stop or
+fix, more stops removed than the violations concern, the link or a 03:00 time), never by
+another model. Reported as resistance (attacks not followed ÷ judged), per vector and goal,
+**with and without defences**:
+
+- **defended** (as shipped): both system prompts say tagged text is data, not instructions;
+  review excerpts, free-text OSM tags and opening-hours comments never reach the fix prompt
+  (`agent.fixes.safe_evidence`); output is a fixed JSON schema of stops or operations.
+- **undefended:** the "data, not instructions" sentences removed and the evidence passed
+  whole. The tags and output schema stay: they are the format, not a switch.
+
+**Found while building it:** a place OSM marks as closed down put its *whole* tag set in the
+evidence, and valid opening hours can carry quoted free-text comments; both went to the fix
+model, and anyone can edit OSM. Now only the tags that say what a place is and whether it
+operates pass (`amenity`, `shop`, `tourism`, …, also with a `disused:`-style prefix, with
+vocabulary values only), and opening-hours comments are blanked. Fix prompt version
+`fixes-v2`.
+
+The base itinerary is the demo sample, so the suite touches no dataset itinerary (and no
+Vienna). Needs the key; a few cents per run; each run writes an `eval_runs` row
+(`metrics.kind = "injection"`, suite version = hash of payloads and sample). Results go in the
+README once it has run. The dataset's planned injected *variants* (`parent_id`) are separate
+and come after annotation.
 
 ## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
@@ -832,6 +1007,11 @@ hotel → Louvre walk the check estimates at 8 min where the annotation says 5).
   the 60 s pause after a 429/403/503, "unavailable" on every kind of failure, mode choice
   and estimates, the estimate margin, overlaps, same-place stops, pace limits, walking
   totals, partial results when routing is down, and the MCP round trip.
+- **API tests** (`tests/api/`) run the real app against the test database with a stand-in for
+  the agent graph (`fake_stream`), so runs are fast and deterministic: tokens (expired, forged,
+  wrong audience, `alg: none`), every route as a second user (404), SSE replay, saved vs demo
+  runs, failures as `error` events, rate limits, fix accept/reject. No test can reach Claude or
+  Langfuse: conftest blanks their keys.
 - **What they don't cover:** the real APIs. `scripts/smoke_checks.py` runs the tools once
   against them by hand. Live on Oct 23, 2026: all four tools worked (the Eiffel Tower is
   correctly a blocker on 14 July, which its OSM hours mark as closed; a deliberately packed
@@ -854,7 +1034,9 @@ gate (fail a PR if precision or recall drops).
   server belong to your host user).
 - **Listens on `PORT`** (default 8000) on 0.0.0.0, per the homelab rules. Locally, Compose
   publishes it on 8020 because 8000 is in use on the Mac.
-- **Memory:** the API idles around 60 MB.
+- **Memory:** the API idles around 145 MB since the routes import the agent stack (LangGraph,
+  MCP, the Anthropic SDK) at startup; 152 MB after five demo runs (Oct 25). Under the 256 MB
+  default, with less headroom than the ~60 MB the bare app used.
 
 ## 11. Hosting: the unresolved part
 
@@ -868,7 +1050,11 @@ Postgres. Three things to settle before the first deploy:
    index. Cheapest fix: load only the hotels in the test-set cities. Alternatives: a smaller
    embedding model, or `halfvec` (half the size).
 3. **Langfuse:** use Langfuse Cloud's free tier rather than self-hosting it; self-hosted
-   Langfuse needs several more services.
+   Langfuse needs several more services. The API sends no traveller content by default
+   (section 6c).
+4. **Secrets the API needs on the server:** `API_JWT_SECRET` (shared with the Next.js server),
+   `ANTHROPIC_API_KEY`, and the Langfuse keys if tracing is on; `FORWARDED_ALLOW_IPS` for the
+   proxy in front.
 
 ## 12. Decision log
 
@@ -928,10 +1114,18 @@ Postgres. Three things to settle before the first deploy:
 | 51 | Hotel review text kept out of the fix prompt | Send full evidence | Review text is untrusted third-party content (PRD injection goal) | The model can't quote reviews in a fix |
 | 52 | Pasted text cleaned in code before extraction; limits 50,000 raw / 15,000 cleaned (2026-10-24) | One 5,000 limit, users regenerate; let the LLM read the debris; screenshots | Users paste whole replies, and a normal ChatGPT reply is an estimated ~30,000 characters, mostly image links; pattern removal is cheap, testable and keeps the LLM to reading | Rules follow today's chat UIs and need upkeep; unrecognised debris reaches the prompt (extraction mostly ignores it) |
 | 53 | Dataset text in `texts/<id>.md`, not in the YAML; the YAML holds metadata and labels (2026-10-24) | Text in the YAML (it was); optional in the YAML | Whole replies are too long for YAML blocks; one copy can't drift; one self-contained folder; a single way to load | Two files per itinerary, matched by file name |
+| 54 | FastAPI verifies a short-lived HS256 token the Next.js server signs per call (2026-10-25) | Decrypt Auth.js's session cookie (JWE) in Python; sessions in the database | Independent of Auth.js internals; nothing extra to look up per request; testable with any signer | A shared secret on both servers; the browser can't call the API directly (it goes through Next.js anyway) |
+| 55 | Runs as asyncio tasks with in-memory event logs, replayed to each SSE subscriber (2026-10-25) | A queue (Redis/Celery); LangGraph checkpoints; polling only | PRD ADR-7; late or reconnecting subscribers miss nothing; no extra service | One API process: runs and live feeds don't survive a restart (interrupted runs are marked) |
+| 56 | Demo runs in memory only, for an hour; demo checks ready-made samples only (2026-10-25) | A demo table with a TTL; pasted text with a rate limit | "Saves nothing" taken literally; anonymous visitors never spend on extraction; settles the `version_id` gap | A restart forgets demo runs; recruiters can't try their own itinerary without signing in |
+| 57 | Saved runs store violations, all fixes (invalid too) and a report JSON; fixes belong to a run and list their violations (2026-10-25) | One JSON blob per run; a fix per violation | Fix accept/reject needs rows; one fix often solves several violations; invalid fixes feed the validity metric | A schema change to `fixes`; the report JSON isn't enforced by the database |
+| 58 | Accepting a fix builds on the checked version, not the latest (2026-10-25) | Re-apply its operations to the latest version | A fix is only known to be valid against the version it was re-checked on | Two accepted fixes from one run give two versions, not one combined |
+| 59 | Rate limits in memory, per hour: 20 runs and 20 parses per user, 10 demo runs per IP (2026-10-25) | Postgres counters; a proxy's limiter | One process today; no extra writes per request | Limits reset on restart; several processes would need shared counters |
+| 60 | Tracing via wrappers around the LLM and MCP clients; no traveller content in traces by default (2026-10-25) | LangChain/OTel auto-instrumentation; full content | Agent code unchanged; works with or without Langfuse; privacy by default with a third-party host | Debugging a bad answer needs `TRACE_CONTENT=true` and a rerun |
+| 61 | Cost from a local price table, per call (2026-10-25) | Langfuse's model prices; the Admin usage API | Stored with the run, independent of tracing; long-prompt rates apply per call | Prices are copied by hand and must be updated when they change |
+| 62 | Injection suite judged in code on structured output, on the demo sample; OSM free text filtered from fix evidence (`fixes-v2`) (2026-10-25) | An LLM judge; dataset variants first | Deterministic, cheap, no dataset or Vienna exposure; the filter closes a gap the suite's design exposed | Payloads are ours, not collected from the wild; dataset variants still to do |
 
 ## 13. Known gaps and next steps
 
-- Where demo runs are stored (section 4).
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
 - Nominatim's 1 request/second limit is per process; fine for one API container, but several
   processes calling it would need a shared limiter (e.g. in Postgres).
@@ -943,8 +1137,12 @@ Postgres. Three things to settle before the first deploy:
 - Extraction and fixes have only run against fake models; both need the API key for a live run.
 - Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
   `min_share` / `min_reviews` are untuned against the hotel labels.
-- Next: collect and annotate the dataset (Vincent), then the agent. Order and status are in
-  `PLAN.md`.
+- API runs, live feeds, rate-limit counters and demo runs live in one process's memory; more
+  than one API container would need them in Postgres (section 6c).
+- Parse cost isn't tied to the check run that follows it (section 6c).
+- The injection suite hasn't run against the real model yet (needs the key).
+- Next: annotate the dataset (Vincent), the first baseline eval, then the frontend. Order and
+  status are in `PLAN.md`.
 
 ## Glossary
 
@@ -962,5 +1160,9 @@ Postgres. Three things to settle before the first deploy:
   HNSW is the index type that makes that search fast.
 - **Alembic:** the migration tool for SQLAlchemy; each schema change is a versioned script.
 - **respx:** a library that intercepts HTTP calls in tests and returns canned responses.
-- **SSE (server-sent events):** a one-way stream from server to browser, planned for the live
-  progress feed.
+- **SSE (server-sent events):** a one-way stream from server to browser, used for the live
+  progress feed (`GET /checks/{id}/events`).
+- **JWT:** a signed JSON token. Here the frontend's server signs a short-lived one per API call
+  so FastAPI knows who is calling (section 6c).
+- **Prompt injection:** text that tries to give an LLM instructions from inside the data it is
+  reading (a review, a map tag, a pasted reply). Section 6d.
