@@ -14,8 +14,9 @@ embedded and loaded. The agent runs parse, checks and fixes from a CLI
 (`scripts/check_itinerary.py`) and from the REST API (section 6c: routes, live progress over
 SSE, sign-in via a token from the frontend, a demo mode, rate limits, Langfuse tracing and
 cost per run). The eval runner scores it on the annotated dataset (`scripts/run_eval.py`), and
-the injection suite (section 6d) is ready to run once a key is set. The frontend doesn't exist
-yet.
+the injection suite (section 6d) is ready to run once a key is set. The frontend (section 6e)
+has its first slice: the landing page, the demo and the live results page; sign-in and the
+signed-in pages are next.
 
 ---
 
@@ -52,6 +53,15 @@ trip-feasibility/
 ├── docs/TEST_CITIES.md       dataset cities and hotels
 ├── docs/annotation/          template, worked example, unlabelled hotels.yaml
 ├── PLAN.md                   progress checklist + open decisions
+├── frontend/                 Next.js 16 (App Router), Tailwind 4, shadcn/ui (section 6e)
+│   ├── openapi.json          the API schema, exported from the backend (types come from it)
+│   └── src/
+│       ├── app/              pages (/, /demo, /check/[runId]); api/v1/[...path] proxies the API
+│       ├── components/run/   results page: progress, timeline, violation + fix cards, evidence
+│       ├── components/ui/    shadcn/ui components (copied in, owned and editable)
+│       ├── hooks/            use-run-events.ts (the live feed)
+│       └── lib/              api/ (generated schema.d.ts, clients, event types), run/ (state
+│                             reducer, timeline layout), format.ts, config.ts
 └── backend/                  Python 3.12 project managed by uv
     ├── Dockerfile, start.sh  container image; runs migrations then the server
     ├── alembic/              database migrations
@@ -68,6 +78,7 @@ trip-feasibility/
     ├── scripts/save_reply.sh         clipboard → data/dataset/texts/<id>.md (raw chatbot reply)
     ├── scripts/show_clean.py         a saved reply as extraction sees it (after step 0)
     ├── scripts/run_injection_suite.py  prompt-injection suite, with and without defences
+    ├── scripts/export_openapi.py     the API schema → frontend/openapi.json
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: lifespan wires the services, /health, /api/v1
     │   ├── api/              routes: itineraries.py, checks.py (runs, SSE, demo), fixes.py,
@@ -761,7 +772,8 @@ tasks, no queue service).
 4. **Save** (signed-in runs only): violations, fixes (valid and invalid), the report, cost,
    latency and trace id; status `done`. Any failure becomes status `error` with a code.
 
-**Events** (`type`): `step_started` (`geocode`, `checks`, `fixes`), `tool_result` (one check:
+**Events** (`type`): `step_started` (`geocode`, `checks`, `fixes`; the `checks` one carries the
+located stops and the city, so the results page can lay out the itinerary before any result), `tool_result` (one check:
 status, counts, unknown stops, notes), `violation` (with the id fixes refer to), `fix` (valid
 ones only), `done` (the whole result) or `error` (`code`, `message`).
 
@@ -863,6 +875,65 @@ Vienna). Needs the key; a few cents per run; each run writes an `eval_runs` row
 (`metrics.kind = "injection"`, suite version = hash of payloads and sample). Results go in the
 README once it has run. The dataset's planned injected *variants* (`parent_id`) are separate
 and come after annotation.
+
+## 6e. The frontend (`frontend/`)
+
+Next.js 16 (App Router) with TypeScript, Tailwind 4 and shadcn/ui, as the PRD sets out. It
+renders and calls the API; it holds no agent or check logic.
+
+**Pages so far:** `/` (pitch, the five checks, how it works), `/demo` (the samples from
+`GET /demo/samples`, each with a "Check this itinerary" button) and `/check/[runId]` (the live
+results page). Sign-in, `/check/new`, `/trips` and the settings pages come next.
+
+**Talking to the API.** The browser only calls its own origin: `app/api/v1/[...path]/route.ts`
+forwards each request to FastAPI at `API_INTERNAL_URL` (server-side, default
+`http://localhost:8020`). It passes on only `accept`, `content-type`, `last-event-id` and
+`x-forwarded-for`, streams the response body through (the SSE feed included, marked
+`no-transform` so compression can't buffer it), closes the upstream request when the browser
+disconnects, and answers `502 api_unreachable` in the API's error shape when FastAPI is down.
+This is where the per-call sign-in token (section 6c) will be added. Server components call
+FastAPI directly (`lib/api/server.ts`).
+
+**Types from the API.** `backend/scripts/export_openapi.py` writes `frontend/openapi.json`;
+`npm run gen:api` turns it into `src/lib/api/schema.d.ts` (openapi-typescript), used through
+`openapi-fetch`. A backend test fails when openapi.json is stale and CI fails when schema.d.ts
+doesn't match it, so the contract can't drift silently. The SSE events aren't in OpenAPI;
+their types are written by hand in `lib/api/types.ts`.
+
+**The results page.** `useRunEvents` opens an `EventSource` on the run's feed and feeds every
+event to a pure reducer (`lib/run/state.ts`, unit-tested): stops arrive with the checks step,
+then results, violations and fixes as they happen, and `done` replaces it all with the final
+run (a saved run's feed is just that one event). An HTTP error closes the feed, and the page
+asks `GET /checks/{id}` why (an expired demo run is a 404). `lib/run/layout.ts` places each
+violation on the day timeline: on its stop, on the leg after its first stop (travel time), on
+the hotel's first stop (hotel flags) or on the day (daily load, holidays). Evidence has a view
+per check, with a key/value fallback; stops a check couldn't judge say so ("Couldn't check ·
+no opening_hours in OSM"). The footer carries the OSM, FOSSGIS and Nager.Date attribution and
+a "Fix the map" link (FOSSGIS policy).
+
+**Design.** The look matches the hero illustration (`public/hero.png`, a flat isometric
+island). Its colours (cream floor, sage, terracotta wood, brown base, teal water, charcoal
+screens) were sampled from the image and are the only palette: CSS variables in
+`app/globals.css`, with darker shades derived where text needs WCAG AA (headings in bark, the
+brown base at half brightness; secondary text in moss; source labels in a darkened sage).
+shadcn's semantic tokens (`--primary`, `--card`, ...) point at them, and components use only the
+semantic and severity tokens. Primary buttons are terracotta, secondary sage. Severity: blocker
+terracotta, warning light wood, info teal, each with a soft tint and an ink shade at least
+5.1:1 on it. Shapes copy the island: cards and buttons have 12–16 px corners and a solid,
+darker "side face" below them (a hard box-shadow, `card-raised`), buttons press down onto it;
+no blur shadows, gradients or glows. Teal wave strips (`WaveDivider`, a CSS mask so the colour
+stays a token) separate major sections. The check icons (`components/site/check-icon.tsx`) are
+inline SVG in the same palette. The hero image's own background (#f5eee2) is cut out in
+`public/hero.webp` (made from the PNG by flood-filling the edge-connected background to
+transparent), so it blends into the page whatever the encoding; the illustration floats
+slowly, off under `prefers-reduced-motion`. Nunito (rounded) for headings, Hanken Grotesk for
+text, JetBrains Mono for data, all from `next/font` (self-hosted at build). shadcn/ui components are copied into `components/ui/`, so they can be restyled freely.
+Dark mode is Tier 3. Checked at 375 px with no horizontal scroll.
+
+**Next.js 16 specifics:** Cache Components is on (the default for new apps), so anything that
+reads params or fetches at request time sits inside `<Suspense>`; route types come from
+`next typegen` (run by `npm run typecheck`). `AGENTS.md` points coding agents at the docs
+bundled in `node_modules/next/dist/docs/`.
 
 ## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
@@ -1123,6 +1194,11 @@ Postgres. Three things to settle before the first deploy:
 | 60 | Tracing via wrappers around the LLM and MCP clients; no traveller content in traces by default (2026-10-25) | LangChain/OTel auto-instrumentation; full content | Agent code unchanged; works with or without Langfuse; privacy by default with a third-party host | Debugging a bad answer needs `TRACE_CONTENT=true` and a rerun |
 | 61 | Cost from a local price table, per call (2026-10-25) | Langfuse's model prices; the Admin usage API | Stored with the run, independent of tracing; long-prompt rates apply per call | Prices are copied by hand and must be updated when they change |
 | 62 | Injection suite judged in code on structured output, on the demo sample; OSM free text filtered from fix evidence (`fixes-v2`) (2026-10-25) | An LLM judge; dataset variants first | Deterministic, cheap, no dataset or Vienna exposure; the filter closes a gap the suite's design exposed | Payloads are ours, not collected from the wild; dataset variants still to do |
+| 63 | Frontend calls go through a Next.js route handler that proxies `/api/v1/*` (2026-10-25) | Browser calls FastAPI directly (CORS); `next.config` rewrites | The token is added server-side and the browser never holds it (decision 54); one origin, no CORS; a rewrite can't add headers per user | Every call has an extra hop; the proxy must stream SSE without buffering |
+| 64 | Frontend types generated from a committed `openapi.json`, checked in tests and CI (2026-10-25) | Generate from a running API at build time; hand-written types | Builds need no running backend; a stale schema or type file fails CI | One more step after API changes (export, then `gen:api`) |
+| 65 | The `checks` step event carries the located stops and city (2026-10-25) | A new event type; fetch the stops separately; wait for `done` | The timeline can fill in live (PRD "progress, not spinners") without changing the event set | The event is larger (one copy of the stops) |
+| 66 | Brand colours as CSS variables behind shadcn's semantic tokens; severity shades derived for AA contrast (2026-10-25) | Hardcoded colours; the kit's accents as text | Restyling is a change to one file; meets the PRD's WCAG AA requirement | Severity shades aren't in the kit |
+| 67 | Palette and shapes taken from the hero illustration, replacing the branding kit's (2026-10-26) | Keep the kit's greens and Newsreader | One visual language from the illustration to the results page | Blocker shares the terracotta family with primary buttons (told apart by badge and edge); the site no longer follows the branding kit |
 
 ## 13. Known gaps and next steps
 
@@ -1141,8 +1217,10 @@ Postgres. Three things to settle before the first deploy:
   than one API container would need them in Postgres (section 6c).
 - Parse cost isn't tied to the check run that follows it (section 6c).
 - The injection suite hasn't run against the real model yet (needs the key).
-- Next: annotate the dataset (Vincent), the first baseline eval, then the frontend. Order and
-  status are in `PLAN.md`.
+- Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; no Dockerfile for it
+  until the hosting shape is settled (section 11).
+- Next: annotate the dataset (Vincent), the first baseline eval, and the frontend's signed-in
+  half. Order and status are in `PLAN.md`.
 
 ## Glossary
 

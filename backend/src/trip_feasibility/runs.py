@@ -259,7 +259,17 @@ class RunService:
             config=req.config,
         )
         enabled = [n for n in CHECK_NAMES if n in req.config.enabled]
-        await run.publish({"type": "step_started", "step": "checks", "checks": enabled})
+        # The located stops go out with the first checks event, so the live feed can lay out
+        # the itinerary before the first result arrives.
+        await run.publish(
+            {
+                "type": "step_started",
+                "step": "checks",
+                "checks": enabled,
+                "city": city.name,
+                "stops": [s.model_dump(mode="json") for s in stops],
+            }
+        )
 
         fixer = None
         if self.llm is not None:

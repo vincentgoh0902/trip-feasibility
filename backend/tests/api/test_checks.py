@@ -73,6 +73,9 @@ async def test_demo_run_streams_and_saves_nothing(api, services, nominatim):
     types = [e["type"] for e in got]
     assert types[0] == "step_started" and got[0]["step"] == "geocode"  # samples have no coords
     assert types.count("tool_result") == 5
+    [checks_step] = [e for e in got if e["type"] == "step_started" and e["step"] == "checks"]
+    assert [s["id"] for s in checks_step["stops"]] == [s["id"] for s in got[-1]["run"]["stops"]]
+    assert all(s["lat"] for s in checks_step["stops"])  # located before the checks run
     assert types[-1] == "done"
     [v] = [e["violation"] for e in got if e["type"] == "violation"]
     assert v["message"] == "Closed on Tuesdays"

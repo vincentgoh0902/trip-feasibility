@@ -1,0 +1,2222 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Trip Feasibility Checker",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/itineraries/parse": {
+      "post": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Parse",
+        "description": "Text → stops for the traveller to review (nothing is saved). Signed in only: the demo\nuses ready-made samples, so anonymous callers never spend on extraction.",
+        "operationId": "parse_api_v1_itineraries_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/itineraries": {
+      "get": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "List Itineraries",
+        "operationId": "list_itineraries_api_v1_itineraries_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItinerarySummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Itineraries Api V1 Itineraries Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Create",
+        "operationId": "create_api_v1_itineraries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItineraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItineraryDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/itineraries/{itinerary_id}": {
+      "get": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Get Itinerary",
+        "operationId": "get_itinerary_api_v1_itineraries__itinerary_id__get",
+        "parameters": [
+          {
+            "name": "itinerary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Itinerary Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItineraryDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Rename",
+        "operationId": "rename_api_v1_itineraries__itinerary_id__patch",
+        "parameters": [
+          {
+            "name": "itinerary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Itinerary Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItineraryPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItinerarySummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Delete",
+        "operationId": "delete_api_v1_itineraries__itinerary_id__delete",
+        "parameters": [
+          {
+            "name": "itinerary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Itinerary Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/itineraries/{itinerary_id}/versions": {
+      "post": {
+        "tags": [
+          "itineraries"
+        ],
+        "summary": "Add Version",
+        "operationId": "add_version_api_v1_itineraries__itinerary_id__versions_post",
+        "parameters": [
+          {
+            "name": "itinerary_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Itinerary Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/demo/samples": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "Demo Samples",
+        "operationId": "demo_samples_api_v1_demo_samples_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SampleOut"
+                  },
+                  "type": "array",
+                  "title": "Response Demo Samples Api V1 Demo Samples Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks": {
+      "post": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "Start Check",
+        "operationId": "start_check_api_v1_checks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{run_id}/events": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "Run Events",
+        "description": "Server-sent events: everything so far, then each new event until done or error.\nReconnecting with Last-Event-ID resumes after that event.",
+        "operationId": "run_events_api_v1_checks__run_id__events_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/checks/{run_id}": {
+      "get": {
+        "tags": [
+          "checks"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_api_v1_checks__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fixes/{fix_id}/accept": {
+      "post": {
+        "tags": [
+          "fixes"
+        ],
+        "summary": "Accept",
+        "operationId": "accept_api_v1_fixes__fix_id__accept_post",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Fix Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewVersion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fixes/{fix_id}/reject": {
+      "post": {
+        "tags": [
+          "fixes"
+        ],
+        "summary": "Reject",
+        "operationId": "reject_api_v1_fixes__fix_id__reject_post",
+        "parameters": [
+          {
+            "name": "fix_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Fix Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Delete Account",
+        "description": "Deletes the user and, by ON DELETE CASCADE, every itinerary, version, run, violation,\nfix, preference and setting they own.",
+        "operationId": "delete_account_api_v1_me_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Get Preferences",
+        "operationId": "get_preferences_api_v1_me_preferences_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesIO-Output"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Put Preferences",
+        "operationId": "put_preferences_api_v1_me_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesIO-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesIO-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/check-config": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Get Check Config",
+        "operationId": "get_check_config_api_v1_me_check_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Put Check Config",
+        "operationId": "put_check_config_api_v1_me_check_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CheckConfig": {
+        "properties": {
+          "enabled": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "opening_hours",
+                "public_holidays",
+                "travel_time",
+                "daily_load",
+                "hotel_red_flags"
+              ]
+            },
+            "type": "array",
+            "title": "Enabled",
+            "default": [
+              "opening_hours",
+              "public_holidays",
+              "travel_time",
+              "daily_load",
+              "hotel_red_flags"
+            ]
+          },
+          "travel_buffer_min": {
+            "type": "integer",
+            "enum": [
+              0,
+              10,
+              20
+            ],
+            "title": "Travel Buffer Min",
+            "default": 10
+          },
+          "hotel_min_reviews": {
+            "type": "integer",
+            "enum": [
+              3,
+              5,
+              10
+            ],
+            "title": "Hotel Min Reviews",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "title": "CheckConfig"
+      },
+      "CheckResultOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status"
+          },
+          "violations": {
+            "type": "integer",
+            "title": "Violations"
+          },
+          "unknown": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Unknown"
+          },
+          "checked_stop_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Checked Stop Ids"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "violations",
+          "unknown",
+          "checked_stop_ids",
+          "notes",
+          "error"
+        ],
+        "title": "CheckResultOut"
+      },
+      "CheckStart": {
+        "properties": {
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "sample_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Id"
+          }
+        },
+        "type": "object",
+        "title": "CheckStart",
+        "description": "Exactly one of: a saved version (signed in) or a demo sample (no sign-in)."
+      },
+      "CheckStarted": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "demo": {
+            "type": "boolean",
+            "title": "Demo"
+          },
+          "events_url": {
+            "type": "string",
+            "title": "Events Url"
+          },
+          "result_url": {
+            "type": "string",
+            "title": "Result Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "demo",
+          "events_url",
+          "result_url"
+        ],
+        "title": "CheckStarted"
+      },
+      "FixOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "violation_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Violation Ids"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "operations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Operations"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            },
+            "type": "array",
+            "title": "Stops"
+          },
+          "transport_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "walk",
+                "transit",
+                "bike",
+                "car"
+              ]
+            },
+            "type": "array",
+            "title": "Transport Modes"
+          },
+          "new_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "New Warnings"
+          },
+          "unverified": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unverified"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "violation_ids",
+          "description",
+          "operations",
+          "stops",
+          "transport_modes",
+          "new_warnings",
+          "unverified",
+          "status"
+        ],
+        "title": "FixOut"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ItineraryCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "raw_text": {
+            "type": "string",
+            "maxLength": 50000,
+            "title": "Raw Text",
+            "default": ""
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/StopIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Stops"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "city",
+          "start_date",
+          "stops"
+        ],
+        "title": "ItineraryCreate"
+      },
+      "ItineraryDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionOut"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "city",
+          "start_date",
+          "created_at",
+          "versions"
+        ],
+        "title": "ItineraryDetail"
+      },
+      "ItineraryPatch": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ItineraryPatch"
+      },
+      "ItinerarySummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "versions": {
+            "type": "integer",
+            "title": "Versions"
+          },
+          "latest_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Latest Version Id"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "city",
+          "start_date",
+          "created_at",
+          "versions",
+          "latest_version_id",
+          "latest_run"
+        ],
+        "title": "ItinerarySummary"
+      },
+      "MeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "auth_provider": {
+            "type": "string",
+            "title": "Auth Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "auth_provider"
+        ],
+        "title": "MeOut"
+      },
+      "NewVersion": {
+        "properties": {
+          "itinerary_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Itinerary Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itinerary_id",
+          "version"
+        ],
+        "title": "NewVersion"
+      },
+      "OsmRef": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "node",
+              "way",
+              "relation"
+            ],
+            "title": "Type"
+          },
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "OsmRef"
+      },
+      "ParseRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "city",
+          "start_date"
+        ],
+        "title": "ParseRequest"
+      },
+      "ParseResponse": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/ParsedStop"
+            },
+            "type": "array",
+            "title": "Stops"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unresolved"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "country_code",
+          "text",
+          "stops",
+          "unresolved",
+          "model",
+          "prompt_version",
+          "usage"
+        ],
+        "title": "ParseResponse"
+      },
+      "ParsedStop": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "day": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Day"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "place_name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Place Name"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "venue",
+              "transfer",
+              "hotel",
+              "meal"
+            ],
+            "title": "Type"
+          },
+          "osm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OsmRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "resolved": {
+            "type": "boolean",
+            "title": "Resolved"
+          },
+          "outside_city": {
+            "type": "boolean",
+            "title": "Outside City",
+            "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "date",
+          "place_name",
+          "type",
+          "resolved"
+        ],
+        "title": "ParsedStop"
+      },
+      "PreferencesIO-Input": {
+        "properties": {
+          "pace": {
+            "type": "string",
+            "enum": [
+              "relaxed",
+              "moderate",
+              "packed"
+            ],
+            "title": "Pace",
+            "default": "moderate"
+          },
+          "max_walk_km": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Walk Km",
+            "default": 10.0
+          },
+          "transport_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "walk",
+                "transit",
+                "bike",
+                "car"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Transport Modes",
+            "default": [
+              "walk",
+              "transit"
+            ]
+          },
+          "daily_budget": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Budget"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "title": "PreferencesIO"
+      },
+      "PreferencesIO-Output": {
+        "properties": {
+          "pace": {
+            "type": "string",
+            "enum": [
+              "relaxed",
+              "moderate",
+              "packed"
+            ],
+            "title": "Pace",
+            "default": "moderate"
+          },
+          "max_walk_km": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Walk Km",
+            "default": 10.0
+          },
+          "transport_modes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "walk",
+                "transit",
+                "bike",
+                "car"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Transport Modes",
+            "default": [
+              "walk",
+              "transit"
+            ]
+          },
+          "daily_budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Budget"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "title": "PreferencesIO"
+      },
+      "RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "demo": {
+            "type": "boolean",
+            "title": "Demo"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            },
+            "type": "array",
+            "title": "Stops",
+            "default": []
+          },
+          "results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckResultOut"
+            },
+            "type": "object",
+            "title": "Results",
+            "default": {}
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/ViolationOut"
+            },
+            "type": "array",
+            "title": "Violations",
+            "default": []
+          },
+          "fixes": {
+            "items": {
+              "$ref": "#/components/schemas/FixOut"
+            },
+            "type": "array",
+            "title": "Fixes",
+            "default": []
+          },
+          "unfixed": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Unfixed",
+            "default": []
+          },
+          "fix_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Error"
+          },
+          "fixes_enabled": {
+            "type": "boolean",
+            "title": "Fixes Enabled",
+            "default": false
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "demo",
+          "version_id"
+        ],
+        "title": "RunOut"
+      },
+      "RunSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "blockers": {
+            "type": "integer",
+            "title": "Blockers"
+          },
+          "warnings": {
+            "type": "integer",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "blockers",
+          "warnings"
+        ],
+        "title": "RunSummary"
+      },
+      "SampleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "city",
+          "start_date",
+          "text"
+        ],
+        "title": "SampleOut"
+      },
+      "Stop": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "day": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Day"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "place_name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Place Name"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "venue",
+              "transfer",
+              "hotel",
+              "meal"
+            ],
+            "title": "Type"
+          },
+          "osm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OsmRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "date",
+          "place_name",
+          "type"
+        ],
+        "title": "Stop"
+      },
+      "StopIn": {
+        "properties": {
+          "day": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Day"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "time_of_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "morning",
+                  "afternoon",
+                  "evening"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Of Day"
+          },
+          "place_name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Place Name"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "venue",
+              "transfer",
+              "hotel",
+              "meal"
+            ],
+            "title": "Type"
+          },
+          "osm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OsmRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 90.0,
+                "minimum": -90.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": -180.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "place_name",
+          "type"
+        ],
+        "title": "StopIn",
+        "description": "A stop as the traveller confirmed it (parse step 5). Keep osm/lat/lon from the parse\nresult for stops the traveller didn't change; leave them out for edited ones and they are\nlooked up when the check runs."
+      },
+      "UsageOut": {
+        "properties": {
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "calls",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd",
+          "models"
+        ],
+        "title": "UsageOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VersionCreate": {
+        "properties": {
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/StopIn"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Stops"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stops"
+        ],
+        "title": "VersionCreate"
+      },
+      "VersionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "version_no": {
+            "type": "integer",
+            "title": "Version No"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "user",
+              "fix"
+            ],
+            "title": "Source"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "raw_text": {
+            "type": "string",
+            "title": "Raw Text"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            },
+            "type": "array",
+            "title": "Stops"
+          },
+          "transport_modes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "walk",
+                    "transit",
+                    "bike",
+                    "car"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport Modes"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "type": "array",
+            "title": "Runs",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version_no",
+          "source",
+          "created_at",
+          "raw_text",
+          "stops",
+          "transport_modes"
+        ],
+        "title": "VersionOut"
+      },
+      "ViolationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "check_name": {
+            "type": "string",
+            "title": "Check Name"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "blocker"
+            ],
+            "title": "Severity"
+          },
+          "stop_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stop Ids"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Evidence"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "check_name",
+          "severity",
+          "stop_ids",
+          "message",
+          "evidence",
+          "source"
+        ],
+        "title": "ViolationOut"
+      }
+    }
+  }
+}

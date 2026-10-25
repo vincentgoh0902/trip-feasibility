@@ -15,8 +15,9 @@ made or changed: it's how I follow the project.**
 
 Backend: Python 3.12 + uv, FastAPI, Pydantic, LangGraph, MCP Python SDK 2.x, SQLAlchemy 2.0
 (async, asyncpg) + Alembic, pytest, ruff. Postgres 17 + pgvector. Claude (Anthropic SDK) for
-extraction and fixes. Planned: Next.js (App Router) + TypeScript, Tailwind, shadcn/ui,
-Auth.js, openapi-typescript; Langfuse tracing; MLflow for Tier 2 training (Mac only).
+extraction and fixes. Frontend: Next.js 16 (App Router) + TypeScript, Tailwind 4, shadcn/ui
+(Base UI), openapi-typescript + openapi-fetch, vitest; Auth.js planned. Langfuse tracing;
+MLflow for Tier 2 training (Mac only).
 
 ## Layout
 
@@ -47,6 +48,11 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
                                 injection.py (prompt-injection suite)
   scripts/                      see Commands
+frontend/                       Next.js (npm); openapi.json (exported from the backend)
+  src/app/                      pages; api/v1/[...path]/route.ts proxies every call to FastAPI
+  src/components/run/ ui/       results page pieces; shadcn/ui components (owned, editable)
+  src/lib/                      api/ (generated schema.d.ts, clients, SSE event types), run/
+                                (state reducer, timeline layout), format.ts, config.ts
 docs/                           PRD, ARCHITECTURE, ANNOTATION, TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
 data/  (gitignored)             postgres/ volume; raw/hotel-reviews/Hotel_Reviews.csv (Kaggle,
@@ -56,7 +62,7 @@ data/  (gitignored)             postgres/ volume; raw/hotel-reviews/Hotel_Review
                                 reviews from non-dataset hotels)
 ```
 
-Planned: `frontend/`, `train/` (Tier 2, Mac only).
+Planned: `train/` (Tier 2, Mac only).
 
 ## Rules
 
@@ -110,12 +116,21 @@ Planned: `frontend/`, `train/` (Tier 2, Mac only).
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
   and review the file. CI runs `alembic check`.
 - **Errors:** every error response is `{"error": {"code", "message"}}`; raise `AppError`.
-- **Styling:** follows `../Vincent Goh Branding Kit.pdf`. Colours as tokens, not hardcoded.
+- **Styling:** matches the hero illustration (`frontend/public/hero.png`): only colours sampled
+  from it, darkened where text needs it. Colours as tokens, not hardcoded: they live in
+  `frontend/src/app/globals.css`, components use the semantic ones (`bg-card`, `text-heading`,
+  `text-blocker-ink` ...). Text pairings must stay WCAG AA (4.5:1). Flat 3D look: cards
+  (`card-raised`) and buttons sit on a solid side face, no blur shadows, gradients or glows.
+- **Frontend:** the browser only calls its own origin; the proxy route adds what FastAPI needs
+  (the sign-in token, once it exists). Pages show OSM attribution and a "Fix the map" link
+  wherever OSM-derived results appear. Work at 375 px.
 - **Visibility:** homelab starts `private`. The GitHub repo is **public**: never commit
   itineraries, raw replies, annotations, API keys or review dumps.
 
 ## Runtime and config
 
+- **Frontend port:** `next dev`/`next start` on 3000 locally; `API_INTERNAL_URL` (server-side,
+  default `http://localhost:8020`) is where it reaches the API.
 - **Port:** the API listens on 8000 in the container (`PORT`); `GET /health` → 200 with a DB
   check (503 if unreachable). Compose publishes it on 8020 locally (8000 is taken on this Mac).
 - **Memory:** the API idles at ~145 MB (the agent stack loads at startup), ~155 MB after runs;
@@ -164,6 +179,12 @@ uv run python scripts/run_injection_suite.py          # needs the key; --defende
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
 
+# frontend (from frontend/)
+npm ci && npm run dev                                 # http://localhost:3000
+npm run typecheck && npm run lint && npm test && npm run build
+uv run python scripts/export_openapi.py               # (backend/) after API changes, then
+npm run gen:api                                       # (frontend/) regenerate the types
+
 # hotel reviews (Mac only, embed group)
 uv run --group embed python scripts/load_reviews.py           # embed + load reviews
 uv run --group embed python scripts/embed_hotel_themes.py     # after editing THEMES phrasings
@@ -176,8 +197,9 @@ Compose host ports are overridable: `API_HOST_PORT` (default 8020), `DB_HOST_POR
 ## CI (`.github/workflows/ci.yml`)
 
 On push to `main` and on PRs: ruff check + format check, `alembic upgrade head`,
-`alembic check`, pytest against a `pgvector/pgvector:pg17` service, and gitleaks over full
-history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
+`alembic check`, pytest against a `pgvector/pgvector:pg17` service (including a check that
+`frontend/openapi.json` is current), the frontend job (generated types match openapi.json,
+eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 
 ## Gotchas
 
@@ -200,6 +222,14 @@ history. Keep it green; Tier 3 adds the 10-itinerary eval regression gate.
 - Run state (live runs, demo runs, rate-limit counts) is per process: one API container.
 - `astral-sh/setup-uv` has no floating major tag (`@v10` fails); pin an exact release.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).
+
+**Frontend**
+- This is Next.js 16: read `frontend/node_modules/next/dist/docs/` before using an API from
+  memory (`AGENTS.md`). Cache Components is on: request-time reads (params, fetch) go inside
+  `<Suspense>`; `middleware` is now `proxy`.
+- After an API change: export openapi.json and run `gen:api`, or CI fails.
+- The SSE event types in `lib/api/types.ts` are hand-written; keep them in step with `runs.py`.
+- `next dev` may re-add the managed block in `frontend/AGENTS.md`; that's expected.
 
 **External services**
 - **Don't use public Overpass:** it's at capacity and bans clients that retry into rate

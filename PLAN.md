@@ -51,7 +51,19 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       signed by the Next.js server, demo mode (samples, in memory), rate limits (`api/`,
       `auth.py`, `runs.py`, `ratelimit.py`); checked live on the demo sample
 - [ ] Judge calibration (20+ hand-rated fixes)
-- [ ] Next.js pages, preferences, check settings, saved trips
+- [x] Frontend slice 1: Next.js 16 + Tailwind + shadcn/ui in `frontend/`, branding-kit tokens,
+      API proxy route, types generated from `openapi.json`, landing, `/demo`, live results page
+      (`/check/[runId]`: progress, day timeline, evidence, fixes, OSM attribution); frontend CI
+      job. Checked in the browser on the demo sample, including 375 px
+- [x] Restyle to match the hero illustration: palette sampled from `hero.png`, side-face cards
+      and pressable buttons, two-column hero with the cut-out `hero.webp` floating, Nunito
+      headings, check icons, teal wave dividers, applied to every page (2026-10-26; decision 67)
+- [ ] Frontend slice 2: Auth.js sign-in (GitHub, Google, email link) + per-call API token in
+      the proxy; `/check/new` (paste, parsed-stops review table), fix accept/reject
+- [ ] **Vincent: OAuth apps** (GitHub and Google client IDs/secrets for localhost) and
+      `API_JWT_SECRET` in `.env`, before slice 2 can be tried
+- [ ] Frontend slice 3: `/trips`, `/trips/[id]`, `/settings/*` (preferences, check settings,
+      account deletion)
 - [x] Injection suite: 4 vectors × 6 attacks, with and without defences, judged in code
       (`evals/injection.py`); closed a gap it exposed (free-text OSM tags in fix evidence)
 - [ ] Run the injection suite live (needs the key) and put the numbers in the README
@@ -117,7 +129,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
   on the dev set once it exists.
-- The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
+- Frontend hosting: no Dockerfile yet; it depends on the hosting shape below.
+- Email magic links need an email provider (not chosen); slice 2 can start with OAuth only.
 
 - If traffic outgrows Nominatim's public policy: keyed service (NextGIS, Overpass.ch free
   tier) or self-hosted Nominatim/Overpass for the test-set cities (server session).
