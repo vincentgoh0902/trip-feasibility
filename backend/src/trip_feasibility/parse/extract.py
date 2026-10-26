@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v7"
+PROMPT_VERSION = "extract-v8"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -60,7 +60,24 @@ A meal or activity with its own stated time or duration is a stop even with no n
 ("12:45 Lunch near the cathedral: pick a café around Market Square, budget 60 minutes"). Its \
 place_name is the most specific area the text gives ("Market Square"), not a landmark it's \
 only near; with no place words at all, or when it leaves the place open ("breakfast at the \
-hotel or a café nearby"), the activity's own words ("Breakfast").
+hotel or a café nearby"), the activity's own words ("Breakfast"). A "Morning:", \
+"Afternoon:" or "Evening:" heading counts as a stated time here.
+
+More rules:
+- Downtime with no place ("early night", "free time", "back to the hotel to rest") is not a \
+stop; a return to a named hotel is a hotel stop. Arrivals and departures are stops only when \
+they name a station, airport or hotel. Items marked optional are not stops.
+- A timed line that is only a journey ("12:00 Taxi up to the museum", "08:00 Train to the \
+palace, about 40 minutes") gives the next stop its travel_start (and travel_min/max), not \
+its start_time.
+- Several named places in one timed slot ("14:00 Walk to the Panthéon and the Luxembourg \
+Gardens") are one stop each: the first gets the slot's start time, the last its end time, \
+any in between no time. Places only walked past are not stops; rooms or features of one \
+venue are part of it.
+- A choice where the itinerary favours one option ("A, or B as an alternative") is a stop \
+for the favoured option.
+- A slot that carries on at the place just named ("6:00 Head to Sky Garden", then "6:30 \
+Drinks with a view") takes that place's name.
 
 A booking checklist, summary or recap \
 that repeats places already in the schedule adds no stops: each visit is one stop, taken \

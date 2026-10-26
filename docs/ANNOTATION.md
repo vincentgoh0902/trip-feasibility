@@ -224,6 +224,34 @@ leaves the place open ("8:30 Breakfast at the hotel or a café near the station"
 too, named by the activity's own words (`Breakfast`): the time counts even though the place
 can't be located. Untimed choices stay non-stops.
 
+More cases (decided 2026-10-26):
+
+- **Downtime** with no place ("Early night", "Back to the hotel to rest", "Free time", "Easy
+  evening", "Rest or explore the Eixample") isn't a stop: slack by design. A return to a
+  *named* hotel ("Return to Batty Langley's") is a hotel stop.
+- **Arrivals and departures** ("Arrive, drop bags at the hotel", "head to the airport") aren't
+  stops unless a station, airport or hotel is named.
+- **A timed line that is a journey** ("12:00 Taxi up to MNAC", "08:00 RER C (about 40
+  minutes)", "Travel to Covent Garden") puts its time in the next stop's `travel_start` (and
+  `travel_min`/`travel_max` if a length is stated), not its `start_time`. A day-trip train is
+  the same: travel fields, not a `transfer` stop.
+- **Several places in one timed slot** ("14:00 Walk to the Panthéon and the Luxembourg
+  Gardens"): each named place is a stop; the first takes the slot's start, the last its end,
+  any in between no time. Never give each the whole range (that would invent overlaps). Places
+  only passed ("past the Globe") are route.
+- **Places inside an area visit** ("Gothic Quarter, stopping by the Cathedral and Plaça del
+  Rei") are separate stops too, as above. Rooms or features of one venue (the Hall of Mirrors
+  in the château, a lake in the park) aren't.
+- **A timed choice with a favourite** ("Tate Modern or The London Eye" where the text describes
+  the Tate and calls the Eye an alternative; "the Orangerie, or skip it for more Louvre"): the
+  favoured option is the stop. Equal options use the activity's words (a timed slot, above).
+- **"Morning:", "Afternoon:", "Evening:"** count as a timed slot.
+- **"Optional"** items aren't stops, even timed: the plan stands without them.
+- **An obvious typo in a time** ("9:30 AM – 11:30 PM" for a morning visit) is kept as written,
+  with a note.
+- **A slot that carries on at the place just named** ("6:00 Head to Sky Garden", then "6:30–7:30
+  Drinks with a view") takes that place's name (`Sky Garden`).
+
 A booking checklist, summary or recap at the end that names places already in the schedule
 adds no stops: each visit is one stop, from the schedule. Places only recommended outside the
 day-by-day schedule ("Where to eat: Cal Pep, Bar Mut", "If you have more time: Park Güell")

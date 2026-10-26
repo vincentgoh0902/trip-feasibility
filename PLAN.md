@@ -138,6 +138,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   timed open choices are stops named by the activity. The validator asks for a leg wherever a
   journey is stated; real > claim + 10 min is a derived warning. ARCHITECTURE decision 71.
   Next (with durations): the travel-time check reports these. (2026-10-26)
+  `extract-v8`: ten more stop rules from the dev files (downtime, arrivals, journey lines,
+  several places in one slot, favoured options, optional items...). ARCHITECTURE decision 72.
+  Dev stops drafted for the 12 files not yet started (paris-02/05/07 are Vincent's); legs,
+  violations and preferences still to do. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)
