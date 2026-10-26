@@ -11,6 +11,24 @@ works and why, with the decision log), `docs/ANNOTATION.md` (dataset rules). **U
 as work lands, and ARCHITECTURE.md (including the decision log) whenever a design choice is
 made or changed: it's how I follow the project.**
 
+## Status (2026-10-26; details in PLAN.md)
+
+Built: all five checks, parse pipeline, LangGraph agent with re-checked fixes, eval runner,
+injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`, results),
+restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels labelled.
+
+Waiting on Vincent, in this order:
+1. **Back up `data/dataset/`** (the only copy of the 40 replies and hotel labels).
+2. **`ANTHROPIC_API_KEY`** in the repo-root `.env` (no `.env` exists yet), after a monthly spend
+   cap in the Console; then `scripts/smoke_parse.py`. Unblocks parsed-mode evals, live fixes,
+   the live injection suite and demo fixes.
+3. **Annotate the itineraries** (ANNOTATION.md step 4; none done). The 15 dev ones first: the
+   first baseline eval needs only those. The 25 test ones are needed before the final run.
+4. Optional: Langfuse Cloud keys. Before slice 2 can be tried: OAuth apps + `API_JWT_SECRET`.
+
+Not blocked on Vincent: frontend slice 2 code (sign-in, `/check/new`, fix accept/reject; tests
+use fakes), more made-up demo samples, settling the hosting shape.
+
 ## Stack
 
 Backend: Python 3.12 + uv, FastAPI, Pydantic, LangGraph, MCP Python SDK 2.x, SQLAlchemy 2.0
