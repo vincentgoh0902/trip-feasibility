@@ -145,6 +145,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   `extract-v9`: `located: false` for activity-named stops (never geocoded, no legs); marked in
   the dev files (45 stops); the dev files now need 33 legs. paris-07's template placeholders
   replaced with drafted stops. ARCHITECTURE decision 73. (2026-10-26)
+  The validator checks a file part by part while it's being annotated (stops, then legs, then
+  violations), listing what's still to do; evals still use only complete files. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

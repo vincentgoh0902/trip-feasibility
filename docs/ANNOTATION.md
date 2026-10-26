@@ -153,7 +153,10 @@ Judge from the reviews, not from the score or from whether it's on the "low" lis
 
 ## 4. Annotating an itinerary
 
-Add `stops`, `legs` and `violations` together (`[]` when a list is empty). See
+Add `stops`, then `legs`, then `violations` (`[]` when a list is empty). The validator checks
+each part as soon as it's there and lists the parts still to do; a file counts as annotated
+(and goes into evals) only once all three are. Don't write `violations: []` before you've
+checked: it means "checked, none found". See
 `docs/annotation/example.yaml` for a complete one.
 
 - `[]` means "checked, none found"; a missing key means "not annotated yet". `violations: []`

@@ -112,17 +112,20 @@ class DatasetItinerary(DatasetEntry, _Strict):
 
     @property
     def annotated(self) -> bool:
-        return self.stops is not None
+        """Complete: stops, legs and violations all there (evals use only these)."""
+        return not self.still_to_do and self.stops is not None
+
+    @property
+    def still_to_do(self) -> list[str]:
+        """Parts not added yet to a file whose annotation has started (stops first)."""
+        if self.stops is None:
+            return []
+        return [k for k in ("legs", "violations") if getattr(self, k) is None]
 
     @model_validator(mode="after")
-    def _annotation_complete(self):
-        parts = {"stops": self.stops, "legs": self.legs, "violations": self.violations}
-        missing = [k for k, v in parts.items() if v is None]
-        if 0 < len(missing) < 3:
-            raise ValueError(
-                f"annotated files need stops, legs and violations (use [] for none); "
-                f"missing: {', '.join(missing)}"
-            )
+    def _annotation_order(self):
+        if self.stops is None and (self.legs is not None or self.violations is not None):
+            raise ValueError("add stops before legs and violations")
         if len(self.clean_text) > MAX_CLEAN_CHARS:
             raise ValueError(
                 f"text is {len(self.clean_text):,} characters once cleaned (limit "

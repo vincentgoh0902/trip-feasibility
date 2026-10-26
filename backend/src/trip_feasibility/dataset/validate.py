@@ -7,7 +7,8 @@ Layout (under data/dataset/, gitignored):
 
 `validate_dataset` returns every problem as a readable message. With `partial=True` (while
 collecting and annotating) it skips the split counts and annotation completeness; every
-other rule still applies.
+other rule still applies. A file being annotated is checked part by part as it fills in
+(stops, then legs, then violations), with what's still to do listed as a problem.
 """
 
 import hashlib
@@ -129,11 +130,13 @@ def _consecutive_pairs(stops: list[AnnotatedStop]) -> list[tuple[AnnotatedStop, 
 
 
 def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[str]:
-    """Problems inside one itinerary file (the split is checked across files)."""
-    if not itin.annotated:
+    """Problems inside one itinerary file (the split is checked across files). Legs and
+    violations are checked once they're there, so a file can be checked while in progress."""
+    if itin.stops is None:
         return []
-    assert itin.stops is not None and itin.legs is not None and itin.violations is not None
     errors = []
+    if itin.still_to_do:
+        errors.append(f"still to do: {', '.join(itin.still_to_do)} (use [] for none)")
     by_id: dict[str, AnnotatedStop] = {}
     for s in itin.stops:
         if s.id in by_id:
@@ -158,6 +161,8 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
         elif b.day == a.day and a.start_time and b.start_time and b.start_time < a.start_time:
             errors.append(f"stop {b.id}: starts before stop {a.id}; keep stops in order")
 
+    if itin.legs is None:
+        return errors + _violation_errors(itin, by_id)
     pairs = {(a.id, b.id): (a, b) for a, b in _consecutive_pairs(itin.stops)}
     legs = {}
     for leg in itin.legs:
@@ -191,6 +196,13 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
                 "so record its real travel time"
             )
 
+    return errors + _violation_errors(itin, by_id)
+
+
+def _violation_errors(itin: DatasetItinerary, by_id: dict[str, AnnotatedStop]) -> list[str]:
+    if itin.violations is None or itin.stops is None:
+        return []
+    errors = []
     days = {s.day for s in itin.stops}
     seen = set()
     for v in itin.violations:

@@ -234,10 +234,26 @@ def test_hotel_stops():
     ]
 
 
-def test_annotation_parts_go_together():
+def test_a_file_in_progress_is_checked_part_by_part():
     raw = example_raw()
+    del raw["violations"]
+    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s3"]
+    itin = DatasetItinerary.model_validate(raw)
+    assert not itin.annotated and gold_violations(itin, hotels()) == []
+    # legs are checked as soon as they're there, violations listed as still to do
+    assert itinerary_errors(itin, hotels()) == [
+        "still to do: violations (use [] for none)",
+        "leg s3 → s4: only 15 min apart, so record its real travel time",
+    ]
     del raw["legs"]
-    with pytest.raises(ValidationError, match="missing: legs"):
+    errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
+    assert errors == ["still to do: legs, violations (use [] for none)"]
+
+
+def test_stops_come_first():
+    raw = example_raw()
+    del raw["stops"]
+    with pytest.raises(ValidationError, match="add stops before"):
         DatasetItinerary.model_validate(raw)
 
 
