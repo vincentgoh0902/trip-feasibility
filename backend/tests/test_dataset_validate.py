@@ -125,6 +125,37 @@ def test_duration_counts_as_an_end_for_which_legs_to_record():
     assert itinerary_errors(DatasetItinerary.model_validate(raw), hotels()) == []
 
 
+def test_stated_journey_needs_a_leg_and_labels_when_well_short():
+    raw = example_raw()
+    raw["stops"][1] |= {"end_time": None}  # Louvre 09:00, no end: no gap to go on
+    raw["stops"][2] |= {"start_time": None, "end_time": None, "travel_min": 5, "travel_max": 8}
+    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
+    errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
+    assert errors == [
+        "leg s2 → s3: the itinerary says how long this journey takes, so record its real "
+        "travel time"
+    ]
+
+    def label(minutes):
+        legs = raw["legs"] + [{"from": "s2", "to": "s3", "mode": "walk", "minutes": minutes,
+                               "source": "x"}]  # fmt: skip
+        itin = DatasetItinerary.model_validate(raw | {"legs": legs})
+        assert itinerary_errors(itin, hotels()) == []
+        return [g.severity for g in gold_violations(itin, hotels()) if g.target[1:] == ("s2", "s3")]
+
+    assert label(18) == []  # 8 claimed + 10 margin
+    assert label(19) == ["warning"]
+
+
+def test_stated_departure_is_the_gap_start():
+    raw = example_raw()
+    # leave the Louvre at 12:05 for lunch at 12:15 (a 3-min walk): a warning, where 15 min was fine
+    raw["stops"][2] |= {"travel_start": "12:05"}
+    gold = {g.target: g.severity for g in gold_violations(DatasetItinerary.model_validate(raw),
+                                                         hotels())}  # fmt: skip
+    assert gold[("leg", "s2", "s3")] == "warning"
+
+
 def test_leg_must_join_consecutive_stops():
     raw = example_raw()
     raw["legs"].append({"from": "s1", "to": "s3", "mode": "walk", "minutes": 4, "source": "x"})

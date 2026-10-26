@@ -1,6 +1,12 @@
 from trip_feasibility.checks.models import Violation
 from trip_feasibility.evals.align import align
-from trip_feasibility.evals.score import Counts, compare, parse_counts, predicted_targets
+from trip_feasibility.evals.score import (
+    PARSE_FIELDS,
+    Counts,
+    compare,
+    parse_counts,
+    predicted_targets,
+)
 from trip_feasibility.parse.schema import ExtractedStop
 
 
@@ -26,7 +32,7 @@ def test_parse_counts():
     m = c.metrics()
     assert (m["stop_recall"], m["stop_precision"]) == (0.5, 0.5)
     assert m["field_errors"] == {"end_time": 1}
-    assert m["field_accuracy"] == 7 / 8
+    assert m["field_accuracy"] == (len(PARSE_FIELDS) - 1) / len(PARSE_FIELDS)
     assert m["exact_stop_rate"] == 0.0
 
 

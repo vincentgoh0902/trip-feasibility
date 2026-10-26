@@ -3,7 +3,8 @@
 The same fields are the gold stops in the dataset (dataset.models.AnnotatedStop extends
 ExtractedStop), so parse accuracy compares like with like. Optional fields stay null when
 the text doesn't state them; place_name is copied exactly as written. A stated duration is
-kept as such (duration_min/max), never turned into an end time.
+kept as such (duration_min/max), never turned into an end time; so is a stated journey to a
+stop (travel_start, travel_min/max).
 """
 
 import re
@@ -27,10 +28,15 @@ class ExtractedStop(BaseModel):
     # never an end time; max stays null for "at least an hour"
     duration_min: int | None = Field(default=None, ge=1, le=24 * 60)
     duration_max: int | None = Field(default=None, ge=1, le=24 * 60)
+    # the journey to this stop as the itinerary states it ("9:15 travel there, allow 30–40
+    # minutes" → 09:15, 30, 40): a claim to check against real times, never a leg itself
+    travel_start: time | None = None
+    travel_min: int | None = Field(default=None, ge=0, le=24 * 60)
+    travel_max: int | None = Field(default=None, ge=0, le=24 * 60)
     place_name: str = Field(min_length=1, max_length=300)
     type: StopType
 
-    @field_validator("start_time", "end_time", mode="before")
+    @field_validator("start_time", "end_time", "travel_start", mode="before")
     @classmethod
     def _pad_hour(cls, v):
         if isinstance(v, str) and _SHORT_TIME.match(v):
@@ -45,6 +51,10 @@ class ExtractedStop(BaseModel):
             self.duration_min is None or self.duration_max < self.duration_min
         ):
             raise ValueError("duration_max needs a duration_min no larger than it")
+        if self.travel_max is not None and (
+            self.travel_min is None or self.travel_max < self.travel_min
+        ):
+            raise ValueError("travel_max needs a travel_min no larger than it")
         return self
 
 

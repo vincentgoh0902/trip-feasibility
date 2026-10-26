@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v6"
+PROMPT_VERSION = "extract-v7"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -37,6 +37,10 @@ instead of clock times; otherwise null. Never set both a time and time_of_day.
 states it ("allow 30–40 minutes" → 30 and 40; "about 2 hours" → 120 and 120; "at least an \
 hour" → 60 and null). Otherwise both null. A duration is never an end time: don't work out \
 end_time from it.
+- travel_start, travel_min, travel_max: the journey to this stop, only as the itinerary \
+states it: the stated departure time ("9:15 Travel to the Old Harbour" → "09:15") and how \
+long it says the journey takes in minutes ("allow 30–40 minutes" → 30 and 40). Each is null \
+when not stated. They go on the stop being travelled to, never on a stop of their own.
 - place_name: copied exactly as written in the itinerary, including its spelling and \
 language. Don't correct, translate or complete it. When a heading wraps the name in other \
 words ("Old Harbour photo stop"), take only the name ("Old Harbour").
@@ -45,16 +49,18 @@ restaurant, café or market to eat at, or a timed meal slot), "hotel" (where the
 stays), or "transfer" (stations, airports, journeys between cities).
 
 Not stops: general tips, optional alternatives ("if it rains..."), a choice the itinerary \
-leaves open between named places ("the art museum or the history museum"), untimed meals or \
+leaves open ("the art museum or the history museum") unless it has its own time or duration \
+(below), untimed meals or \
 activities with no named place ("lunch nearby", "a boat trip on the river"), and travel \
 between stops, even under its own heading ("Travel to the Old Harbour: allow 30–40 minutes"; \
-that time is no stop's duration). For a meal described only by an area ("lunch in Le \
-Marais"), the area is the place_name.
+that goes in the next stop's travel fields, not in any duration). For a meal described only \
+by an area ("lunch in Le Marais"), the area is the place_name.
 
 A meal or activity with its own stated time or duration is a stop even with no named place \
 ("12:45 Lunch near the cathedral: pick a café around Market Square, budget 60 minutes"). Its \
 place_name is the most specific area the text gives ("Market Square"), not a landmark it's \
-only near; with no place words at all, the activity's own words ("Lunch break").
+only near; with no place words at all, or when it leaves the place open ("breakfast at the \
+hotel or a café nearby"), the activity's own words ("Breakfast").
 
 A booking checklist, summary or recap \
 that repeats places already in the schedule adds no stops: each visit is one stop, taken \
@@ -91,6 +97,9 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                     },
                     "duration_min": _MINUTES,
                     "duration_max": _MINUTES,
+                    "travel_start": _TIME,
+                    "travel_min": _MINUTES,
+                    "travel_max": _MINUTES,
                     "place_name": {"type": "string"},
                     "type": {"type": "string", "enum": ["venue", "meal", "hotel", "transfer"]},
                 },
@@ -101,6 +110,9 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                     "time_of_day",
                     "duration_min",
                     "duration_max",
+                    "travel_start",
+                    "travel_min",
+                    "travel_max",
                     "place_name",
                     "type",
                 ],

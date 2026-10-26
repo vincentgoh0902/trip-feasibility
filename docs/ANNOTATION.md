@@ -180,6 +180,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `start_time`, `end_time` | Only if the text states them. Otherwise leave them out; never guess. "9:00–12:00" → `"09:00"`, `"12:00"` (quoted) |
 | `time_of_day` | Only when the text says morning, afternoon or evening instead of times (see below) |
 | `duration_min`, `duration_max` | Only if the text states how long to spend there, in minutes: "allow 30–40 minutes" → `30`, `40`; "about 2 hours" → `120`, `120`; "1.5–2h" → `90`, `120`; "at least an hour" → `60` and no `duration_max`. Otherwise leave both out. Works alongside a time or `time_of_day` |
+| `travel_start`, `travel_min`, `travel_max` | The journey *to* this stop, only as the text states it: the stated departure ("9:15 Travel to the Old Harbour" → `"09:15"`) and how long it says the journey takes ("allow 30–40 minutes" → `30`, `40`). Each only when stated. They go on the stop being travelled to; the travel section itself is never a stop. A claim to check, not a leg: your leg is still looked up |
 | `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text. When a heading wraps the name in other words ("Old Harbour photo stop", "Morning at the City Museum"), copy only the name (`Old Harbour`, `City Museum`) |
 | `type` | `venue` (sights, museums, shops, shows, timed activities), `meal` (a named restaurant, café or market eaten at, or a timed meal slot), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
@@ -203,10 +204,10 @@ museum or the history museum": neither is a stop; say so in `notes`), untimed me
 activities with no named place ("lunch nearby", "a boat trip on the river"; a named operator
 or venue is a stop), entrance tips ("use the side entrance"), prices, and the route between two stops
 ("a 20-minute walk along the river"). A travel section is a route too, even under its own
-heading ("Travel to the Old Harbour: allow 30–40 minutes by public transport"): no stop,
-and its time isn't a `duration_*` of the stops either side. The place comes from the section
-where the visit is; the journey's real time goes in a leg if one is needed, looked up as
-usual, never taken from the itinerary. Advice on how to get there ("a taxi is easier")
+heading ("Travel to the Old Harbour: allow 30–40 minutes by public transport"): no stop, and
+its time isn't a `duration_*` of the stops either side. What it states goes in the next
+stop's `travel_*` fields; the place comes from the section where the visit is, and the
+journey's real time goes in a leg, looked up as usual, never taken from the itinerary. Advice on how to get there ("a taxi is easier")
 doesn't change `preferences`. A park or garden on the way becomes a stop only when
 the schedule gives it its own slot. For a meal described as an area ("lunch in Le Marais"),
 use the area as `place_name`; it won't get an opening-hours label.
@@ -218,8 +219,10 @@ gaps around it look like travel slack. For `place_name`, copy the most specific 
 the text gives (`Market Square`), preferring an area over a landmark it's only near (the
 cathedral would read as a visit to the cathedral); with no place words at all, copy the
 activity's own words (`Lunch break`). Type `meal` or `venue` as usual, times and durations as
-stated, and no `opening_hours` label unless a specific venue is named. A choice between
-named places stays a non-stop, timed or not.
+stated, and no `opening_hours` label unless a specific venue is named. A timed slot that
+leaves the place open ("8:30 Breakfast at the hotel or a café near the station") is a stop
+too, named by the activity's own words (`Breakfast`): the time counts even though the place
+can't be located. Untimed choices stay non-stops.
 
 A booking checklist, summary or recap at the end that names places already in the schedule
 adds no stops: each visit is one stop, from the schedule. Places only recommended outside the
@@ -253,6 +256,11 @@ the gap (a day trip to Versailles, say).
   is never required, even when the other stop has times ("morning" then "12:15"), and no
   travel-time label comes from it: labels need a stated gap. A day that can't fit is a
   `daily_load` judgement instead.
+- A stop with `travel_min` needs a leg from the stop before it (same day), whatever the gap:
+  the itinerary's own journey time is checked against yours. If the real time is more than
+  10 minutes over `travel_max` (or `travel_min`), that's a derived travel-time warning.
+- A stated departure (`travel_start`) counts as the start of the gap instead of the previous
+  stop's end: "12:05 head to lunch", lunch at 12:15, is a 10-minute gap.
 - A gap counted from a duration only decides which legs to record. Travel-time labels still
   come only from stated ends, until the check itself uses durations.
 

@@ -1950,6 +1950,44 @@
             ],
             "title": "Duration Max"
           },
+          "travel_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Travel Start"
+          },
+          "travel_min": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Travel Min"
+          },
+          "travel_max": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Travel Max"
+          },
           "place_name": {
             "type": "string",
             "maxLength": 300,

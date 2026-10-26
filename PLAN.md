@@ -134,6 +134,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   with no named place, with the area as place_name; travel sections are routes, not stops.
   ARCHITECTURE decision 70. To verify with the duration work: opening hours stays quiet on
   area stops. (2026-10-26)
+  `extract-v7`: stated journeys go on the stop travelled to (`travel_start`, `travel_min/max`);
+  timed open choices are stops named by the activity. The validator asks for a leg wherever a
+  journey is stated; real > claim + 10 min is a derived warning. ARCHITECTURE decision 71.
+  Next (with durations): the travel-time check reports these. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

@@ -28,6 +28,9 @@ TEXTS = "texts"  # <root>/texts/<id>.md, one per itinerary
 TIGHT_GAP_MIN = 60
 # The travel-time check's default buffer; gold labels assume the default config.
 BUFFER_MIN = 10
+# A journey the itinerary times itself ("allow 30–40 minutes") is a warning when the real
+# time is more than this over its figure (journey planners vary by a few minutes).
+CLAIM_MARGIN_MIN = 10
 
 _INT = "tag:yaml.org,2002:int"
 _FLOAT = "tag:yaml.org,2002:float"
@@ -92,12 +95,18 @@ def dataset_version(root: Path) -> str:
 
 
 def _gap_min(a: AnnotatedStop, b: AnnotatedStop) -> float | None:
-    """Minutes from a's stated end to b's stated start (the gap travel-time labels use)."""
-    if a.day != b.day or a.end_time is None or b.start_time is None:
+    """Minutes from leaving a to b's stated start (the gap travel-time labels use): the
+    stated departure (b.travel_start) if there is one, else a's stated end."""
+    if a.day != b.day or b.start_time is None:
         return None
-    end = datetime.combine(datetime.min, a.end_time)
-    if a.start_time is not None and a.end_time < a.start_time:
-        end += timedelta(days=1)  # ends after midnight
+    if b.travel_start is not None:
+        end = datetime.combine(datetime.min, b.travel_start)
+    elif a.end_time is not None:
+        end = datetime.combine(datetime.min, a.end_time)
+        if a.start_time is not None and a.end_time < a.start_time:
+            end += timedelta(days=1)  # ends after midnight
+    else:
+        return None
     start = datetime.combine(datetime.min, b.start_time)
     return (start - end).total_seconds() / 60
 
@@ -108,7 +117,7 @@ def _duration_gap_min(a: AnnotatedStop, b: AnnotatedStop) -> float | None:
     duration = a.duration_max or a.duration_min
     if a.day != b.day or a.end_time is not None or a.start_time is None or duration is None:
         return None
-    if b.start_time is None:
+    if b.start_time is None or b.travel_start is not None:
         return None
     end = datetime.combine(datetime.min, a.start_time) + timedelta(minutes=duration)
     start = datetime.combine(datetime.min, b.start_time)
@@ -159,15 +168,22 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
             errors.append(f"leg {leg.from_stop} → {leg.to_stop}: recorded twice")
         legs[key] = leg
     for key, (a, b) in pairs.items():
+        if key in legs:
+            continue
         gap = _gap_min(a, b)
-        if gap is not None and 0 <= gap < TIGHT_GAP_MIN and key not in legs:
+        duration_gap = _duration_gap_min(a, b)
+        if gap is not None and 0 <= gap < TIGHT_GAP_MIN:
             errors.append(
                 f"leg {a.id} → {b.id}: only {gap:.0f} min apart, so record its real travel time"
             )
-        gap = _duration_gap_min(a, b)
-        if gap is not None and gap < TIGHT_GAP_MIN and key not in legs:
+        elif duration_gap is not None and duration_gap < TIGHT_GAP_MIN:
             errors.append(
-                f"leg {a.id} → {b.id}: only {gap:.0f} min apart counting {a.id}'s duration, "
+                f"leg {a.id} → {b.id}: only {duration_gap:.0f} min apart counting {a.id}'s "
+                "duration, so record its real travel time"
+            )
+        elif b.travel_min is not None:
+            errors.append(
+                f"leg {a.id} → {b.id}: the itinerary says how long this journey takes, "
                 "so record its real travel time"
             )
 
@@ -204,13 +220,20 @@ def gold_violations(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[Go
     legs = {(leg.from_stop, leg.to_stop): leg for leg in itin.legs}
     for a, b in _consecutive_pairs(itin.stops):
         gap = _gap_min(a, b)
-        if gap is None:
-            continue
         leg = legs.get((a.id, b.id))
-        if gap < 0 or (leg is not None and gap < leg.minutes):
-            out.append(gold("travel_time", "blocker", ("leg", a.id, b.id), True))
-        elif leg is not None and leg.minutes > 0 and gap < leg.minutes + BUFFER_MIN:
-            out.append(gold("travel_time", "warning", ("leg", a.id, b.id), True))
+        severity = None
+        if gap is not None:
+            if gap < 0 or (leg is not None and gap < leg.minutes):
+                severity = "blocker"
+            elif leg is not None and leg.minutes > 0 and gap < leg.minutes + BUFFER_MIN:
+                severity = "warning"
+        # the itinerary's own journey time is well short of the real one
+        claimed = b.travel_max if b.travel_max is not None else b.travel_min
+        over = leg is not None and claimed is not None and leg.minutes > claimed + CLAIM_MARGIN_MIN
+        if severity is None and over:
+            severity = "warning"
+        if severity is not None:
+            out.append(gold("travel_time", severity, ("leg", a.id, b.id), True))
     # one label per hotel, however many stops ("check in", "back to the hotel") name it
     for key in dict.fromkeys(s.hotel for s in itin.stops if s.hotel):
         hotel = hotels.get(key)

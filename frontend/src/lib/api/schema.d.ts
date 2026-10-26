@@ -740,6 +740,12 @@ export interface components {
             duration_min?: number | null;
             /** Duration Max */
             duration_max?: number | null;
+            /** Travel Start */
+            travel_start?: string | null;
+            /** Travel Min */
+            travel_min?: number | null;
+            /** Travel Max */
+            travel_max?: number | null;
             /** Place Name */
             place_name: string;
             /**

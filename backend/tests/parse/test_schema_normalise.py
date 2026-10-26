@@ -33,6 +33,15 @@ def test_durations_are_kept_apart_from_times():
     assert at_least.duration_max is None
 
 
+def test_travel_claim_fields():
+    stop = ExtractedStop(day=1, travel_start="9:15", travel_min=30, travel_max=40,
+                         place_name="A", type="venue")  # fmt: skip
+    assert stop.travel_start == time(9, 15) and stop.start_time is None
+    result = validate_extraction({"stops": [{"day": 1, "place_name": "x", "type": "venue",
+                                             "travel_max": 40}]})  # fmt: skip
+    assert isinstance(result, str) and "travel_max" in result
+
+
 def test_duration_max_needs_a_smaller_min():
     for bad in ({"duration_max": 40}, {"duration_min": 50, "duration_max": 40},
                 {"duration_min": 0}):  # fmt: skip
