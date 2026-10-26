@@ -168,6 +168,10 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
             errors.append(f"leg {leg.from_stop} → {leg.to_stop}: recorded twice")
         legs[key] = leg
     for key, (a, b) in pairs.items():
+        if not (a.located and b.located):
+            if key in legs:
+                errors.append(f"leg {a.id} → {b.id}: one end has no location (located: false)")
+            continue
         if key in legs:
             continue
         gap = _gap_min(a, b)

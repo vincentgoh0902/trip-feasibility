@@ -753,6 +753,11 @@ export interface components {
              * @enum {string}
              */
             type: "venue" | "transfer" | "hotel" | "meal";
+            /**
+             * Located
+             * @default true
+             */
+            located: boolean;
             osm?: components["schemas"]["OsmRef"] | null;
             /** Lat */
             lat?: number | null;

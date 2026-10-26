@@ -95,6 +95,16 @@ async def test_unresolved_places_are_flagged_not_guessed(check_deps, paris, resp
     assert geocodes["s1"].reason == "no match in or within 60 km of Paris"
 
 
+async def test_activity_named_stops_are_not_searched(check_deps, paris, respx_mock):
+    # no search route for "Lunch": respx fails the test if it's requested
+    city = await locate_city(check_deps, "Paris")
+    located, geocodes = await geocode_stops(
+        check_deps, stops("Lunch"), city, not_places=frozenset({"s1"})
+    )
+    assert located[0].lat is None
+    assert geocodes["s1"].place is None and geocodes["s1"].reason.startswith("not a place")
+
+
 async def test_each_name_is_searched_once_and_cached(check_deps, paris, respx_mock):
     inside = search_route(respx_mock, q="Louvre Museum", bounded="1").respond(json=[LOUVRE])
     city = await locate_city(check_deps, "Paris")

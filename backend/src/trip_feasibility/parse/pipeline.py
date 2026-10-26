@@ -76,5 +76,8 @@ async def parse_itinerary(
     except ExtractionError as e:
         raise ParseError(e.code, str(e)) from e
     stops = normalise(extraction.extraction.stops, trip_start)
-    stops, geocodes = await geocode_stops(deps, stops, located_city)
+    not_places = frozenset(
+        s.id for s, e in zip(stops, extraction.extraction.stops, strict=True) if not e.located
+    )
+    stops, geocodes = await geocode_stops(deps, stops, located_city, not_places)
     return ParsedItinerary(located_city, text, stops, geocodes, extraction)

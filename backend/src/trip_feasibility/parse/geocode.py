@@ -66,16 +66,23 @@ async def geocode_place(deps: CheckDeps, place_name: str, city: City) -> Geocode
 
 
 async def geocode_stops(
-    deps: CheckDeps, stops: list[Stop], city: City
+    deps: CheckDeps, stops: list[Stop], city: City, not_places: frozenset[str] = frozenset()
 ) -> tuple[list[Stop], dict[str, Geocode]]:
     """Stops with osm/lat/lon filled in where found, and the geocode for every stop id.
-    Each distinct place name is searched once."""
+    Each distinct place name is searched once. Stops in `not_places` (named by the activity,
+    "Lunch") aren't searched: a café called "Lunch" would be a guess."""
     by_name: dict[str, Geocode] = {}
     for s in stops:
-        if s.place_name not in by_name:
+        if s.id not in not_places and s.place_name not in by_name:
             by_name[s.place_name] = await geocode_place(deps, s.place_name, city)
     located, results = [], {}
     for s in stops:
+        if s.id in not_places:
+            results[s.id] = Geocode(
+                place_name=s.place_name, reason="not a place: no location given"
+            )
+            located.append(s)
+            continue
         g = by_name[s.place_name]
         results[s.id] = g
         if g.place is not None:

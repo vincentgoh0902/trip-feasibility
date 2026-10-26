@@ -156,6 +156,19 @@ def test_stated_departure_is_the_gap_start():
     assert gold[("leg", "s2", "s3")] == "warning"
 
 
+def test_no_leg_to_or_from_a_stop_without_a_location():
+    raw = example_raw()
+    raw["stops"][2] |= {"place_name": "Café Marly", "located": False}  # as if named "Lunch"
+    itin = DatasetItinerary.model_validate(raw)
+    # the example's s2 → s3 and s3 → s4 legs now touch a stop with no location
+    assert itinerary_errors(itin, hotels()) == [
+        "leg s2 → s3: one end has no location (located: false)",
+        "leg s3 → s4: one end has no location (located: false)",
+    ]
+    raw["legs"] = [leg for leg in raw["legs"] if "s3" not in (leg["from"], leg["to"])]
+    assert itinerary_errors(DatasetItinerary.model_validate(raw), hotels()) == []
+
+
 def test_leg_must_join_consecutive_stops():
     raw = example_raw()
     raw["legs"].append({"from": "s1", "to": "s3", "mode": "walk", "minutes": 4, "source": "x"})

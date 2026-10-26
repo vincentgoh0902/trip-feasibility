@@ -183,6 +183,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `travel_start`, `travel_min`, `travel_max` | The journey *to* this stop, only as the text states it: the stated departure ("9:15 Travel to the Old Harbour" → `"09:15"`) and how long it says the journey takes ("allow 30–40 minutes" → `30`, `40`). Each only when stated. They go on the stop being travelled to; the travel section itself is never a stop. A claim to check, not a leg: your leg is still looked up |
 | `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text. When a heading wraps the name in other words ("Old Harbour photo stop", "Morning at the City Museum"), copy only the name (`Old Harbour`, `City Museum`) |
 | `type` | `venue` (sights, museums, shops, shows, timed activities), `meal` (a named restaurant, café or market eaten at, or a timed meal slot), `hotel`, `transfer` (stations, airports, journeys) |
+| `located` | Write `located: false` when `place_name` is the activity's own words rather than a place (`Lunch`, `Breakfast`, `Lunch break`: a timed slot that names none). Leave it out otherwise, areas included (`Champ de Mars` can be found, roughly) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
 | `osm` | Optional; leave it out for now |
 
@@ -289,6 +290,8 @@ the gap (a day trip to Versailles, say).
   10 minutes over `travel_max` (or `travel_min`), that's a derived travel-time warning.
 - A stated departure (`travel_start`) counts as the start of the gap instead of the previous
   stop's end: "12:05 head to lunch", lunch at 12:15, is a 10-minute gap.
+- No leg to or from a stop with `located: false`: there's nowhere to look up, so the
+  validator never asks for one (and refuses one). Its time still counts for `daily_load`.
 - A gap counted from a duration only decides which legs to record. Travel-time labels still
   come only from stated ends, until the check itself uses durations.
 

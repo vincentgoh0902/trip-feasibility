@@ -2004,6 +2004,11 @@
             ],
             "title": "Type"
           },
+          "located": {
+            "type": "boolean",
+            "title": "Located",
+            "default": true
+          },
           "osm": {
             "anyOf": [
               {

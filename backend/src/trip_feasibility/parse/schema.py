@@ -35,6 +35,9 @@ class ExtractedStop(BaseModel):
     travel_max: int | None = Field(default=None, ge=0, le=24 * 60)
     place_name: str = Field(min_length=1, max_length=300)
     type: StopType
+    # false when place_name is the activity's words, not a place ("Lunch", for a timed slot
+    # that names none): never geocoded, and no leg to or from it
+    located: bool = True
 
     @field_validator("start_time", "end_time", "travel_start", mode="before")
     @classmethod

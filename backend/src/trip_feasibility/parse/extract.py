@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v8"
+PROMPT_VERSION = "extract-v9"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -47,6 +47,8 @@ words ("Old Harbour photo stop"), take only the name ("Old Harbour").
 - type: "venue" (sights, museums, shops, shows, parks, timed activities), "meal" (a named \
 restaurant, café or market to eat at, or a timed meal slot), "hotel" (where the traveller \
 stays), or "transfer" (stations, airports, journeys between cities).
+- located: false when place_name is the activity's own words rather than a place \
+("Breakfast", "Lunch break"; see below); true for every named place or area.
 
 Not stops: general tips, optional alternatives ("if it rains..."), a choice the itinerary \
 leaves open ("the art museum or the history museum") unless it has its own time or duration \
@@ -119,6 +121,7 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                     "travel_max": _MINUTES,
                     "place_name": {"type": "string"},
                     "type": {"type": "string", "enum": ["venue", "meal", "hotel", "transfer"]},
+                    "located": {"type": "boolean"},
                 },
                 "required": [
                     "day",
@@ -132,6 +135,7 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                     "travel_max",
                     "place_name",
                     "type",
+                    "located",
                 ],
                 "additionalProperties": False,
             },
