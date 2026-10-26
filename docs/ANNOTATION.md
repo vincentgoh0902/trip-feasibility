@@ -156,6 +156,19 @@ Judge from the reviews, not from the score or from whether it's on the "low" lis
 Add `stops`, `legs` and `violations` together (`[]` when a list is empty). See
 `docs/annotation/example.yaml` for a complete one.
 
+- `[]` means "checked, none found"; a missing key means "not annotated yet". `violations: []`
+  covers only the hand-labelled checks: travel-time and hotel labels are derived anyway.
+- `notes` is text, not a list: leave it out when there's nothing to say, never `[]`.
+- **Preferences** (if not default) are set before annotating, from the prompt alone, never
+  from the reply: "as much as possible" → `packed`, "relaxed" or "not rushed" → `relaxed`,
+  kids or limited walking → a lower `max_walk_km`, a rental car → `car`. Set them for all 40
+  in one go, and give the dev split some of the variety (at least one relaxed, one packed,
+  one low walking limit), since limits are tuned on dev. Don't look at the checker's pace
+  limits (`checks/daily_load.py`) first.
+- **YAML:** block style (one field per line, as in the example) or inline `{ ... }` both
+  work. Always quote times (`"09:00"`). Quote any value containing a comma in inline style,
+  and any value containing `: ` or ` #` in either style.
+
 ### Stops
 
 The stops are what a careful reader would extract from the text, in the order written:
@@ -165,16 +178,26 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `id` | `s1`, `s2`, ... in order |
 | `day` | Day number as in the text (1 = `trip_start`) |
 | `start_time`, `end_time` | Only if the text states them. Otherwise leave them out; never guess. "9:00–12:00" → `"09:00"`, `"12:00"` (quoted) |
-| `time_of_day` | Only when the text says morning, afternoon or evening instead of times |
+| `time_of_day` | Only when the text says morning, afternoon or evening instead of times (see below) |
 | `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text |
 | `type` | `venue` (sights, museums, shops, shows), `meal` (a named restaurant, café or market eaten at), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
 | `osm` | Optional; leave it out for now |
 
+Vague times:
+
+- Several places under one "Morning:" heading each get `time_of_day: morning`, in text order.
+- Stated times win: "Morning (9:00–11:00)" → `start_time`/`end_time`, no `time_of_day`.
+- Clear synonyms only: "late morning" → morning; "night", "after dinner" → evening.
+- Anything else ("lunch", "midday", "sunset", "then"): no times and no `time_of_day`.
+  Never guess; mention it in `notes` if it matters.
+
 What counts as a stop: a place the traveller goes to. Not stops: general advice ("buy a
-Navigo pass"), alternatives ("or, if it rains, ..."), and vague meals without a place
-("lunch nearby"). For a meal described as an area ("lunch in Le Marais"), use the area as
-`place_name`; it won't get an opening-hours label.
+Navigo pass"), alternatives ("or, if it rains, ..."), vague meals without a place ("lunch
+nearby"), entrance tips ("use the side entrance"), prices, and the route between two stops
+("a 20-minute walk along the river"). A park or garden on the way becomes a stop only when
+the schedule gives it its own slot. For a meal described as an area ("lunch in Le Marais"),
+use the area as `place_name`; it won't get an opening-hours label.
 
 A booking checklist, summary or recap at the end that names places already in the schedule
 adds no stops: each visit is one stop, from the schedule. Places only recommended outside the
@@ -200,6 +223,10 @@ the gap (a day trip to Versailles, say).
 - `minutes`: the total, as a whole number. `mode`: what that option mostly is (`walk`,
   `transit`, `bike`, `car`). `source`: e.g. `Google Maps`.
 - Two stops at the same place (lunch inside a museum) get `minutes: 0`.
+- A stop with only `time_of_day` (or no time) has no stated end or start, so a leg next to it
+  is never required, even when the other stop has times ("morning" then "12:15"), and no
+  travel-time label comes from it: labels need a stated gap. A day that can't fit is a
+  `daily_load` judgement instead.
 
 You don't label travel-time problems yourself: they are worked out from these times (a gap
 shorter than the journey is a blocker; less than 10 minutes to spare is a warning; stops
