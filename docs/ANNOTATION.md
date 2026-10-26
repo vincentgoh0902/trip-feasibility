@@ -202,7 +202,12 @@ Navigo pass"), alternatives ("or, if it rains, ..."), a choice the text leaves o
 museum or the history museum": neither is a stop; say so in `notes`), meals and activities
 with no named place ("lunch nearby", "a boat trip on the river"; a named operator or venue is
 a stop), entrance tips ("use the side entrance"), prices, and the route between two stops
-("a 20-minute walk along the river"). A park or garden on the way becomes a stop only when
+("a 20-minute walk along the river"). A travel section is a route too, even under its own
+heading ("Travel to the Old Harbour: allow 30–40 minutes by public transport"): no stop,
+and its time isn't a `duration_*` of the stops either side. The place comes from the section
+where the visit is; the journey's real time goes in a leg if one is needed, looked up as
+usual, never taken from the itinerary. Advice on how to get there ("a taxi is easier")
+doesn't change `preferences`. A park or garden on the way becomes a stop only when
 the schedule gives it its own slot. For a meal described as an area ("lunch in Le Marais"),
 use the area as `place_name`; it won't get an opening-hours label.
 
