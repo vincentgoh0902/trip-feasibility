@@ -179,7 +179,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `day` | Day number as in the text (1 = `trip_start`) |
 | `start_time`, `end_time` | Only if the text states them. Otherwise leave them out; never guess. "9:00–12:00" → `"09:00"`, `"12:00"` (quoted) |
 | `time_of_day` | Only when the text says morning, afternoon or evening instead of times (see below) |
-| `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text |
+| `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text. When a heading wraps the name in other words ("Old Harbour photo stop", "Morning at the City Museum"), copy only the name (`Old Harbour`, `City Museum`) |
 | `type` | `venue` (sights, museums, shops, shows), `meal` (a named restaurant, café or market eaten at), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
 | `osm` | Optional; leave it out for now |
