@@ -130,6 +130,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   Legs are also recorded where start + duration leaves under 60 minutes before the next
   start (the validator asks for them), so that check has the real times; labels still come
   from stated ends only. (2026-10-26)
+  `extract-v6`: a timed slot (a meal or activity with its own time or duration) is a stop even
+  with no named place, with the area as place_name; travel sections are routes, not stops.
+  ARCHITECTURE decision 70. To verify with the duration work: opening hours stays quiet on
+  area stops. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

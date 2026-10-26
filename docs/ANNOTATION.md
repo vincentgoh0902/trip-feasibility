@@ -181,7 +181,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `time_of_day` | Only when the text says morning, afternoon or evening instead of times (see below) |
 | `duration_min`, `duration_max` | Only if the text states how long to spend there, in minutes: "allow 30–40 minutes" → `30`, `40`; "about 2 hours" → `120`, `120`; "1.5–2h" → `90`, `120`; "at least an hour" → `60` and no `duration_max`. Otherwise leave both out. Works alongside a time or `time_of_day` |
 | `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text. When a heading wraps the name in other words ("Old Harbour photo stop", "Morning at the City Museum"), copy only the name (`Old Harbour`, `City Museum`) |
-| `type` | `venue` (sights, museums, shops, shows), `meal` (a named restaurant, café or market eaten at), `hotel`, `transfer` (stations, airports, journeys) |
+| `type` | `venue` (sights, museums, shops, shows, timed activities), `meal` (a named restaurant, café or market eaten at, or a timed meal slot), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
 | `osm` | Optional; leave it out for now |
 
@@ -199,9 +199,9 @@ Vague times:
 
 What counts as a stop: a place the traveller goes to. Not stops: general advice ("buy a
 Navigo pass"), alternatives ("or, if it rains, ..."), a choice the text leaves open ("the art
-museum or the history museum": neither is a stop; say so in `notes`), meals and activities
-with no named place ("lunch nearby", "a boat trip on the river"; a named operator or venue is
-a stop), entrance tips ("use the side entrance"), prices, and the route between two stops
+museum or the history museum": neither is a stop; say so in `notes`), untimed meals and
+activities with no named place ("lunch nearby", "a boat trip on the river"; a named operator
+or venue is a stop), entrance tips ("use the side entrance"), prices, and the route between two stops
 ("a 20-minute walk along the river"). A travel section is a route too, even under its own
 heading ("Travel to the Old Harbour: allow 30–40 minutes by public transport"): no stop,
 and its time isn't a `duration_*` of the stops either side. The place comes from the section
@@ -211,12 +211,23 @@ doesn't change `preferences`. A park or garden on the way becomes a stop only wh
 the schedule gives it its own slot. For a meal described as an area ("lunch in Le Marais"),
 use the area as `place_name`; it won't get an opening-hours label.
 
+**A timed slot is a stop**, even with no named place: a meal or activity the schedule gives
+its own stated time or duration ("12:45 Lunch near the cathedral: pick a café around Market
+Square, budget 60 minutes") takes time out of the day, and leaving it out would make the
+gaps around it look like travel slack. For `place_name`, copy the most specific area words
+the text gives (`Market Square`), preferring an area over a landmark it's only near (the
+cathedral would read as a visit to the cathedral); with no place words at all, copy the
+activity's own words (`Lunch break`). Type `meal` or `venue` as usual, times and durations as
+stated, and no `opening_hours` label unless a specific venue is named. A choice between
+named places stays a non-stop, timed or not.
+
 A booking checklist, summary or recap at the end that names places already in the schedule
 adds no stops: each visit is one stop, from the schedule. Places only recommended outside the
 day-by-day schedule ("Where to eat: Cal Pep, Bar Mut", "If you have more time: Park Güell")
 aren't stops either, even when named: a stop belongs to a day because the schedule puts it
 there. A place the schedule names inside a day ("lunch at one of the tapas bars below")
-points to the list without picking one, so it's a meal with no place: not a stop.
+points to the list without picking one, so it's a meal with no place: a stop only if it has
+its own time or duration (a timed slot, above).
 
 Keep stops in the order of the text; if the text's own order is impossible (an afternoon
 stop listed before a morning one), keep the text's order and mention it in `notes`.

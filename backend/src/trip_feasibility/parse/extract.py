@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v5"
+PROMPT_VERSION = "extract-v6"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -40,14 +40,23 @@ end_time from it.
 - place_name: copied exactly as written in the itinerary, including its spelling and \
 language. Don't correct, translate or complete it. When a heading wraps the name in other \
 words ("Old Harbour photo stop"), take only the name ("Old Harbour").
-- type: "venue" (sights, museums, shops, shows, parks), "meal" (a named restaurant, café or \
-market to eat at), "hotel" (where the traveller stays), or "transfer" (stations, airports, \
-journeys between cities).
+- type: "venue" (sights, museums, shops, shows, parks, timed activities), "meal" (a named \
+restaurant, café or market to eat at, or a timed meal slot), "hotel" (where the traveller \
+stays), or "transfer" (stations, airports, journeys between cities).
 
 Not stops: general tips, optional alternatives ("if it rains..."), a choice the itinerary \
-leaves open ("the art museum or the history museum"), and meals or activities with no named \
-place ("lunch nearby", "a boat trip on the river"). For a meal described only by an area \
-("lunch in Le Marais"), the area is the place_name. A booking checklist, summary or recap \
+leaves open between named places ("the art museum or the history museum"), untimed meals or \
+activities with no named place ("lunch nearby", "a boat trip on the river"), and travel \
+between stops, even under its own heading ("Travel to the Old Harbour: allow 30–40 minutes"; \
+that time is no stop's duration). For a meal described only by an area ("lunch in Le \
+Marais"), the area is the place_name.
+
+A meal or activity with its own stated time or duration is a stop even with no named place \
+("12:45 Lunch near the cathedral: pick a café around Market Square, budget 60 minutes"). Its \
+place_name is the most specific area the text gives ("Market Square"), not a landmark it's \
+only near; with no place words at all, the activity's own words ("Lunch break").
+
+A booking checklist, summary or recap \
 that repeats places already in the schedule adds no stops: each visit is one stop, taken \
 from the schedule. Places only recommended outside the day-by-day schedule (a "where to \
 eat" list, "if you have more time") aren't stops either: a stop belongs to a day because \
