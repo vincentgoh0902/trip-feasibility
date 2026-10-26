@@ -13,21 +13,29 @@ made or changed: it's how I follow the project.**
 
 ## Status (2026-10-26; details in PLAN.md)
 
-Built: all five checks, parse pipeline, LangGraph agent with re-checked fixes, eval runner,
-injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`, results),
-restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels labelled.
+Built: all five checks, parse pipeline (`extract-v8`), LangGraph agent with re-checked fixes,
+eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
+results), restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels
+labelled. Stops drafted for all 15 dev itineraries (to be checked by Vincent); test stops wait
+until the prompt is frozen.
 
 Waiting on Vincent, in this order:
-1. **Back up `data/dataset/`** (the only copy of the 40 replies and hotel labels).
-2. **`ANTHROPIC_API_KEY`** in the repo-root `.env` (no `.env` exists yet), after a monthly spend
-   cap in the Console; then `scripts/smoke_parse.py`. Unblocks parsed-mode evals, live fixes,
-   the live injection suite and demo fixes.
-3. **Annotate the itineraries** (ANNOTATION.md step 4; none done). The 15 dev ones first: the
-   first baseline eval needs only those. The 25 test ones are needed before the final run.
-4. Optional: Langfuse Cloud keys. Before slice 2 can be tried: OAuth apps + `API_JWT_SECRET`.
+1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
+   drafted stops; the `dataset-backup-*` folders beside it don't count).
+2. **Check the drafted dev stops** against `show_clean.py <id>`.
+3. **Preferences for all 40**, in one go, from the prompts only (dev gets some variety).
+4. **Legs for the dev files** (the validator lists each one needed).
+5. **Violations for the dev files** (opening hours, public holidays, daily load; `[]` if none).
+6. `validate_dataset.py --partial` until only the test files are unannotated.
 
-Not blocked on Vincent: frontend slice 2 code (sign-in, `/check/new`, fix accept/reject; tests
-use fakes), more made-up demo samples, settling the hosting shape.
+In parallel: **`ANTHROPIC_API_KEY`** in the repo-root `.env` (none yet), after a monthly spend
+cap in the Console; then `scripts/smoke_parse.py`. Optional: Langfuse Cloud keys; before slice 2
+can be tried, OAuth apps + `API_JWT_SECRET`.
+
+Then (Claude): first baseline eval on dev (gold mode; parsed once the key is in); test stops once
+the prompt is frozen. Not blocked on Vincent: travel time and daily load using durations and
+stated journeys, skipping geocoding for activity-word stops, frontend slice 2 code, more demo
+samples, settling the hosting shape.
 
 ## Stack
 
