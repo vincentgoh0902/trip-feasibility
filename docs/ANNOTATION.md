@@ -191,8 +191,8 @@ Vague times:
 - Stated times win: "Morning (9:00–11:00)" → `start_time`/`end_time`, no `time_of_day`.
 - A duration isn't an end time: "09:15, allow 30–40 min" → `start_time: "09:15"`,
   `duration_min: 30`, `duration_max: 40`, no `end_time`. Never compute an end from a duration
-  (it can still inform your `daily_load` judgement). Legs and travel-time labels still need a
-  stated end.
+  (it can still inform your `daily_load` judgement). It does count for which legs to record
+  (see Legs); travel-time labels still need a stated end.
 - Clear synonyms only: "late morning" → morning; "night", "after dinner" → evening.
 - Anything else ("lunch", "midday", "sunset", "then"): no times and no `time_of_day`.
   Never guess; mention it in `notes` if it matters.
@@ -219,8 +219,11 @@ stop listed before a morning one), keep the text's order and mention it in `note
 ### Legs: real travel times
 
 Record a leg for **every pair of consecutive stops on the same day with less than 60
-minutes between them** (the end of one and the start of the next, both stated). The
-validator lists any you miss. Add others too when you suspect the journey takes longer than
+minutes between them** (the end of one and the start of the next, both stated). A stop with
+a start time and a duration but no stated end counts as ending at start + `duration_max` (or
+`duration_min` when there's no max): "10:00, allow 30–40 min" then "10:45" is 5 minutes
+apart, so record that leg too (also when the sum overlaps the next start). The validator
+lists any you miss. Add others too when you suspect the journey takes longer than
 the gap (a day trip to Versailles, say).
 
 - Look the journey up in Google Maps or Citymapper, departing at the first stop's end time,
@@ -234,6 +237,8 @@ the gap (a day trip to Versailles, say).
   is never required, even when the other stop has times ("morning" then "12:15"), and no
   travel-time label comes from it: labels need a stated gap. A day that can't fit is a
   `daily_load` judgement instead.
+- A gap counted from a duration only decides which legs to record. Travel-time labels still
+  come only from stated ends, until the check itself uses durations.
 
 You don't label travel-time problems yourself: they are worked out from these times (a gap
 shorter than the journey is a blocker; less than 10 minutes to spare is a warning; stops

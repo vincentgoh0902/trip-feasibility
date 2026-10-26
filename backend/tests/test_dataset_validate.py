@@ -108,6 +108,23 @@ def test_tight_leg_needs_a_travel_time():
     assert errors == ["leg s3 → s4: only 15 min apart, so record its real travel time"]
 
 
+def test_duration_counts_as_an_end_for_which_legs_to_record():
+    raw = example_raw()
+    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
+    raw["stops"][1] |= {"end_time": None, "duration_min": 150, "duration_max": 170}
+    itin = DatasetItinerary.model_validate(raw)
+    errors = itinerary_errors(itin, hotels())
+    # 09:00 + 170 min = 11:50, 25 min before lunch at 12:15
+    assert errors == [
+        "leg s2 → s3: only 25 min apart counting s2's duration, so record its real travel time"
+    ]
+    # a duration never produces a travel-time label: labels need a stated end
+    assert not any(g.target == ("leg", "s2", "s3") for g in gold_violations(itin, hotels()))
+
+    raw["stops"][1] |= {"duration_min": 60, "duration_max": None}  # ends 10:00: no leg needed
+    assert itinerary_errors(DatasetItinerary.model_validate(raw), hotels()) == []
+
+
 def test_leg_must_join_consecutive_stops():
     raw = example_raw()
     raw["legs"].append({"from": "s1", "to": "s3", "mode": "walk", "minutes": 4, "source": "x"})

@@ -127,6 +127,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   never `end_time`; a heading's extra words ("photo stop") aren't part of `place_name`.
   ARCHITECTURE decision 69. Next: travel time and daily load use durations (an estimated
   end, labelled as estimated). (2026-10-26)
+  Legs are also recorded where start + duration leaves under 60 minutes before the next
+  start (the validator asks for them), so that check has the real times; labels still come
+  from stated ends only. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

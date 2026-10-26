@@ -92,11 +92,25 @@ def dataset_version(root: Path) -> str:
 
 
 def _gap_min(a: AnnotatedStop, b: AnnotatedStop) -> float | None:
+    """Minutes from a's stated end to b's stated start (the gap travel-time labels use)."""
     if a.day != b.day or a.end_time is None or b.start_time is None:
         return None
     end = datetime.combine(datetime.min, a.end_time)
     if a.start_time is not None and a.end_time < a.start_time:
         end += timedelta(days=1)  # ends after midnight
+    start = datetime.combine(datetime.min, b.start_time)
+    return (start - end).total_seconds() / 60
+
+
+def _duration_gap_min(a: AnnotatedStop, b: AnnotatedStop) -> float | None:
+    """The gap when a has no stated end but a stated duration: its end counted as start +
+    duration_max (or duration_min). Only decides which legs to record, never a label."""
+    duration = a.duration_max or a.duration_min
+    if a.day != b.day or a.end_time is not None or a.start_time is None or duration is None:
+        return None
+    if b.start_time is None:
+        return None
+    end = datetime.combine(datetime.min, a.start_time) + timedelta(minutes=duration)
     start = datetime.combine(datetime.min, b.start_time)
     return (start - end).total_seconds() / 60
 
@@ -149,6 +163,12 @@ def itinerary_errors(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[s
         if gap is not None and 0 <= gap < TIGHT_GAP_MIN and key not in legs:
             errors.append(
                 f"leg {a.id} → {b.id}: only {gap:.0f} min apart, so record its real travel time"
+            )
+        gap = _duration_gap_min(a, b)
+        if gap is not None and gap < TIGHT_GAP_MIN and key not in legs:
+            errors.append(
+                f"leg {a.id} → {b.id}: only {gap:.0f} min apart counting {a.id}'s duration, "
+                "so record its real travel time"
             )
 
     days = {s.day for s in itin.stops}
