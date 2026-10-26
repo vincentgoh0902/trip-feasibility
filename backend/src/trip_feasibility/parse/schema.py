@@ -2,7 +2,8 @@
 
 The same fields are the gold stops in the dataset (dataset.models.AnnotatedStop extends
 ExtractedStop), so parse accuracy compares like with like. Optional fields stay null when
-the text doesn't state them; place_name is copied exactly as written.
+the text doesn't state them; place_name is copied exactly as written. A stated duration is
+kept as such (duration_min/max), never turned into an end time.
 """
 
 import re
@@ -22,6 +23,10 @@ class ExtractedStop(BaseModel):
     start_time: time | None = None
     end_time: time | None = None
     time_of_day: TimeOfDay | None = None
+    # a stated length of visit ("allow 30–40 minutes" → 30, 40; "about an hour" → 60, 60),
+    # never an end time; max stays null for "at least an hour"
+    duration_min: int | None = Field(default=None, ge=1, le=24 * 60)
+    duration_max: int | None = Field(default=None, ge=1, le=24 * 60)
     place_name: str = Field(min_length=1, max_length=300)
     type: StopType
 
@@ -36,6 +41,10 @@ class ExtractedStop(BaseModel):
     def _one_kind_of_time(self):
         if self.time_of_day and (self.start_time or self.end_time):
             raise ValueError("use start/end times or time_of_day, not both")
+        if self.duration_max is not None and (
+            self.duration_min is None or self.duration_max < self.duration_min
+        ):
+            raise ValueError("duration_max needs a duration_min no larger than it")
         return self
 
 

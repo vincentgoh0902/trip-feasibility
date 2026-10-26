@@ -179,6 +179,7 @@ The stops are what a careful reader would extract from the text, in the order wr
 | `day` | Day number as in the text (1 = `trip_start`) |
 | `start_time`, `end_time` | Only if the text states them. Otherwise leave them out; never guess. "9:00–12:00" → `"09:00"`, `"12:00"` (quoted) |
 | `time_of_day` | Only when the text says morning, afternoon or evening instead of times (see below) |
+| `duration_min`, `duration_max` | Only if the text states how long to spend there, in minutes: "allow 30–40 minutes" → `30`, `40`; "about 2 hours" → `120`, `120`; "1.5–2h" → `90`, `120`; "at least an hour" → `60` and no `duration_max`. Otherwise leave both out. Works alongside a time or `time_of_day` |
 | `place_name` | Copied **exactly** as written, e.g. `Louvre Museum`, even if misspelled. Copy it from the cleaned text (`scripts/show_clean.py <id>`), which is what extraction sees: it differs from the raw reply only where an escape or entity was decoded (`\&` → `&`) or a link reduced to its text. The validator checks it appears in the cleaned text. When a heading wraps the name in other words ("Old Harbour photo stop", "Morning at the City Museum"), copy only the name (`Old Harbour`, `City Museum`) |
 | `type` | `venue` (sights, museums, shops, shows), `meal` (a named restaurant, café or market eaten at), `hotel`, `transfer` (stations, airports, journeys) |
 | `hotel` | Hotel stops only: the key from hotels.yaml, e.g. `paris-regina` |
@@ -188,8 +189,10 @@ Vague times:
 
 - Several places under one "Morning:" heading each get `time_of_day: morning`, in text order.
 - Stated times win: "Morning (9:00–11:00)" → `start_time`/`end_time`, no `time_of_day`.
-- A duration isn't an end time: "09:15, allow 30–40 min" → `start_time: "09:15"` only. Don't
-  compute an end from a duration (the duration can still inform `daily_load`).
+- A duration isn't an end time: "09:15, allow 30–40 min" → `start_time: "09:15"`,
+  `duration_min: 30`, `duration_max: 40`, no `end_time`. Never compute an end from a duration
+  (it can still inform your `daily_load` judgement). Legs and travel-time labels still need a
+  stated end.
 - Clear synonyms only: "late morning" → morning; "night", "after dinner" → evening.
 - Anything else ("lunch", "midday", "sunset", "then"): no times and no `time_of_day`.
   Never guess; mention it in `notes` if it matters.

@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v4"
+PROMPT_VERSION = "extract-v5"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -33,8 +33,13 @@ weekdays instead, count from the trip start date you're given.
 it doesn't; never estimate a time. A single time ("10:00 Louvre") is a start_time.
 - time_of_day: "morning", "afternoon" or "evening" when the itinerary gives only that \
 instead of clock times; otherwise null. Never set both a time and time_of_day.
+- duration_min, duration_max: how long to spend there in minutes, only when the itinerary \
+states it ("allow 30–40 minutes" → 30 and 40; "about 2 hours" → 120 and 120; "at least an \
+hour" → 60 and null). Otherwise both null. A duration is never an end time: don't work out \
+end_time from it.
 - place_name: copied exactly as written in the itinerary, including its spelling and \
-language. Don't correct, translate or complete it.
+language. Don't correct, translate or complete it. When a heading wraps the name in other \
+words ("Old Harbour photo stop"), take only the name ("Old Harbour").
 - type: "venue" (sights, museums, shops, shows, parks), "meal" (a named restaurant, café or \
 market to eat at), "hotel" (where the traveller stays), or "transfer" (stations, airports, \
 journeys between cities).
@@ -54,6 +59,10 @@ _TIME = {
     "anyOf": [{"type": "string"}, {"type": "null"}],
     "description": '24-hour "HH:MM", or null if not stated',
 }
+_MINUTES = {
+    "anyOf": [{"type": "integer"}, {"type": "null"}],
+    "description": "minutes, or null if not stated",
+}
 EXTRACTION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -71,10 +80,21 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                             {"type": "null"},
                         ]
                     },
+                    "duration_min": _MINUTES,
+                    "duration_max": _MINUTES,
                     "place_name": {"type": "string"},
                     "type": {"type": "string", "enum": ["venue", "meal", "hotel", "transfer"]},
                 },
-                "required": ["day", "start_time", "end_time", "time_of_day", "place_name", "type"],
+                "required": [
+                    "day",
+                    "start_time",
+                    "end_time",
+                    "time_of_day",
+                    "duration_min",
+                    "duration_max",
+                    "place_name",
+                    "type",
+                ],
                 "additionalProperties": False,
             },
         }

@@ -1013,6 +1013,8 @@ verbatim (the validator checks it's in the text), times only when stated, `time_
 otherwise. That makes them the reference for parse accuracy as well as the stops the
 violations point at. `time_of_day` maps to fixed windows (`itinerary.TIME_OF_DAY_WINDOWS`:
 morning 09–12, afternoon 13–17, evening 18–21), used by both the annotator and parse step 3.
+A stated length of visit ("allow 30–40 minutes") goes in `duration_min`/`duration_max`, never
+into `end_time` (decision 69); the checks don't use it yet.
 `osm` is optional for now; a geocoding helper can propose it later for the annotator to
 confirm.
 
@@ -1200,6 +1202,7 @@ Postgres. Three things to settle before the first deploy:
 | 66 | Brand colours as CSS variables behind shadcn's semantic tokens; severity shades derived for AA contrast (2026-10-25) | Hardcoded colours; the kit's accents as text | Restyling is a change to one file; meets the PRD's WCAG AA requirement | Severity shades aren't in the kit |
 | 67 | Palette and shapes taken from the hero illustration, replacing the branding kit's (2026-10-26) | Keep the kit's greens and Newsreader | One visual language from the illustration to the results page | Blocker shares the terracotta family with primary buttons (told apart by badge and edge); the site no longer follows the branding kit |
 | 68 | Open choices ("X or Y") and activities with no named place aren't stops, in both the annotation guide and the extraction prompt (`extract-v4`) (2026-10-26) | Count both options; count the activity under its generic name | Neither can be located or checked; guide and prompt agree, so extraction is scored against the rule it was given | Real visits can go unchecked when the text doesn't commit |
+| 69 | Stated durations are their own fields (`duration_min`, `duration_max`, minutes), in the gold stops and the extraction prompt (`extract-v5`); `end_time` stays stated-only. The same prompt version takes only the name from a heading like "Old Harbour photo stop" (2026-10-26) | Leave durations out; compute `end_time` from them | Duration-style itineraries are common, and without durations travel time and daily load mostly report unknown. Keeping them apart from `end_time` keeps gold labels to what the text says; code, not the LLM, can later derive an estimated end | One more field pair to annotate and score; travel time and daily load still need wiring to use it |
 
 ## 13. Known gaps and next steps
 

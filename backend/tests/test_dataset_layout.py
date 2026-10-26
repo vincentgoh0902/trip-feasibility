@@ -16,7 +16,9 @@ stops:
   - {id: s1, day: 1, start_time: '9:00', end_time: "10:30", place_name: Musée d’Ici, type: venue}
   - id: s2
     type: meal
+    duration_max: 60
     day: 1
+    duration_min: 45
     time_of_day: afternoon
     place_name: "Café, Example"
 legs: [{to: s2, from: s1, minutes: 12, mode: walk, source: Google Maps}]
@@ -51,6 +53,8 @@ stops:
   - id: s2
     day: 1
     time_of_day: afternoon
+    duration_min: 45
+    duration_max: 60
     place_name: Café, Example
     type: meal
 legs:

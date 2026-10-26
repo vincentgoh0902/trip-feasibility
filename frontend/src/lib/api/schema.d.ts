@@ -736,6 +736,10 @@ export interface components {
             end_time?: string | null;
             /** Time Of Day */
             time_of_day?: ("morning" | "afternoon" | "evening") | null;
+            /** Duration Min */
+            duration_min?: number | null;
+            /** Duration Max */
+            duration_max?: number | null;
             /** Place Name */
             place_name: string;
             /**

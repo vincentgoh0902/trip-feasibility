@@ -1924,6 +1924,32 @@
             ],
             "title": "Time Of Day"
           },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "duration_max": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1440.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Max"
+          },
           "place_name": {
             "type": "string",
             "maxLength": 300,

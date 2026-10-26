@@ -22,7 +22,8 @@ TOP_KEYS = ["id", "city", "split", "parent_id", "source", "model", "prompt", "tr
 PREF_KEYS = ["pace", "max_walk_km", "transport_modes"]
 ANNOTATION_KEYS = ["stops", "legs", "violations", "notes"]
 STOP_KEYS = [
-    "id", "day", "start_time", "end_time", "time_of_day", "place_name", "type", "hotel", "osm",
+    "id", "day", "start_time", "end_time", "time_of_day", "duration_min", "duration_max",
+    "place_name", "type", "hotel", "osm",
 ]  # fmt: skip
 LEG_KEYS = ["from", "to", "mode", "minutes", "source"]
 VIOLATION_KEYS = ["check", "severity", "stop", "day", "note", "source"]

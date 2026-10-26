@@ -25,6 +25,22 @@ def test_unknown_fields_are_rejected():
     assert isinstance(result, str) and "lat" in result
 
 
+def test_durations_are_kept_apart_from_times():
+    stop = ExtractedStop(day=1, start_time="09:15", duration_min=30, duration_max=40,
+                         place_name="A", type="venue")  # fmt: skip
+    assert stop.end_time is None and (stop.duration_min, stop.duration_max) == (30, 40)
+    at_least = ExtractedStop(day=1, duration_min=60, place_name="A", type="venue")
+    assert at_least.duration_max is None
+
+
+def test_duration_max_needs_a_smaller_min():
+    for bad in ({"duration_max": 40}, {"duration_min": 50, "duration_max": 40},
+                {"duration_min": 0}):  # fmt: skip
+        result = validate_extraction({"stops": [{"day": 1, "place_name": "x", "type": "venue",
+                                                 **bad}]})  # fmt: skip
+        assert isinstance(result, str) and "duration" in result
+
+
 def test_normalise_dates_ids_and_time_windows():
     stops = normalise(
         [

@@ -26,7 +26,7 @@ def test_parse_counts():
     m = c.metrics()
     assert (m["stop_recall"], m["stop_precision"]) == (0.5, 0.5)
     assert m["field_errors"] == {"end_time": 1}
-    assert m["field_accuracy"] == 5 / 6
+    assert m["field_accuracy"] == 7 / 8
     assert m["exact_stop_rate"] == 0.0
 
 
