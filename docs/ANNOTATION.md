@@ -188,6 +188,8 @@ Vague times:
 
 - Several places under one "Morning:" heading each get `time_of_day: morning`, in text order.
 - Stated times win: "Morning (9:00–11:00)" → `start_time`/`end_time`, no `time_of_day`.
+- A duration isn't an end time: "09:15, allow 30–40 min" → `start_time: "09:15"` only. Don't
+  compute an end from a duration (the duration can still inform `daily_load`).
 - Clear synonyms only: "late morning" → morning; "night", "after dinner" → evening.
 - Anything else ("lunch", "midday", "sunset", "then"): no times and no `time_of_day`.
   Never guess; mention it in `notes` if it matters.
