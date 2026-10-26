@@ -185,6 +185,7 @@ docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 # dataset
 scripts/save_reply.sh paris-03                        # clipboard → data/dataset/texts/paris-03.md
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
+uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 

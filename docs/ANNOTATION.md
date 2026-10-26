@@ -310,6 +310,17 @@ uv run python scripts/validate_dataset.py --partial
 It prints counts per split and city, how many are annotated, the label counts, and a
 version hash; then every problem, with the file name. Run it after every few files.
 
+To put every file in the standard layout (block-style stops, one-line legs and violations,
+quoted times, fixed key order):
+
+```sh
+uv run python scripts/format_dataset.py           # lists the files that would change
+uv run python scripts/format_dataset.py --write   # rewrites them, after a backup copy
+```
+
+It changes layout only, never data, and skips files with comments of their own (it would drop
+them). The dataset version is a hash of the files, so format before an eval run, not after.
+
 Every itinerary file needs its text in `texts/<id>.md`, with or without `--partial`. Once
 everything is collected, run it without `--partial`: a text with no itinerary file is then
 an error too.
