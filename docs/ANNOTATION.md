@@ -193,8 +193,10 @@ Vague times:
   Never guess; mention it in `notes` if it matters.
 
 What counts as a stop: a place the traveller goes to. Not stops: general advice ("buy a
-Navigo pass"), alternatives ("or, if it rains, ..."), vague meals without a place ("lunch
-nearby"), entrance tips ("use the side entrance"), prices, and the route between two stops
+Navigo pass"), alternatives ("or, if it rains, ..."), a choice the text leaves open ("the art
+museum or the history museum": neither is a stop; say so in `notes`), meals and activities
+with no named place ("lunch nearby", "a boat trip on the river"; a named operator or venue is
+a stop), entrance tips ("use the side entrance"), prices, and the route between two stops
 ("a 20-minute walk along the river"). A park or garden on the way becomes a stop only when
 the schedule gives it its own slot. For a meal described as an area ("lunch in Le Marais"),
 use the area as `place_name`; it won't get an opening-hours label.

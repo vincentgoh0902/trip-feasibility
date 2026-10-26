@@ -1199,6 +1199,7 @@ Postgres. Three things to settle before the first deploy:
 | 65 | The `checks` step event carries the located stops and city (2026-10-25) | A new event type; fetch the stops separately; wait for `done` | The timeline can fill in live (PRD "progress, not spinners") without changing the event set | The event is larger (one copy of the stops) |
 | 66 | Brand colours as CSS variables behind shadcn's semantic tokens; severity shades derived for AA contrast (2026-10-25) | Hardcoded colours; the kit's accents as text | Restyling is a change to one file; meets the PRD's WCAG AA requirement | Severity shades aren't in the kit |
 | 67 | Palette and shapes taken from the hero illustration, replacing the branding kit's (2026-10-26) | Keep the kit's greens and Newsreader | One visual language from the illustration to the results page | Blocker shares the terracotta family with primary buttons (told apart by badge and edge); the site no longer follows the branding kit |
+| 68 | Open choices ("X or Y") and activities with no named place aren't stops, in both the annotation guide and the extraction prompt (`extract-v4`) (2026-10-26) | Count both options; count the activity under its generic name | Neither can be located or checked; guide and prompt agree, so extraction is scored against the rule it was given | Real visits can go unchecked when the text doesn't commit |
 
 ## 13. Known gaps and next steps
 

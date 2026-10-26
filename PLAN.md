@@ -121,6 +121,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   15,000 cleaned (was one 5,000 limit), so whole ChatGPT replies fit; the dataset keeps raw
   replies. Extraction prompt `extract-v2`: a checklist repeating scheduled places adds no
   stops; `extract-v3`: nor do places recommended outside the schedule ("where to eat"). ARCHITECTURE decision 52. (2026-10-24)
+  `extract-v4`: nor do open choices ("X or Y") or activities with no named place ("a boat
+  trip"), matching the annotation rule. ARCHITECTURE decision 68. (2026-10-26)
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)
