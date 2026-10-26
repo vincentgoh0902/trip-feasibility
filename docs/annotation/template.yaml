@@ -17,7 +17,12 @@ preferences: # leave out to use the defaults (moderate, 10 km, walk + transit)
 
 # --- annotation: add these three together (use [] when there are none) ---
 # stops:
-#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", place_name: ..., type: venue }
+#   - id: s1
+#     day: 1
+#     start_time: "09:00"
+#     end_time: "12:00"
+#     place_name: ...
+#     type: venue
 # legs:
 #   - { from: s1, to: s2, mode: transit, minutes: 20, source: Google Maps }
 # violations:

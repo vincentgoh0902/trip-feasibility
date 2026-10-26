@@ -1,9 +1,10 @@
 """One standard layout for itinerary YAML files (scripts/format_dataset.py).
 
 Metadata first, then the annotation: stops in block style (one field per line), legs and
-violations one per line in flow style, times always quoted, keys in a fixed order. Layout
-only: `format_itinerary` refuses a file it can't rewrite without changing the data, or one
-with comments of its own (rewriting would drop them).
+violations one per line in flow style, times always quoted, keys in a fixed order. Default
+preferences are written out in full rather than left implicit. Otherwise layout only:
+`format_itinerary` refuses a file it can't rewrite without changing the data, or one with
+comments of its own (rewriting would drop them).
 """
 
 import json
@@ -26,16 +27,28 @@ STOP_KEYS = [
 LEG_KEYS = ["from", "to", "mode", "minutes", "source"]
 VIOLATION_KEYS = ["check", "severity", "stop", "day", "note", "source"]
 
-DEFAULT_PREFS = "# preferences: defaults (moderate, 10 km, walk + transit)"
+# itinerary.TravelPreferences' defaults, written out when a file leaves them implicit
+DEFAULT_PREFS = {"pace": "moderate", "max_walk_km": 10, "transport_modes": ["walk", "transit"]}
 ANNOTATION_HEADER = "# --- annotation: add these three together (use [] when there are none) ---"
 SKELETON = """\
 # stops:
-#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", place_name: ..., type: venue }
+#   - id: s1
+#     day: 1
+#     start_time: "09:00"
+#     end_time: "12:00"
+#     place_name: ...
+#     type: venue
 # legs:
 #   - { from: s1, to: s2, mode: transit, minutes: 20, source: Google Maps }
 # violations:
 #   - { check: opening_hours, severity: blocker, stop: s1, note: ..., source: ... }
 # notes:"""
+# comment lines the skeletons used to have, so files written before still format
+_OLD_COMMENTS = {
+    "# preferences: defaults (moderate, 10 km, walk + transit)",
+    '#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", '
+    "place_name: ..., type: venue }",
+}
 _TIME = re.compile(r"^\d{1,2}:\d{2}$")
 
 
@@ -116,7 +129,7 @@ def _stop_block(stop: dict) -> list[str]:
 
 def _own_comments(text: str, itinerary_id: str) -> bool:
     known = {
-        DEFAULT_PREFS,
+        *_OLD_COMMENTS,
         ANNOTATION_HEADER,
         "# --- annotation ---",
         f"# text: texts/{itinerary_id}.md",
@@ -150,11 +163,11 @@ def format_itinerary(text: str) -> str:
     if unknown := [k for k in data if k not in known]:
         raise LayoutError(f"unknown keys: {', '.join(map(str, unknown))}")
 
+    if "preferences" not in data:
+        data = {**data, "preferences": DEFAULT_PREFS}
     out = [_text_field(k, data[k]) for k in TOP_KEYS if k in data]
-    prefs = data.get("preferences")
-    if prefs is None and "preferences" not in data:
-        out.append(DEFAULT_PREFS)
-    elif isinstance(prefs, dict):
+    prefs = data["preferences"]
+    if isinstance(prefs, dict):
         out.append("preferences:")
         for k in [k for k in PREF_KEYS if k in prefs] + [k for k in prefs if k not in PREF_KEYS]:
             v = prefs[k]

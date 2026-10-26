@@ -1,8 +1,9 @@
 import pytest
 import yaml
 
-from trip_feasibility.dataset.layout import SKELETON, LayoutError, format_itinerary
+from trip_feasibility.dataset.layout import DEFAULT_PREFS, SKELETON, LayoutError, format_itinerary
 from trip_feasibility.dataset.validate import _Loader
+from trip_feasibility.itinerary import TravelPreferences
 
 MESSY = """\
 id: paris-99
@@ -76,7 +77,7 @@ def test_formatting_is_idempotent():
 def test_unannotated_skeleton_keeps_its_comment_block():
     skeleton = "id: london-99\ncity: london\nsplit: test\nsource: gemini\ntrip_start: 2027-03-01\n"
     out = format_itinerary(skeleton)
-    assert "# preferences: defaults" in out
+    assert "preferences:\n  pace: moderate\n  max_walk_km: 10\n" in out
     assert out.endswith(SKELETON + "\n")
     assert format_itinerary(out) == out
 
@@ -101,3 +102,17 @@ def test_invalid_yaml_is_refused_without_quoting_it():
     with pytest.raises(LayoutError, match=r"line \d+") as err:
         format_itinerary("id: x\nstops: [secret text\n")
     assert "secret" not in str(err.value)
+
+
+def test_written_out_defaults_match_the_model_defaults():
+    assert TravelPreferences(**DEFAULT_PREFS) == TravelPreferences()
+
+
+def test_files_from_the_old_skeleton_still_format():
+    old = (
+        "id: x-01\ncity: paris\nsplit: dev\nsource: claude\ntrip_start: 2027-01-05\n"
+        "# preferences: defaults (moderate, 10 km, walk + transit)\n"
+        '#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", '
+        "place_name: ..., type: venue }\n"
+    )
+    assert "  pace: moderate" in format_itinerary(old)
