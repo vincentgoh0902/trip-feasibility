@@ -21,17 +21,17 @@ no stops.
 
 **Switching to violations-first evaluation (2026-10-27, decision 74):** gold = violations in
 the text's own words (check, day, place/time as written, evidence, source, confidence), plus
-`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–3
-done (format, validator, conversion); next: drafter (Gemini/GPT), LLM-only baseline, matcher
-with human decisions, side-by-side run (PLAN.md).
+`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–4
+done (format, validator, conversion, drafter: GPT via the Codex CLI, dev drafts written);
+next: LLM-only baseline, matcher with human decisions, side-by-side run (PLAN.md).
 
 Waiting on Vincent, in this order:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
    drafted stops; the `dataset-backup-*` folders beside it don't count).
 2. **Fix barcelona-06.yaml** (a stray leg line at line 107 makes it invalid YAML).
 3. **Preferences for all 40**, in one go, from the prompts only (dev gets some variety).
-4. **A Gemini or OpenAI key** in `.env` for the drafter; then check each dev draft and set
-   `verified_by_human: true`.
+4. **Check each dev draft** (`drafted_by: gpt-6-sol ...`) against official sources; fix, add or
+   delete labels, then set `verified_by_human: true`. The first 5 verified go into step 7.
 
 In parallel: **`ANTHROPIC_API_KEY`** in the repo-root `.env` (none yet), after a monthly spend
 cap in the Console; then `scripts/smoke_parse.py`. Optional: Langfuse Cloud keys; before slice 2
@@ -74,8 +74,10 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 normalise.py, geocode.py
     agent/                      graph.py (LangGraph: checks in parallel, then fixes),
                                 fixes.py (propose → apply → re-check → retry), models.py
-    dataset/                    annotation format (models.py), split rules, validation + gold labels
+    dataset/                    annotation format (models.py), split rules, validation + gold labels,
+                                draft.py (violation drafts from a non-Anthropic model)
     evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
+                                search_llm.py (search-enabled LLM backends: codex),
                                 injection.py (prompt-injection suite)
   scripts/                      see Commands
 frontend/                       Next.js (npm); openapi.json (exported from the backend)
@@ -201,6 +203,7 @@ scripts/save_reply.sh paris-03                        # clipboard → data/datas
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
 uv run python scripts/convert_gold.py [--write]       # old stop-id labels → violations-first (backs up)
+uv run python scripts/draft_gold.py [--ids ...]       # draft dev gold with GPT via Codex CLI (backs up)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 
@@ -281,6 +284,9 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 - `opening-hours-py` rejects common-but-invalid hours like `Mo-Fr 9-17` (→ unknown) and uses
   its own `PH` calendar, separate from Nager.Date.
 - Fake routing in tests: `tests/fake_osrm.py` (0.01° = 1 km; 5/15/30 km/h).
+- **Codex CLI** (the drafter's backend; `brew install --cask codex`, signed in with Vincent's
+  ChatGPT plan, training on chats turned off): `--search` goes before `exec`
+  (`codex --search exec ...`), or it's rejected. Mac only; tests never run it.
 
 **Data**
 - The 50,000 / 15,000 limits live in `parse/clean.py`; `scripts/save_reply.sh` repeats the

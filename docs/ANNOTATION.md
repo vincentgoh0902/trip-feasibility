@@ -165,6 +165,11 @@ you've checked: it means "checked, none found". See `docs/annotation/example.yam
   draft from the same provider would reward shared blind spots). `drafted_by` records the
   model ID, or `human`. A draft counts only after you've checked every label against reality
   and set `verified_by_human: true`; fix, add or delete labels freely before that.
+- **Drafting:** `uv run python scripts/draft_gold.py` (from `backend/`) drafts every dev
+  file with no gold yet, using GPT through the Codex CLI with web search. Check each label
+  against the official source (fix, add or delete freely), then set
+  `verified_by_human: true`. Entries the drafter couldn't quote exactly are named in
+  `notes`.
 - **`hotel`:** the hotel the prompt names, as its key in hotels.yaml (leave it out if none).
   Its red flags become the hotel labels, so you don't write those.
 - `notes` is text, not a list: leave it out when there's nothing to say, never `[]`.

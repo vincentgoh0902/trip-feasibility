@@ -49,7 +49,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   - [x] 3. Converted paris-02, paris-05, barcelona-02 (all `violations: []`, so no labels
         to carry over; `verified_by_human: false`); `hotel` set on the 4 dev files whose
         prompt names one. barcelona-06 skipped: invalid YAML (a stray leg line)
-  - [ ] 4. Drafter from another provider (Gemini or GPT), model-agnostic; dev only
+  - [x] 4. Drafter (`scripts/draft_gold.py`): GPT (gpt-6-sol, high) via the Codex CLI with
+        web search, behind a model-agnostic interface (`evals/search_llm.py`); dev only,
+        refuses Anthropic; one retry for invalid entries. Drafted the 11 dev files with no
+        gold yet (2026-10-27); Vincent checks each and sets `verified_by_human: true`
   - [ ] 5. LLM-only baseline: one search-enabled prompt per itinerary, same format,
         model-agnostic (default Claude Haiku 5.5 + web search)
   - [ ] 6. Matcher: ambiguous name scores listed for Vincent, decisions saved

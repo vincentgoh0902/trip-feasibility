@@ -1010,6 +1010,26 @@ git.
   Nager.Date, the evaluation would only show that the checker agrees with its own inputs;
   labelling against official sites means data gaps show up as missed problems, honestly.
 
+### Drafting (`dataset/draft.py`, `evals/search_llm.py`, `scripts/draft_gold.py`)
+
+Violation drafts come from a search-enabled model of another provider than the extractor.
+`search_llm.py` puts any such model behind one interface (prompt + JSON schema in, JSON and
+the exact model out), shared with the LLM-only baseline; the first backend is the Codex CLI
+(`codex --search exec`, read-only in an empty folder, signed in with a ChatGPT plan, so no
+API key). The drafter refuses Anthropic backends and test files.
+
+- **What it sees:** the cleaned text (so its quotes can be checked), the traveller's prompt,
+  the city, each day's date and weekday, and the preferences. Never gold stops, our checks
+  or their output. The rules are a condensed ANNOTATION.md Violations section
+  (`draft-v1`).
+- **Checking:** output is validated like a hand-written file (shapes, quoted words verbatim,
+  duplicates). Problems get one retry with the list of problems; entries still wrong are
+  dropped and named in `notes`, so nothing is silently lost.
+- **Writing:** `drafted_by` = model, effort, tool version and prompt version;
+  `verified_by_human: false`. Raw outputs, with usage and search counts, go to
+  `data/dataset-drafts/`, outside the dataset so its version doesn't change.
+- First draft (paris-08): 9 searches, 2.6 minutes.
+
 ### Gold stops (dev only, for parser debugging)
 
 Frozen with decision 74: no new stop rules, no stops for test files, and nothing scored on
