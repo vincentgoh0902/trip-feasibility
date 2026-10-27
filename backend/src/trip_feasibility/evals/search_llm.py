@@ -8,6 +8,10 @@ deployed app calls these.
 Backends:
 - `codex`: the Codex CLI (`codex exec`), signed in with a ChatGPT plan, with live web
   search. It runs read-only in an empty temporary folder, so it sees only the prompt.
+- `claude-code`: headless Claude Code (`claude -p`), signed in with a Claude plan (no API
+  key). Stripped to a plain model with search: its own system prompt replaced, no settings,
+  MCP servers or tools but WebSearch and WebFetch, in an empty temporary folder. A hook
+  that adds anything to the context fails the run.
 """
 
 import asyncio
@@ -138,7 +142,109 @@ def parse_codex_events(jsonl: str, result: SearchResult) -> None:
                     result.usage[k] = result.usage.get(k, 0) + v
 
 
-BACKENDS = {"codex": CodexBackend}
+SYSTEM_PROMPT = (
+    "Use web search to check facts against official sources. Answer only through the "
+    "structured output, in the JSON schema given."
+)
+
+
+class ClaudeCodeBackend:
+    """Anthropic models through headless Claude Code with web search (`claude -p`)."""
+
+    provider = "anthropic"
+
+    def __init__(self, model: str, effort: str = "medium", binary: str = "claude") -> None:
+        self.model = model
+        self.effort = effort
+        self.binary = binary
+        self.version = ""
+
+    @property
+    def label(self) -> str:
+        return f"{self.model} ({self.effort}) via {self.version or 'claude-code'}"
+
+    def command(self, schema: dict[str, Any]) -> list[str]:
+        tools = ["WebSearch", "WebFetch"]
+        return [
+            self.binary, "-p",
+            "--model", self.model,
+            "--effort", self.effort,
+            "--system-prompt", SYSTEM_PROMPT,
+            "--tools", *tools,
+            "--allowedTools", *tools,
+            "--setting-sources", "",
+            "--strict-mcp-config",
+            "--no-session-persistence",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--json-schema", json.dumps(schema),
+        ]  # fmt: skip
+
+    async def _version(self) -> str:
+        proc = await asyncio.create_subprocess_exec(
+            self.binary, "--version", stdout=asyncio.subprocess.PIPE
+        )
+        out, _ = await proc.communicate()
+        return f"claude-code {out.decode().split()[0]}" if out.strip() else ""
+
+    async def run(self, prompt: str, schema: dict[str, Any]) -> SearchResult:
+        if not self.version:
+            self.version = await self._version()
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        with tempfile.TemporaryDirectory(prefix="search-llm-") as tmp:
+            proc = await asyncio.create_subprocess_exec(
+                *self.command(schema),
+                cwd=tmp,  # empty: nothing to read but the prompt
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                events, err = await asyncio.wait_for(proc.communicate(prompt.encode()), TIMEOUT_S)
+            except TimeoutError:
+                proc.kill()
+                raise SearchLLMError(f"claude timed out after {TIMEOUT_S} s") from None
+        if proc.returncode != 0:
+            tail = err.decode(errors="replace").strip().splitlines()[-1:] or ["no output"]
+            raise SearchLLMError(f"claude exited {proc.returncode}: {tail[0][:300]}")
+        result = SearchResult(output={}, provider=self.provider, model=self.model)
+        result.seconds = loop.time() - started
+        parse_claude_events(events.decode(errors="replace"), result)
+        return result
+
+
+def parse_claude_events(jsonl: str, result: SearchResult) -> None:
+    """Output, searches, usage and the model actually used from `claude -p` stream-json.
+    Raises if the run failed, used another model, or a hook added to the context."""
+    final = None
+    for line in jsonl.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        kind = event.get("type")
+        if kind == "system" and event.get("subtype") == "hook_response":
+            if (event.get("stdout") or "").strip() not in ("", "{}"):
+                raise SearchLLMError(f"hook {event.get('hook_name')} added to the context")
+        elif kind == "assistant":
+            for block in (event.get("message") or {}).get("content") or []:
+                if block.get("type") == "tool_use" and block.get("name") == "WebSearch":
+                    result.searches += 1
+        elif kind == "result":
+            final = event
+    if final is None or final.get("is_error") or final.get("subtype") != "success":
+        raise SearchLLMError(f"claude run failed ({(final or {}).get('subtype', 'no result')})")
+    models = list(final.get("modelUsage") or {})
+    if models and result.model not in models:  # a helper model (web fetch) may appear too
+        raise SearchLLMError(f"claude used {', '.join(models)}, not {result.model}")
+    if not isinstance(final.get("structured_output"), dict):
+        raise SearchLLMError("claude returned no structured output")
+    result.output = final["structured_output"]
+    result.usage = {k: v for k, v in (final.get("usage") or {}).items() if isinstance(v, int)}
+
+
+BACKENDS = {"codex": CodexBackend, "claude-code": ClaudeCodeBackend}
 
 
 def make_backend(name: str, model: str, effort: str = "high") -> SearchLLM:

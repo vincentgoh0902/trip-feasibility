@@ -1030,6 +1030,22 @@ API key). The drafter refuses Anthropic backends and test files.
   `data/dataset-drafts/`, outside the dataset so its version doesn't change.
 - First draft (paris-08): 9 searches, 2.6 minutes.
 
+### The LLM-only baseline (`evals/baseline.py`, `scripts/run_baseline.py`)
+
+What the pipeline is measured against: one search-enabled prompt per itinerary, no parser,
+checks, map or routing data. Default: Claude Haiku 5.5 (medium effort), the extractor's
+model, so the comparison isolates the pipeline; through headless Claude Code (`claude -p`,
+the `claude-code` backend in `search_llm.py`) on a Claude plan, so no API key. It's run as a
+plain model: its system prompt replaced, no settings, MCP servers or tools but WebSearch and
+WebFetch, in an empty folder; a hook that adds to the context, or a run on another model,
+fails it. Same inputs as the drafter (`draft.trip_block`) and the same rules for the four
+checks (`draft.RULES`), with its own framing (`baseline-v1`); never GPT, since GPT drafted
+the gold. Output is checked for shape only (places are matched fuzzily) and cached per
+itinerary, backend, model, effort and prompt version under `data/evals/baseline/`, keyed to
+a hash of the prompt: a change to the text, dates or preferences reruns it. No hotel
+labels (it has no review data); the comparison reports hotel_red_flags for our system only.
+First run (paris-08): 9 searches, 1.5 minutes.
+
 ### Gold stops (dev only, for parser debugging)
 
 Frozen with decision 74: no new stop rules, no stops for test files, and nothing scored on

@@ -21,9 +21,10 @@ no stops.
 
 **Switching to violations-first evaluation (2026-10-27, decision 74):** gold = violations in
 the text's own words (check, day, place/time as written, evidence, source, confidence), plus
-`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–4
-done (format, validator, conversion, drafter: GPT via the Codex CLI, dev drafts written);
-next: LLM-only baseline, matcher with human decisions, side-by-side run (PLAN.md).
+`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–5
+done (format, validator, conversion, drafter: GPT via the Codex CLI, all 15 dev drafts
+written; LLM-only baseline: Haiku via headless Claude Code); next: matcher with human
+decisions, side-by-side run (PLAN.md).
 
 Waiting on Vincent, in this order:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
@@ -77,7 +78,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     dataset/                    annotation format (models.py), split rules, validation + gold labels,
                                 draft.py (violation drafts from a non-Anthropic model)
     evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
-                                search_llm.py (search-enabled LLM backends: codex),
+                                search_llm.py (search-enabled LLM backends: codex,
+                                claude-code), baseline.py (LLM-only baseline),
                                 injection.py (prompt-injection suite)
   scripts/                      see Commands
 frontend/                       Next.js (npm); openapi.json (exported from the backend)
@@ -204,6 +206,7 @@ uv run python scripts/validate_dataset.py --partial   # drop --partial once all 
 uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
 uv run python scripts/convert_gold.py [--write]       # old stop-id labels → violations-first (backs up)
 uv run python scripts/draft_gold.py [--ids ...]       # draft dev gold with GPT via Codex CLI (backs up)
+uv run python scripts/run_baseline.py [--ids ...]     # LLM-only baseline, Haiku via claude -p (cached)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 
@@ -287,6 +290,11 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 - **Codex CLI** (the drafter's backend; `brew install --cask codex`, signed in with Vincent's
   ChatGPT plan, training on chats turned off): `--search` goes before `exec`
   (`codex --search exec ...`), or it's rejected. Mac only; tests never run it.
+- **Headless Claude Code** (the baseline's backend, `claude -p` on Vincent's Claude plan):
+  `--bare` would need an API key, so isolation comes from `--system-prompt`,
+  `--setting-sources ""`, `--strict-mcp-config`, `--tools WebSearch WebFetch` and an empty
+  cwd. Local SessionStart hooks still run; they return nothing, and the backend fails a run
+  if one ever adds context.
 
 **Data**
 - The 50,000 / 15,000 limits live in `parse/clean.py`; `scripts/save_reply.sh` repeats the

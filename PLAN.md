@@ -53,8 +53,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
         web search, behind a model-agnostic interface (`evals/search_llm.py`); dev only,
         refuses Anthropic; one retry for invalid entries. Drafted the 11 dev files with no
         gold yet (2026-10-27); Vincent checks each and sets `verified_by_human: true`
-  - [ ] 5. LLM-only baseline: one search-enabled prompt per itinerary, same format,
-        model-agnostic (default Claude Haiku 5.5 + web search)
+  - [x] 5. LLM-only baseline (`scripts/run_baseline.py`): Claude Haiku 5.5 + web search via
+        headless Claude Code (no API key), stripped to a plain model; same inputs and
+        check rules as the drafter (`baseline-v1`); outputs cached. Checked live on
+        paris-08. Run the rest once preferences are final (they're in the cache key)
   - [ ] 6. Matcher: ambiguous name scores listed for Vincent, decisions saved
   - [ ] 7. Baseline vs our system (parsed mode) on the first 5 dev files Vincent verifies:
         precision and recall per check
