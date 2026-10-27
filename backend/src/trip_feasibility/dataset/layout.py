@@ -1,7 +1,8 @@
 """One standard layout for itinerary YAML files (scripts/format_dataset.py).
 
-Metadata first, then the annotation: stops in block style (one field per line), legs and
-violations one per line in flow style, times always quoted, keys in a fixed order. Default
+Metadata first, then the gold (violations and unknowns in block style, one field per line),
+then the dev-only stops (block style) and legs (one per line in flow style); times always
+quoted, keys in a fixed order. Default
 preferences are written out in full rather than left implicit. Otherwise layout only:
 `format_itinerary` refuses a file it can't rewrite without changing the data, or one with
 comments of its own (rewriting would drop them).
@@ -19,37 +20,65 @@ from trip_feasibility.dataset.validate import _Loader
 
 WIDTH = 100
 TOP_KEYS = ["id", "city", "split", "parent_id", "source", "model", "prompt", "trip_start"]
+AFTER_PREFS = ["hotel"]
 PREF_KEYS = ["pace", "max_walk_km", "transport_modes"]
-ANNOTATION_KEYS = ["stops", "legs", "violations", "notes"]
+GOLD_KEYS = ["drafted_by", "verified_by_human", "violations", "unknowns", "other_issues", "notes"]
+DEV_KEYS = ["stops", "legs"]
+ANNOTATION_KEYS = GOLD_KEYS + DEV_KEYS
 STOP_KEYS = [
     "id", "day", "travel_start", "travel_min", "travel_max", "start_time", "end_time",
     "time_of_day", "duration_min", "duration_max", "place_name", "type", "located", "hotel",
     "osm",
 ]  # fmt: skip
 LEG_KEYS = ["from", "to", "mode", "minutes", "source"]
-VIOLATION_KEYS = ["check", "severity", "stop", "day", "note", "source"]
+VIOLATION_KEYS = [
+    "check", "day", "place", "from_place", "time", "severity", "evidence", "source",
+    "confidence",
+]  # fmt: skip
+UNKNOWN_KEYS = ["check", "day", "place", "reason"]
 
 # itinerary.TravelPreferences' defaults, written out when a file leaves them implicit
 DEFAULT_PREFS = {"pace": "moderate", "max_walk_km": 10, "transport_modes": ["walk", "transit"]}
-ANNOTATION_HEADER = "# --- annotation: add these three together (use [] when there are none) ---"
+ANNOTATION_HEADER = "# --- gold: drafted_by and violations together ([] when there are none) ---"
+DEV_HEADER = "# --- dev only, for parser debugging (frozen rules) ---"
 SKELETON = """\
-# stops:
-#   - id: s1
-#     day: 1
-#     start_time: "09:00"
-#     end_time: "12:00"
-#     place_name: ...
-#     type: venue
-# legs:
-#   - { from: s1, to: s2, mode: transit, minutes: 20, source: Google Maps }
+# drafted_by: human
+# verified_by_human: false
 # violations:
-#   - { check: opening_hours, severity: blocker, stop: s1, note: ..., source: ... }
+#   - check: opening_hours
+#     day: 1
+#     place: ...
+#     time: ...
+#     severity: blocker
+#     evidence: ...
+#     source: ...
+#     confidence: verified
+# unknowns:
+#   - check: opening_hours
+#     day: 1
+#     place: ...
+#     reason: ...
+# other_issues:
+#   - ...
 # notes:"""
 # comment lines the skeletons used to have, so files written before still format
 _OLD_COMMENTS = {
     "# preferences: defaults (moderate, 10 km, walk + transit)",
     '#   - { id: s1, day: 1, start_time: "09:00", end_time: "12:00", '
     "place_name: ..., type: venue }",
+    "# --- annotation: add these three together (use [] when there are none) ---",
+    "# stops:",
+    "#   - id: s1",
+    "#     day: 1",
+    '#     start_time: "09:00"',
+    '#     end_time: "12:00"',
+    "#     place_name: ...",
+    "#     type: venue",
+    "# legs:",
+    "#   - { from: s1, to: s2, mode: transit, minutes: 20, source: Google Maps }",
+    "# violations:",
+    "#   - { check: opening_hours, severity: blocker, stop: s1, note: ..., source: ... }",
+    "# notes:",
 }
 _TIME = re.compile(r"^\d{1,2}:\d{2}$")
 
@@ -119,11 +148,11 @@ def _text_field(key: str, value: Any) -> str:
     return line
 
 
-def _stop_block(stop: dict) -> list[str]:
-    keys = [k for k in STOP_KEYS if k in stop] + [k for k in stop if k not in STOP_KEYS]
+def _block(item: dict, order: list[str]) -> list[str]:
+    keys = [k for k in order if k in item] + [k for k in item if k not in order]
     out = []
     for i, k in enumerate(keys):
-        v = stop[k]
+        v = item[k]
         rendered = _flow(v, list(v)) if isinstance(v, dict) else _scalar(v)
         out.append(f"{'  - ' if i == 0 else '    '}{k}: {rendered}")
     return out
@@ -133,7 +162,9 @@ def _own_comments(text: str, itinerary_id: str) -> bool:
     known = {
         *_OLD_COMMENTS,
         ANNOTATION_HEADER,
+        DEV_HEADER,
         "# --- annotation ---",
+        "# --- gold ---",
         f"# text: texts/{itinerary_id}.md",
     }
     known |= set(SKELETON.splitlines())
@@ -145,6 +176,38 @@ def _own_comments(text: str, itinerary_id: str) -> bool:
         elif re.search(r"\s#", line):  # an inline comment (or a quoted " #": skipped too)
             return True
     return False
+
+
+_ORDERS = {"stops": STOP_KEYS, "violations": VIOLATION_KEYS, "unknowns": UNKNOWN_KEYS}
+
+
+def _section(data: dict, keys: list[str]) -> list[str]:
+    out = []
+    for key in keys:
+        if key not in data:
+            continue
+        items = data[key]
+        if key in ("drafted_by", "verified_by_human", "notes"):
+            out.append(_text_field(key, items))
+            continue
+        if not items:
+            out.append(f"{key}:" if items is None else f"{key}: []")
+            continue
+        if not isinstance(items, list):
+            raise LayoutError(f"{key} isn't a list")
+        out.append(f"{key}:")
+        for item in items:
+            if key == "other_issues":
+                if not isinstance(item, str):
+                    raise LayoutError("other_issues isn't a list of text")
+                out.append(f"  - {_scalar(item)}")
+            elif not isinstance(item, dict):
+                raise LayoutError(f"{key} isn't a list of entries")
+            elif key == "legs":
+                out.append(f"  - {_flow(item, LEG_KEYS)}")
+            else:
+                out += _block(item, _ORDERS[key])
+    return out
 
 
 def format_itinerary(text: str) -> str:
@@ -161,7 +224,7 @@ def format_itinerary(text: str) -> str:
     if _own_comments(text, str(data["id"])):
         raise LayoutError("has comments of its own; format it by hand")
 
-    known = set(TOP_KEYS) | {"preferences"} | set(ANNOTATION_KEYS)
+    known = set(TOP_KEYS) | {"preferences"} | set(AFTER_PREFS) | set(ANNOTATION_KEYS)
     if unknown := [k for k in data if k not in known]:
         raise LayoutError(f"unknown keys: {', '.join(map(str, unknown))}")
 
@@ -179,30 +242,17 @@ def format_itinerary(text: str) -> str:
             out.append(f"  {k}: {rendered}")
     else:
         out.append(_text_field("preferences", prefs))
+    out += [_text_field(k, data[k]) for k in AFTER_PREFS if k in data]
     out.append(f"# text: texts/{data['id']}.md")
     out.append("")
 
-    if not any(k in data for k in ANNOTATION_KEYS):
+    if not any(k in data for k in GOLD_KEYS):
         out += [ANNOTATION_HEADER, SKELETON]
     else:
-        out.append("# --- annotation ---")
-        for key, render in (("stops", _stop_block), ("legs", None), ("violations", None)):
-            if key not in data:
-                continue
-            items = data[key]
-            if not items:
-                out.append(f"{key}:" if items is None else f"{key}: []")
-                continue
-            if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
-                raise LayoutError(f"{key} isn't a list of entries")
-            out.append(f"{key}:")
-            for item in items:
-                if render:
-                    out += render(item)
-                else:
-                    out.append(f"  - {_flow(item, LEG_KEYS if key == 'legs' else VIOLATION_KEYS)}")
-        if "notes" in data:
-            out.append(_text_field("notes", data["notes"]))
+        out.append("# --- gold ---")
+        out += _section(data, GOLD_KEYS)
+    if any(k in data for k in DEV_KEYS):
+        out += ["", DEV_HEADER, *_section(data, DEV_KEYS)]
     result = "\n".join(out) + "\n"
 
     if _load(result) != data:

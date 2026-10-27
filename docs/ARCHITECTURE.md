@@ -962,8 +962,10 @@ data/dataset/
 ```
 
 - The YAML's top half is written when an itinerary is collected: the prompt, model, trip
-  start date, preferences and split. The annotation half is added later: gold `stops`, real
-  travel times (`legs`) and hand-labelled `violations`.
+  start date, preferences, split and the hotel the prompt names (`hotel`). The gold is added
+  later: `violations` in the text's own words, `unknowns`, `other_issues`, who drafted them
+  (`drafted_by`) and whether a human has verified them (`verified_by_human`). Dev files also
+  carry gold `stops` and `legs`, for parser debugging only (decision 74).
 - The text is only in `texts/<id>.md`; `load_dataset` reads it into `DatasetItinerary.text`,
   so nothing downstream knows about the split. A YAML with a `text` key, or without its text
   file, is an error; a text without a YAML is fine until the dataset is complete. Synthetic
@@ -982,23 +984,25 @@ The dataset version stored with every eval run is a hash of all the files, texts
 (`dataset_version`), so any edit to any label or text gives a new version without needing
 git.
 
-### What's labelled, and by whom
+### What's labelled, and by whom (violations first, decision 74)
 
 | Check | Labelled how | Target |
 |---|---|---|
-| opening_hours | By hand, against official hours on the trip date | a stop |
-| public_holidays | By hand, against official holiday lists | a day |
-| daily_load | By hand, judged as a traveller with the stated preferences | a day |
-| travel_time | Derived from the real leg times the annotator records | a leg |
-| hotel_red_flags | Derived from hotels.yaml (one label per hotel per itinerary) | a hotel |
+| opening_hours | In the file, against official hours on the trip date | day + place |
+| public_holidays | In the file, against official holiday lists | a day |
+| daily_load | In the file, judged as a traveller with the stated preferences | a day |
+| travel_time | In the file, against real door-to-door times (Google Maps) | day + place travelled to (+ `from_place`) |
+| hotel_red_flags | Derived from hotels.yaml and the itinerary's `hotel` | the hotel |
 
-- **Targets match the checks' own output** (a stop, a pair of stops, a day), so on gold
-  stops comparing predictions with labels is a lookup, not a fuzzy match.
-- **Travel-time labels are derived** rather than hand-written: the annotator records the real
-  door-to-door time (Google Maps, Citymapper) for every leg with under 60 minutes between
-  stops, and the label follows the check's own rule (gap shorter than the journey → blocker;
-  less than the 10-minute default buffer to spare → warning; overlap → blocker). Labels
-  can't contradict the recorded times, and those times also calibrate the transit estimate.
+- **Labels are in the text's words, not stop ids:** check, day, the place and time quoted
+  as written (the validator checks they're in the cleaned text), severity, evidence, source
+  and `confidence` (`verified`: looked up; `estimated`: judged). Any system's output (ours,
+  a plain LLM) can be scored against them, whatever stops it extracted.
+- **Drafts come from another provider than the extractor** (GPT or Gemini, never
+  Anthropic), and count only once a human has checked every label (`verified_by_human:
+  true`). `drafted_by` records the model, or `human`.
+- **`unknowns`** are things the annotator couldn't establish: a prediction matching one is
+  neither right nor wrong. **`other_issues`** are problems outside the checks; not scored.
 - **Hotel labels are per hotel**, not per itinerary: 16 decisions instead of 40, from a
   fixed, seeded sample of reviews (`scripts/sample_reviews.py`).
 - **Only warning and blocker count.** Info-level notes aren't evaluated.
@@ -1006,9 +1010,11 @@ git.
   Nager.Date, the evaluation would only show that the checker agrees with its own inputs;
   labelling against official sites means data gaps show up as missed problems, honestly.
 
-### Gold stops
+### Gold stops (dev only, for parser debugging)
 
-Gold stops are what parse step 1 (LLM extraction) should return: `place_name` copied
+Frozen with decision 74: no new stop rules, no stops for test files, and nothing scored on
+them except parse accuracy and gold-stop mode. Gold stops are what parse step 1 (LLM
+extraction) should return: `place_name` copied
 verbatim (the validator checks it's in the text), times only when stated, `time_of_day`
 otherwise. That makes them the reference for parse accuracy as well as the stops the
 violations point at. `time_of_day` maps to fixed windows (`itinerary.TIME_OF_DAY_WINDOWS`:
@@ -1021,29 +1027,34 @@ confirm.
 ### The validator
 
 `scripts/validate_dataset.py` (with `--partial` while work is in progress) checks the schema,
-verbatim place names, stop order, that every tight leg has a real time, that labels point at
-real stops and days, hotel keys and cities, file names, and the split rules (counts, Vienna
-in test, variants in their parent's split). It prints counts, label totals and the version.
+that quoted places and times are in the cleaned text, duplicate labels, drafts not yet
+verified, hotel keys and cities, file names, and the split rules (counts, Vienna in test,
+variants in their parent's split). Stops and legs, when present, are checked too (verbatim,
+in order, legs between consecutive located stops, dev only). It prints counts, label totals
+and the version.
 
 ### The eval runner (`evals/`, `scripts/run_eval.py`)
 
 Scores the checks against the labels, in two modes reported separately (decided 2026-10-24):
 
-- **gold:** the checks run on the gold stops, located from their OSM refs (the truth) or,
+- **gold:** (dev files with gold stops only) the checks run on the gold stops, located from their OSM refs (the truth) or,
   for stops without one, geocoded by name. Scores measure the checks alone. No API key.
 - **parsed:** the full pipeline on the raw text. Parsed stops are aligned one to one with
   gold stops within the same day by place name, order breaking ties (`align.py`). An
   unaligned parsed stop is extra; an unaligned gold stop was missed. Parse accuracy is scored
   on the aligned pairs, field by field (stop recall, stop precision, field accuracy, exact
-  stops, errors by field). A parse failure counts every label of that itinerary as missed.
+  stops, errors by field), where gold stops exist. A parse failure counts every label of
+  that itinerary as missed.
 
-**Matching.** Predictions are turned into the labels' terms: a stop (opening_hours), a leg
-(travel_time), a day (public_holidays, daily_load), a hotel key (hotel_red_flags). Only
-warning and blocker count. A prediction matches a label with the same check and target,
-whatever its severity; severity agreement is reported separately. A prediction on a stop
-that wasn't aligned can't match anything, so it's a false positive. Counts are summed over
+**Matching** (`score.py`). Predictions are turned into the labels' terms (`score.findings`):
+check, day and the place as the system named it (travel_time: the stop travelled to). Only
+warning and blocker count. A prediction matches a label with the same check and day and a
+place name scoring at least 0.9 on `align.name_score` (one name inside the other counts),
+one to one, whatever its severity; severity agreement is reported separately. A prediction
+matching no label but one of the file's `unknowns` isn't counted. Counts are summed over
 itineraries (micro-averaged); precision with nothing predicted is "n/a", not 0. Hotels
-still unlabelled (`red_flags: null`) are left out of both sides.
+still unlabelled (`red_flags: null`) are left out of both sides. Still to come: a band of
+uncertain name scores listed for a human to decide, with the decisions saved.
 
 **Reported numbers** are counts with percentages ("2 of 3 (67%)"), per check and overall,
 plus coverage (runs where a check was unavailable, stops it couldn't judge), parse metrics,
@@ -1207,6 +1218,7 @@ Postgres. Three things to settle before the first deploy:
 | 73 | `located: false` marks a stop named by the activity ("Lunch"), in gold stops and extraction (`extract-v9`): never geocoded (unresolved with "not a place"), no leg required or allowed to or from it (2026-10-26) | Make annotators look up legs to nowhere; guess a nearby place; let geocoding search "Lunch" | About a third of the dev legs touched such stops and couldn't be looked up; searching an activity name can land on a café of that name, a silent guess | One more field to extract and score; their legs are never checked |
 | 72 | Ten more stop rules, in the guide and the prompt (`extract-v8`): downtime isn't a stop (a named hotel return is); arrivals/departures only when a station, airport or hotel is named; a timed journey line sets the next stop's travel fields; several places in one slot each become a stop (first takes the start, last the end); places inside an area visit too, rooms of one venue not; a favoured option in a choice is the stop; "Morning:" counts as a timed slot; "optional" isn't a stop; time typos kept with a note; a slot that carries on at the place just named takes its name (2026-10-26) | Leave each case to the annotator's judgement | They came up across the dev files; written down, guide and prompt agree and the remaining files get the same treatment | Some real visits (optional ones, downtime) go unchecked; giving only the first place the start leaves the gaps inside a slot unknown |
 | 70 | A timed slot is a stop: a meal or activity with its own stated time or duration counts even with no named place (`place_name` = the most specific area words, not a landmark it's near; else the activity's words). Travel sections are routes, not stops or durations. Both in the guide and the prompt (`extract-v6`); partly reverses 68 for timed slots (2026-10-26) | Keep 68 (no named place → no stop) | Leaving a timed lunch out turns its hour into travel slack, so a tight day looks feasible: the opposite of the product's job. Untimed unnamed meals still add nothing | No opening-hours check for these stops; an area geocodes roughly and a bare activity not at all (its legs unknown); opening hours must stay quiet on area stops, to verify when durations are wired in |
+| 74 | **Violations first** (2026-10-27): gold labels name check + day + place and time as written, with severity, evidence, source and confidence (verified / estimated), plus `unknowns` and `other_issues`; scored by matching place names, not stop ids. travel_time is labelled directly (real time in the evidence), no longer derived from legs; hotel labels still come from hotels.yaml via a new `hotel` field. Drafts from a non-Anthropic model are allowed, recorded in `drafted_by`, and count only with `verified_by_human: true`. Gold stops and legs are frozen and dev only, for parser debugging | Keep stop-id labels derived through gold stops; keep "no LLM drafts" | Stop rules kept growing (decisions 68–73) and every new one changed the dataset; a label in the text's own words doesn't depend on how anyone splits the text into stops, so an LLM-only baseline can be scored on the same labels. A drafter from another provider than the extractor avoids rewarding shared blind spots; the human check keeps truth as reality | Fuzzy place matching (some ambiguous pairs need a human decision); drafts can anchor the annotator; travel-time labels lose the guaranteed consistency with recorded times |
 
 ## 13. Known gaps and next steps
 

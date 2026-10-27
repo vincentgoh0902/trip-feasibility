@@ -8,7 +8,8 @@
     uv run python scripts/run_eval.py --split test --final    # reported results only
 
 Runs in eval mode: cached lookups are reused even when expired, so reruns make no external
-calls once every lookup is cached. Only annotated itineraries are run. The test split
+calls once every lookup is cached. Only annotated (human-verified) itineraries are run;
+gold mode only those with gold stops (dev only, for parser debugging). The test split
 (including Vienna) needs --final: it is touched only for reported results, and per-itinerary
 lines are never printed for it. Details per itinerary go to data/evals/runs/ (gitignored).
 """
@@ -130,9 +131,13 @@ async def main() -> int:
             deps = make_check_deps(http, sessionmaker, settings, eval_mode=True)
             for mode in modes:
                 print(f"\n{mode} stops")
+                # gold stops are dev only (parser debugging), so not every file has them
+                runnable = [i for i in chosen if mode == "parsed" or i.stops is not None]
+                if len(runnable) < len(chosen):
+                    print(f"  {len(chosen) - len(runnable)} without gold stops, left out")
                 outcomes = await evaluate(
                     deps,
-                    chosen,
+                    runnable,
                     hotels,
                     mode=mode,
                     config=config,

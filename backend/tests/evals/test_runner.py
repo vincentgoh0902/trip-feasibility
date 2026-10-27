@@ -41,11 +41,30 @@ ITIN = DatasetItinerary.model_validate(
                 "osm": "way/2",
             },
         ],
-        # 5 min gap, 12 min walk: a derived travel_time blocker
-        "legs": [{"from": "s1", "to": "s2", "mode": "walk", "minutes": 12, "source": "test"}],
+        "drafted_by": "human",
+        "verified_by_human": True,
         "violations": [
-            {"check": "opening_hours", "severity": "blocker", "stop": "s1", "note": "Tue closed"}
-        ],
+            {
+                "check": "opening_hours",
+                "day": 1,
+                "place": "Museum A",
+                "severity": "blocker",
+                "evidence": "Tue closed",
+                "source": "test",
+                "confidence": "verified",
+            },
+            # 5 min gap, 12 min walk
+            {
+                "check": "travel_time",
+                "day": 1,
+                "place": "Museum B",
+                "from_place": "Museum A",
+                "severity": "blocker",
+                "evidence": "12 min walk",
+                "source": "test",
+                "confidence": "verified",
+            },
+        ],  # fmt: skip
     }
 )
 
@@ -81,7 +100,10 @@ async def run(check_deps, mode, client=None):
 async def test_gold_mode_scores_the_checks(check_deps, services):
     [o] = await run(check_deps, "gold")
     assert o.error is None
-    assert o.gold == {"opening_hours stop:s1": "blocker", "travel_time leg:s1:s2": "blocker"}
+    assert o.gold == {
+        "opening_hours day 1: Museum A": "blocker",
+        "travel_time day 1: Museum A → Museum B": "blocker",
+    }
     assert o.predicted == o.gold
     s = summarise([o])
     assert s["overall"]["precision"] == s["overall"]["recall"] == 1.0
@@ -106,7 +128,7 @@ async def test_parsed_mode_aligns_then_scores(check_deps, services, respx_mock):
     reply_ = reply(extracted("Museum A", "Museum B", "Museum C", b_start="10:30"))
     [o] = await run(check_deps, "parsed", FakeClient(reply_))
     assert o.error is None
-    assert o.predicted == {"opening_hours stop:s1": "blocker"}
+    assert o.predicted == {"opening_hours day 1: Museum A": "blocker"}
     s = summarise([o])
     assert (s["overall"]["tp"], s["overall"]["fp"], s["overall"]["fn"]) == (1, 0, 1)
     assert s["parse"]["stop_recall"] == 1.0
@@ -140,9 +162,10 @@ async def test_unlabelled_hotel_is_left_out_of_the_scores(check_deps, services, 
     ]
     itin = ITIN.model_copy(
         update={
+            "hotel": "paris-regina",
             "stops": DatasetItinerary.model_validate(
                 {**ITIN.model_dump(mode="json", by_alias=True), "stops": stops}
-            ).stops
+            ).stops,
         }
     )
     hotel = Hotel(key="paris-regina", city="paris", name="Hôtel Regina", csv_name="H tel Regina")
@@ -159,7 +182,8 @@ async def test_gold_stop_without_osm_ref_is_geocoded_with_its_ref(check_deps, se
     data = ITIN.model_dump(mode="json", by_alias=True, exclude_none=True)
     del data["stops"][0]["osm"]
     [o] = await run_itin(check_deps, DatasetItinerary.model_validate(data))
-    assert "opening_hours stop:s1" in o.predicted  # needs the geocoded OSM ref, not just lat/lon
+    # needs the geocoded OSM ref, not just lat/lon
+    assert "opening_hours day 1: Museum A" in o.predicted
 
 
 async def run_itin(check_deps, itin):

@@ -54,30 +54,26 @@ def test_example_is_valid():
 
 def test_example_gold_violations():
     gold = gold_violations(example(), hotels())
-    gold = {(g.check, g.severity, g.target, g.derived) for g in gold}
+    gold = {(g.check, g.severity, g.day, g.place, g.from_place, g.derived) for g in gold}
     assert gold == {
-        ("opening_hours", "blocker", ("stop", "s2"), False),
-        ("travel_time", "warning", ("leg", "s3", "s4"), True),
-        ("travel_time", "blocker", ("leg", "s4", "s5"), True),
+        ("opening_hours", "blocker", 1, "Louvre Museum", None, False),
+        ("travel_time", "warning", 1, "Musée d'Orsay", "Café Marly", False),
+        ("travel_time", "blocker", 1, "Eiffel Tower", "Musée d'Orsay", False),
     }
 
 
-def test_hotel_red_flags_give_one_label_per_hotel():
-    raw = example_raw()
-    raw["stops"].append(
-        {
-            "id": "s7",
-            "day": 1,
-            "time_of_day": "evening",
-            "place_name": "Hôtel Regina",
-            "type": "hotel",
-            "hotel": "paris-regina",
-        }  # fmt: skip
-    )
-    itin = DatasetItinerary.model_validate(raw)
-    gold = gold_violations(itin, hotels(paris_regina=["noise"]))
-    assert [g.target for g in gold if g.check == "hotel_red_flags"] == [("hotel", "paris-regina")]
+def test_a_flagged_hotel_gives_one_label():
+    itin = example()
+    [g] = [g for g in gold_violations(itin, hotels(paris_regina=["noise"])) if g.derived]
+    assert (g.check, g.day, g.place, g.severity) == ("hotel_red_flags", None, "Hôtel Regina",
+                                                     "warning")  # fmt: skip
     assert gold_violations(itin, hotels(paris_regina=[])) == gold_violations(itin, hotels())
+    assert itinerary_errors(example(hotel="london-cavendish"), hotels()) == [
+        "hotel london-cavendish is in london"
+    ]
+    assert itinerary_errors(example(hotel="nowhere"), hotels()) == [
+        "hotel nowhere: not in hotels.yaml"
+    ]
 
 
 def test_template_loads_as_unannotated():
@@ -101,61 +97,6 @@ def test_text_limits_apply_to_the_cleaned_text():
         example(text=text + "Louvre again.\n" * 1100)
 
 
-def test_tight_leg_needs_a_travel_time():
-    raw = example_raw()
-    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s3"]
-    errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
-    assert errors == ["leg s3 → s4: only 15 min apart, so record its real travel time"]
-
-
-def test_duration_counts_as_an_end_for_which_legs_to_record():
-    raw = example_raw()
-    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
-    raw["stops"][1] |= {"end_time": None, "duration_min": 150, "duration_max": 170}
-    itin = DatasetItinerary.model_validate(raw)
-    errors = itinerary_errors(itin, hotels())
-    # 09:00 + 170 min = 11:50, 25 min before lunch at 12:15
-    assert errors == [
-        "leg s2 → s3: only 25 min apart counting s2's duration, so record its real travel time"
-    ]
-    # a duration never produces a travel-time label: labels need a stated end
-    assert not any(g.target == ("leg", "s2", "s3") for g in gold_violations(itin, hotels()))
-
-    raw["stops"][1] |= {"duration_min": 60, "duration_max": None}  # ends 10:00: no leg needed
-    assert itinerary_errors(DatasetItinerary.model_validate(raw), hotels()) == []
-
-
-def test_stated_journey_needs_a_leg_and_labels_when_well_short():
-    raw = example_raw()
-    raw["stops"][1] |= {"end_time": None}  # Louvre 09:00, no end: no gap to go on
-    raw["stops"][2] |= {"start_time": None, "end_time": None, "travel_min": 5, "travel_max": 8}
-    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
-    errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
-    assert errors == [
-        "leg s2 → s3: the itinerary says how long this journey takes, so record its real "
-        "travel time"
-    ]
-
-    def label(minutes):
-        legs = raw["legs"] + [{"from": "s2", "to": "s3", "mode": "walk", "minutes": minutes,
-                               "source": "x"}]  # fmt: skip
-        itin = DatasetItinerary.model_validate(raw | {"legs": legs})
-        assert itinerary_errors(itin, hotels()) == []
-        return [g.severity for g in gold_violations(itin, hotels()) if g.target[1:] == ("s2", "s3")]
-
-    assert label(18) == []  # 8 claimed + 10 margin
-    assert label(19) == ["warning"]
-
-
-def test_stated_departure_is_the_gap_start():
-    raw = example_raw()
-    # leave the Louvre at 12:05 for lunch at 12:15 (a 3-min walk): a warning, where 15 min was fine
-    raw["stops"][2] |= {"travel_start": "12:05"}
-    gold = {g.target: g.severity for g in gold_violations(DatasetItinerary.model_validate(raw),
-                                                         hotels())}  # fmt: skip
-    assert gold[("leg", "s2", "s3")] == "warning"
-
-
 def test_no_leg_to_or_from_a_stop_without_a_location():
     raw = example_raw()
     raw["stops"][2] |= {"place_name": "Café Marly", "located": False}  # as if named "Lunch"
@@ -176,16 +117,6 @@ def test_leg_must_join_consecutive_stops():
     assert errors == ["leg s1 → s3: not consecutive stops on a day"]
 
 
-def test_overlapping_stops_are_a_blocker_without_a_leg():
-    raw = example_raw()
-    raw["stops"][2]["start_time"] = "11:30"  # lunch starts before the Louvre visit ends
-    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s2"]
-    itin = DatasetItinerary.model_validate(raw)
-    assert itinerary_errors(itin, hotels()) == []
-    gold = {(g.check, g.severity, g.target) for g in gold_violations(itin, hotels())}
-    assert ("travel_time", "blocker", ("leg", "s2", "s3")) in gold
-
-
 def test_stops_must_be_in_order():
     raw = example_raw()
     raw["stops"][3], raw["stops"][4] = raw["stops"][4], raw["stops"][3]
@@ -194,33 +125,45 @@ def test_stops_must_be_in_order():
     assert "stop s4: starts before stop s5; keep stops in order" in errors
 
 
-def test_violation_targets():
+def label(**fields) -> dict:
+    return {"check": "daily_load", "day": 1, "severity": "warning", "evidence": "e",
+            "source": "s", "confidence": "estimated", **fields}  # fmt: skip
+
+
+def test_quoted_words_must_be_verbatim():
     raw = example_raw()
     raw["violations"] = [
-        {"check": "opening_hours", "severity": "warning", "stop": "s9", "note": "n"},
-        {"check": "daily_load", "severity": "warning", "day": 3, "note": "n"},
-        {"check": "public_holidays", "severity": "warning", "day": 1, "note": "n"},
-        {"check": "public_holidays", "severity": "warning", "day": 1, "note": "again"},
+        label(check="opening_hours", place="The Louvre", time="9:00 – 12:00"),
+        label(check="travel_time", place="Eiffel Tower", from_place="The Orsay", time="16:10"),
+        label(),
+        label(),
     ]
+    raw["unknowns"] = [{"check": "opening_hours", "place": "Bateaux", "reason": "r"},
+                       {"check": "daily_load", "day": 1, "reason": "r"}]  # fmt: skip
     errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
     assert errors == [
-        "violation opening_hours: stop s9 doesn't exist",
-        "violation daily_load: day 3 has no stops",
-        "violation public_holidays on 1: labelled twice",
+        "violation 1 (opening_hours, day 1): place 'The Louvre' isn't copied from the cleaned text",
+        "violation 2 (travel_time, day 1): from_place 'The Orsay' isn't copied from the cleaned "
+        "text",
+        "violation 4 (daily_load, day 1): labelled twice",
     ]
 
 
 @pytest.mark.parametrize(
-    ("violation", "message"),
+    ("fields", "message"),
     [
-        ({"check": "opening_hours", "day": 1}, "opening_hours labels name a stop, not a day"),
-        ({"check": "daily_load", "stop": "s1"}, "daily_load labels name a day, not a stop"),
-        ({"check": "travel_time", "stop": "s1"}, "Input should be"),
+        ({"check": "opening_hours"}, "opening_hours labels name a place"),
+        ({"check": "travel_time"}, "travel_time labels name a place"),
+        ({"place": "Louvre Museum"}, "daily_load labels name a day, not a place"),
+        ({"check": "opening_hours", "place": "x", "from_place": "y"}, "only travel_time"),
+        ({"check": "hotel_red_flags"}, "Input should be"),  # from hotels.yaml, not the file
+        ({"confidence": "sure"}, "Input should be"),
+        ({"day": None}, "Input should be a valid integer"),
     ],
 )
-def test_violation_shape(violation, message):
+def test_violation_shape(fields, message):
     with pytest.raises(ValidationError, match=message):
-        example(violations=[{"severity": "warning", "note": "n", **violation}])
+        example(violations=[label(**fields)])
 
 
 def test_hotel_stops():
@@ -234,27 +177,38 @@ def test_hotel_stops():
     ]
 
 
-def test_a_file_in_progress_is_checked_part_by_part():
-    raw = example_raw()
-    del raw["violations"]
-    raw["legs"] = [leg for leg in raw["legs"] if leg["from"] != "s3"]
-    itin = DatasetItinerary.model_validate(raw)
+def test_a_draft_counts_once_verified():
+    itin = example(drafted_by="gemini-x", verified_by_human=False)
     assert not itin.annotated and gold_violations(itin, hotels()) == []
-    # legs are checked as soon as they're there, violations listed as still to do
     assert itinerary_errors(itin, hotels()) == [
-        "still to do: violations (use [] for none)",
-        "leg s3 → s4: only 15 min apart, so record its real travel time",
+        "still to do: verify the draft (verified_by_human: true)"
     ]
-    del raw["legs"]
-    errors = itinerary_errors(DatasetItinerary.model_validate(raw), hotels())
-    assert errors == ["still to do: legs, violations (use [] for none)"]
+    assert example().annotated
 
 
-def test_stops_come_first():
+def test_gold_needs_no_stops():
+    raw = example_raw()
+    del raw["stops"], raw["legs"]
+    itin = DatasetItinerary.model_validate(raw)
+    assert itin.annotated and itinerary_errors(itin, hotels()) == []
+    assert len(gold_violations(itin, hotels())) == 3
+
+
+def test_parts_go_together():
     raw = example_raw()
     del raw["stops"]
-    with pytest.raises(ValidationError, match="add stops before"):
+    with pytest.raises(ValidationError, match="add stops before legs"):
         DatasetItinerary.model_validate(raw)
+    with pytest.raises(ValidationError, match="go together"):
+        example(drafted_by=None)
+    with pytest.raises(ValidationError, match="nothing to verify"):
+        example(violations=None, drafted_by=None)
+
+
+def test_stops_are_dev_only():
+    assert itinerary_errors(example(split="test"), hotels()) == [
+        "stops and legs are dev only (parser debugging)"
+    ]
 
 
 def test_synthetic_needs_a_parent():
@@ -309,7 +263,8 @@ def write(root: Path, name: str, text: str | None = EXAMPLE_TEXT, **changes) -> 
 def test_partial_dataset(dataset):
     write(dataset, "paris-01")
     write(dataset, "vienna-01", city="vienna", split="dev", text="Wien", stops=None, legs=None,
-          violations=None)  # fmt: skip
+          violations=None, drafted_by=None, verified_by_human=False, hotel=None, unknowns=[],
+          other_issues=[])  # fmt: skip
     report = validate_dataset(dataset, partial=True)
     assert [i.id for i in report.itineraries] == ["paris-01", "vienna-01"]
     assert report.errors == [

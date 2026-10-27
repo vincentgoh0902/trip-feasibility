@@ -11,29 +11,33 @@ works and why, with the decision log), `docs/ANNOTATION.md` (dataset rules). **U
 as work lands, and ARCHITECTURE.md (including the decision log) whenever a design choice is
 made or changed: it's how I follow the project.**
 
-## Status (2026-10-26; details in PLAN.md)
+## Status (2026-10-27; details in PLAN.md)
 
 Built: all five checks, parse pipeline (`extract-v8`), LangGraph agent with re-checked fixes,
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
 results), restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels
-labelled. Stops drafted for all 15 dev itineraries (to be checked by Vincent); test stops wait
-until the prompt is frozen.
+labelled. Stops drafted for all 15 dev itineraries (parser debugging only now); test files get
+no stops.
+
+**Switching to violations-first evaluation (2026-10-27, decision 74):** gold = violations in
+the text's own words (check, day, place/time as written, evidence, source, confidence), plus
+`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–3
+done (format, validator, conversion); next: drafter (Gemini/GPT), LLM-only baseline, matcher
+with human decisions, side-by-side run (PLAN.md).
 
 Waiting on Vincent, in this order:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
    drafted stops; the `dataset-backup-*` folders beside it don't count).
-2. **Check the drafted dev stops** against `show_clean.py <id>`.
+2. **Fix barcelona-06.yaml** (a stray leg line at line 107 makes it invalid YAML).
 3. **Preferences for all 40**, in one go, from the prompts only (dev gets some variety).
-4. **Legs for the dev files** (the validator lists each one needed).
-5. **Violations for the dev files** (opening hours, public holidays, daily load; `[]` if none).
-6. `validate_dataset.py --partial` until only the test files are unannotated.
+4. **A Gemini or OpenAI key** in `.env` for the drafter; then check each dev draft and set
+   `verified_by_human: true`.
 
 In parallel: **`ANTHROPIC_API_KEY`** in the repo-root `.env` (none yet), after a monthly spend
 cap in the Console; then `scripts/smoke_parse.py`. Optional: Langfuse Cloud keys; before slice 2
 can be tried, OAuth apps + `API_JWT_SECRET`.
 
-Then (Claude): first baseline eval on dev (gold mode; parsed once the key is in); test stops once
-the prompt is frozen. Not blocked on Vincent: travel time and daily load using durations and
+Then (Claude): steps 4–7 of the violations-first plan (PLAN.md). Not blocked on Vincent: travel time and daily load using durations and
 stated journeys, skipping geocoding for activity-word stops, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
@@ -118,13 +122,15 @@ Planned: `train/` (Tier 2, Mac only).
   (metadata and labels, no `text`; format in `dataset/models.py`, example in
   `docs/annotation/example.yaml` + `example.md`). Gold stops are what extraction should
   return (`place_name` verbatim from the cleaned text, `show_clean.py`); they extend
-  `parse.schema.ExtractedStop`, so changing that schema changes the dataset format. Hand labels: opening_hours (by stop), public_holidays and
-  daily_load (by day). travel_time labels are derived from real leg times (blocker if gap <
-  minutes, warning if gap < minutes + 10; overlaps always blockers; every leg under 60 min
-  needs a real time). hotel_red_flags labels come from hotels.yaml (red flag at about 4+/40
-  sampled reviews for noise and cleanliness, 3+ location, 2+ safety), one per hotel per
-  itinerary. warning/blocker only. Truth is reality (official sites, Google Maps), never our
-  own checks or data sources.
+  `parse.schema.ExtractedStop`, so changing that schema changes the dataset format.
+  Gold stops and legs are **dev only, for parser debugging, and frozen** (no new stop rules). The gold is `violations` (opening_hours, public_holidays, travel_time, daily_load):
+  check, day, place/time copied from the cleaned text, severity, evidence, source,
+  confidence (verified | estimated); plus `unknowns` (not scored) and `other_issues`.
+  hotel_red_flags labels come from hotels.yaml for the file's `hotel` (red flag at about
+  4+/40 sampled reviews for noise and cleanliness, 3+ location, 2+ safety). warning/blocker
+  only. Drafts only from a non-Anthropic model (`drafted_by`); a file counts only with
+  `verified_by_human: true`. Truth is reality (official sites, Google Maps), never our own
+  checks or data sources.
 - **API:** every query for user data filters by the caller (another user's thing is a 404).
   Sign-in routes take `CurrentUser`; demo-capable ones `OptionalUser` (a bad token is still
   401). The demo checks samples only and saves nothing. Runs go through `RunService`, never
@@ -136,7 +142,7 @@ Planned: `train/` (Tier 2, Mac only).
   so reruns make no external calls. Every run writes model ID, prompt version, config and
   dataset version to `eval_runs`. Two modes, reported apart: gold stops (checks alone) and
   parsed (end to end; stops aligned to gold by day + name). A prediction matches a label on
-  check + target; severity agreement is separate. The test split needs `--final` and is
+  check + day + place name (fuzzy, one to one); severity agreement is separate. The test split needs `--final` and is
   touched only for reported results. The judge model comes from a different provider than
   the agent model.
 - **Schema changes:** edit models.py, then `uv run alembic revision --autogenerate -m ...`
@@ -194,6 +200,7 @@ docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 scripts/save_reply.sh paris-03                        # clipboard → data/dataset/texts/paris-03.md
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
+uv run python scripts/convert_gold.py [--write]       # old stop-id labels → violations-first (backs up)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 

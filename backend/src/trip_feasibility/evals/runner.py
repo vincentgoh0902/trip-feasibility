@@ -17,10 +17,10 @@ from trip_feasibility.evals.score import (
     PARSE_FIELDS,
     Counts,
     ParseCounts,
-    Target,
     compare,
+    findings,
+    gold_label,
     parse_counts,
-    predicted_targets,
 )
 from trip_feasibility.itinerary import Stop
 from trip_feasibility.parse.extract import MessagesClient
@@ -54,17 +54,13 @@ class Outcome:
     fixable: int = 0  # warnings and blockers found
     fixed: int = 0  # of those, how many got a valid fix
     fix_tokens: tuple[int, int] = (0, 0)
-    predicted: dict[str, str] = field(default_factory=dict)  # "check target" -> severity
+    predicted: dict[str, str] = field(default_factory=dict)  # Finding.label() -> severity
     gold: dict[str, str] = field(default_factory=dict)
 
 
 def _gold_extracted(itin: DatasetItinerary) -> list[ExtractedStop]:
     assert itin.stops is not None
     return [ExtractedStop(**{f: getattr(s, f) for f in PARSE_FIELDS}) for s in itin.stops]
-
-
-def _label(key: tuple[str, Target]) -> str:
-    return f"{key[0]} {':'.join(key[1])}"
 
 
 async def gold_stops(deps: CheckDeps, itin: DatasetItinerary, city: City) -> list[Stop]:
@@ -100,21 +96,19 @@ async def evaluate_itinerary(
     client: MessagesClient | None = None,
     fixes: bool = False,
 ) -> Outcome:
-    assert itin.stops is not None
     out = Outcome(id=itin.id, city=itin.city)
-    gold = {(g.check, g.target): g.severity for g in gold_violations(itin, hotels)}
-    keys = {s.hotel for s in itin.stops if s.hotel}
-    out.hotel_unlabelled = any(hotels[k].red_flags is None for k in keys if k in hotels)
+    gold = gold_violations(itin, hotels)
+    hotel = hotels.get(itin.hotel or "")
+    out.hotel_unlabelled = hotel is not None and hotel.red_flags is None
     if out.hotel_unlabelled:
-        gold = {k: v for k, v in gold.items() if k[0] != "hotel_red_flags"}
-    out.gold = {_label(k): v for k, v in gold.items()}
-    gold_by_id = {s.id: s for s in itin.stops}
+        gold = [g for g in gold if g.check != "hotel_red_flags"]
+    out.gold = {gold_label(g): g.severity for g in gold}
     started = time.monotonic()
 
     try:
         if mode == "gold":
+            # gold stops are dev only (parser debugging): this mode runs the checks alone
             stops = await gold_stops(deps, itin, city)
-            id_map = {s.id: s.id for s in stops}
         else:
             assert client is not None
             parsed = await parse_itinerary(
@@ -123,9 +117,9 @@ async def evaluate_itinerary(
             stops = parsed.stops
             x = parsed.extraction
             out.input_tokens, out.output_tokens = x.input_tokens, x.output_tokens
-            pairs = align(x.extraction.stops, itin.stops)
-            id_map = {stops[i].id: itin.stops[j].id for i, j in pairs.items()}
-            out.parse = parse_counts(x.extraction.stops, _gold_extracted(itin), pairs)
+            if itin.stops is not None:
+                pairs = align(x.extraction.stops, itin.stops)
+                out.parse = parse_counts(x.extraction.stops, _gold_extracted(itin), pairs)
         fixer = None
         if fixes:
             assert client is not None
@@ -150,25 +144,17 @@ async def evaluate_itinerary(
             out.fix_tokens = (fix_report.input_tokens, fix_report.output_tokens)
     except (ParseError, Unavailable) as e:
         out.error = e.code if isinstance(e, ParseError) else f"unavailable: {e}"
-        if isinstance(e, ParseError):
+        if isinstance(e, ParseError) and itin.stops is not None:
             out.parse = ParseCounts(gold_stops=len(itin.stops))
-        out.counts = compare({}, gold)  # everything missed
+        out.counts = compare([], gold)  # everything missed
         out.seconds = time.monotonic() - started
         return out
 
-    day_of = {s.id: s.day for s in stops}
-
-    def hotel_of(stop_id: str) -> str | None:
-        g = gold_by_id.get(id_map.get(stop_id, ""))
-        return g.hotel if g else None
-
-    predicted = predicted_targets(
-        report.violations, gold_id=id_map.get, day_of=day_of.__getitem__, hotel_of=hotel_of
-    )
+    predicted = findings(report.violations, stops)
     if out.hotel_unlabelled:
-        predicted = {k: v for k, v in predicted.items() if k[0] != "hotel_red_flags"}
-    out.predicted = {_label(k): v for k, v in predicted.items()}
-    out.counts = compare(predicted, gold)
+        predicted = [f for f in predicted if f.check != "hotel_red_flags"]
+    out.predicted = {f.label(): f.severity for f in predicted}
+    out.counts = compare(predicted, gold, itin.unknowns)
     out.statuses = {n: r.status for n, r in report.results.items()}
     out.unknown = {n: len(r.unknown) for n, r in report.results.items()}
     out.seconds = time.monotonic() - started

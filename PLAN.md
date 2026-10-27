@@ -40,6 +40,21 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       end to end, CLI (`scripts/check_itinerary.py`)
 - [x] Eval runner (`scripts/run_eval.py`): gold-stop and parsed modes, alignment, parse
       accuracy, eval_runs rows; checked live on the example annotation
+- [ ] **Violations-first evaluation** (decided 2026-10-27, ARCHITECTURE decision 74):
+  - [x] 1. Stop rules frozen in ANNOTATION.md: dev only, for parser debugging
+  - [x] 2. Gold format: violations by check + day + place/time as written, severity,
+        evidence, source, confidence; `unknowns`, `other_issues`, `drafted_by`,
+        `verified_by_human`, `hotel`. Validator, layout, scoring (place-name matching) and
+        eval runner updated; travel_time labelled directly, hotels from hotels.yaml
+  - [x] 3. Converted paris-02, paris-05, barcelona-02 (all `violations: []`, so no labels
+        to carry over; `verified_by_human: false`); `hotel` set on the 4 dev files whose
+        prompt names one. barcelona-06 skipped: invalid YAML (a stray leg line)
+  - [ ] 4. Drafter from another provider (Gemini or GPT), model-agnostic; dev only
+  - [ ] 5. LLM-only baseline: one search-enabled prompt per itinerary, same format,
+        model-agnostic (default Claude Haiku 5.5 + web search)
+  - [ ] 6. Matcher: ambiguous name scores listed for Vincent, decisions saved
+  - [ ] 7. Baseline vs our system (parsed mode) on the first 5 dev files Vincent verifies:
+        precision and recall per check
 - [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
 - [x] Langfuse tracing (optional, no traveller content by default), cost per run and per
       parse, `check_runs` rows with violations and fixes (`tracing.py`, `pricing.py`, `runs.py`)

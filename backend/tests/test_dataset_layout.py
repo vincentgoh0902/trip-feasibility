@@ -22,11 +22,14 @@ stops:
     time_of_day: afternoon
     place_name: "Café, Example"
 legs: [{to: s2, from: s1, minutes: 12, mode: walk, source: Google Maps}]
+hotel: paris-regina
 violations:
-- check: daily_load
-  severity: warning
-  day: 1
-  note: Too much, even for a long day
+- {severity: warning, check: daily_load, day: 1, evidence: "Too much, even for a long day",
+   source: judgement, confidence: estimated}
+unknowns: [{check: opening_hours, day: 1, place: Musée d’Ici, reason: "No hours: closed?"}]
+other_issues: [Needs a booking]
+drafted_by: human
+verified_by_human: true
 notes: Made-up test itinerary.
 """
 
@@ -40,9 +43,29 @@ preferences:
   pace: relaxed
   max_walk_km: 6
   transport_modes: [walk, transit]
+hotel: paris-regina
 # text: texts/paris-99.md
 
-# --- annotation ---
+# --- gold ---
+drafted_by: human
+verified_by_human: true
+violations:
+  - check: daily_load
+    day: 1
+    severity: warning
+    evidence: Too much, even for a long day
+    source: judgement
+    confidence: estimated
+unknowns:
+  - check: opening_hours
+    day: 1
+    place: Musée d’Ici
+    reason: "No hours: closed?"
+other_issues:
+  - Needs a booking
+notes: Made-up test itinerary.
+
+# --- dev only, for parser debugging (frozen rules) ---
 stops:
   - id: s1
     day: 1
@@ -59,9 +82,6 @@ stops:
     type: meal
 legs:
   - { from: s1, to: s2, mode: walk, minutes: 12, source: Google Maps }
-violations:
-  - { check: daily_load, severity: warning, day: 1, note: "Too much, even for a long day" }
-notes: Made-up test itinerary.
 """
 
 

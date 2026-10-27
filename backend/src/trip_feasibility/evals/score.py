@@ -1,58 +1,111 @@
 """Scoring: predicted violations vs gold labels, and parsed stops vs gold stops.
 
-Predictions are put in the gold labels' terms (validate.GoldViolation.target): a stop for
-opening_hours, a leg for travel_time, a day for public_holidays and daily_load, a hotel key
-for hotel_red_flags. Only warning and blocker count, as in the labels. A prediction matches
-a label with the same check and target, whatever the severity; severity agreement is
-reported separately. Counts are summed over itineraries (micro-averaged).
+Predictions are put in the gold labels' terms (validate.GoldViolation): check, day and the
+place as the system names it (opening_hours and travel_time; travel_time names the place
+travelled to), no place for public_holidays and daily_load, no day for hotel_red_flags.
+Only warning and blocker count, as in the labels. A prediction matches a label with the
+same check and day and a matching place name (evals/align.name_score), one to one,
+whatever the severity; severity agreement is reported separately. A prediction matching
+none of the labels but one of the file's `unknowns` isn't counted. Counts are summed over
+itineraries (micro-averaged).
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from trip_feasibility.checks.models import SEVERITY_RANK, Violation
+from trip_feasibility.dataset.models import Unknown
+from trip_feasibility.dataset.validate import GoldViolation
+from trip_feasibility.evals.align import name_score
+from trip_feasibility.itinerary import Stop
 from trip_feasibility.parse.schema import ExtractedStop
 
-Target = tuple[str, ...]
 PARSE_FIELDS = tuple(ExtractedStop.model_fields)
+# place names at least this close match without asking (align.name_score: 0.9 is one name
+# inside the other, "Louvre" in "Louvre Museum")
+MATCH_SCORE = 0.9
 
 
-def predicted_targets(
-    violations: list[Violation],
-    *,
-    gold_id: Callable[[str], str | None],
-    day_of: Callable[[str], int],
-    hotel_of: Callable[[str], str | None],
-) -> dict[tuple[str, Target], str]:
-    """(check, target) -> worst severity. gold_id maps a predicted stop id to the gold stop it
-    was aligned with (identity in gold mode); unaligned stops give targets no label can match.
-    """
-    out: dict[tuple[str, Target], str] = {}
+@dataclass(frozen=True)
+class Finding:
+    """A predicted violation in the labels' terms."""
 
-    def add(check: str, target: Target, severity: str) -> None:
-        key = (check, target)
-        if key not in out or SEVERITY_RANK[severity] > SEVERITY_RANK[out[key]]:
-            out[key] = severity
+    check: str
+    severity: str
+    day: int | None
+    place: str | None
+    from_place: str | None = None
 
-    def stop(stop_id: str) -> str:
-        return gold_id(stop_id) or f"unaligned:{stop_id}"
+    def label(self) -> str:
+        where = " → ".join(p for p in (self.from_place, self.place) if p)
+        return f"{self.check} day {self.day or '-'}{': ' + where if where else ''}"
+
+
+def gold_label(g: GoldViolation) -> str:
+    return Finding(g.check, g.severity, g.day, g.place, g.from_place).label()
+
+
+def findings(violations: list[Violation], stops: list[Stop]) -> list[Finding]:
+    """A run's warnings and blockers in the labels' terms, one per target (the worst
+    severity wins)."""
+    by_id = {s.id: s for s in stops}
+    out: dict[tuple, Finding] = {}
+
+    def add(f: Finding) -> None:
+        key = (f.check, f.day, f.place, f.from_place)
+        if key not in out or SEVERITY_RANK[f.severity] > SEVERITY_RANK[out[key].severity]:
+            out[key] = f
 
     for v in violations:
-        if v.severity == "info" or not v.stop_ids:
+        named = [by_id[s] for s in v.stop_ids if s in by_id]
+        if v.severity == "info" or not named:
             continue
         match v.check_name:
             case "opening_hours":
-                for s in v.stop_ids:
-                    add(v.check_name, ("stop", stop(s)), v.severity)
+                for s in named:
+                    add(Finding(v.check_name, v.severity, s.day, s.place_name))
             case "travel_time":
-                add(v.check_name, ("leg", stop(v.stop_ids[0]), stop(v.stop_ids[-1])), v.severity)
+                a, b = named[0], named[-1]
+                from_place = a.place_name if a is not b else None
+                add(Finding(v.check_name, v.severity, b.day, b.place_name, from_place))
             case "public_holidays" | "daily_load":
-                add(v.check_name, ("day", str(day_of(v.stop_ids[0]))), v.severity)
+                add(Finding(v.check_name, v.severity, named[0].day, None))
             case "hotel_red_flags":
-                keys = {hotel_of(s) for s in v.stop_ids} - {None}
-                for key in keys or {f"unaligned:{v.stop_ids[0]}"}:
-                    add(v.check_name, ("hotel", key), v.severity)
-    return out
+                add(Finding(v.check_name, v.severity, None, named[0].place_name))
+    return list(out.values())
+
+
+def place_score(a: str | None, b: str | None) -> float:
+    if a is None or b is None:
+        return 1.0 if a is b else 0.0
+    return name_score(a, b)
+
+
+def match(predicted: list[Finding], gold: list[GoldViolation]) -> dict[int, int]:
+    """predicted index -> gold index: same check and day, best place names first."""
+    candidates = []
+    for i, p in enumerate(predicted):
+        for j, g in enumerate(gold):
+            if p.check != g.check or p.day != g.day:
+                continue
+            score = place_score(p.place, g.place)
+            if score >= MATCH_SCORE:
+                candidates.append((-score, i, j))
+    pairs: dict[int, int] = {}
+    used: set[int] = set()
+    for _, i, j in sorted(candidates):
+        if i not in pairs and j not in used:
+            pairs[i] = j
+            used.add(j)
+    return pairs
+
+
+def _is_unknown(p: Finding, unknowns: list[Unknown]) -> bool:
+    return any(
+        u.check == p.check
+        and (u.day is None or u.day == p.day)
+        and (u.place is None or place_score(p.place, u.place) >= MATCH_SCORE)
+        for u in unknowns
+    )
 
 
 @dataclass
@@ -84,20 +137,22 @@ class Counts:
 
 
 def compare(
-    predicted: dict[tuple[str, Target], str], gold: dict[tuple[str, Target], str]
+    predicted: list[Finding], gold: list[GoldViolation], unknowns: list[Unknown] = ()
 ) -> dict[str, Counts]:
     """Counts per check."""
     counts: dict[str, Counts] = {}
-    for check, target in predicted.keys() | gold.keys():
-        c = counts.setdefault(check, Counts())
-        key = (check, target)
-        if key in predicted and key in gold:
+    pairs = match(predicted, gold)
+    for i, p in enumerate(predicted):
+        c = counts.setdefault(p.check, Counts())
+        if i in pairs:
             c.tp += 1
-            c.severity_agree += predicted[key] == gold[key]
-        elif key in predicted:
+            c.severity_agree += p.severity == gold[pairs[i]].severity
+        elif not _is_unknown(p, list(unknowns)):
             c.fp += 1
-        else:
-            c.fn += 1
+    matched = set(pairs.values())
+    for j, g in enumerate(gold):
+        if j not in matched:
+            counts.setdefault(g.check, Counts()).fn += 1
     return counts
 
 

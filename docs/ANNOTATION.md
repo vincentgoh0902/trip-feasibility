@@ -23,7 +23,9 @@ Files you'll use:
 1. **Collect** all 40 itineraries (text and metadata only). About 5 minutes each.
 2. **Assign splits** (dev or test) at random.
 3. **Label the 16 hotels** in hotels.yaml. About 10 minutes each.
-4. **Annotate** each itinerary: stops, travel times, violations. 30–45 minutes each.
+4. **Annotate** each itinerary: its violations (the gold), drafted by GPT or Gemini and
+   checked by you, or written by hand. Dev files also have stops and legs, for parser
+   debugging only.
 5. **Validate** as you go: `uv run python scripts/validate_dataset.py --partial` (from
    `backend/`). Without `--partial` once everything is done.
 
@@ -153,14 +155,18 @@ Judge from the reviews, not from the score or from whether it's on the "low" lis
 
 ## 4. Annotating an itinerary
 
-Add `stops`, then `legs`, then `violations` (`[]` when a list is empty). The validator checks
-each part as soon as it's there and lists the parts still to do; a file counts as annotated
-(and goes into evals) only once all three are. Don't write `violations: []` before you've
-checked: it means "checked, none found". See
-`docs/annotation/example.yaml` for a complete one.
+**Violations first (decided 2026-10-27, ARCHITECTURE decision 74).** The gold is the list of
+violations, in the itinerary's own words (see Violations below), plus `unknowns` and
+`other_issues`. A file counts as annotated, and goes into evals, once it has `violations`
+(`[]` when there are none) and `verified_by_human: true`. Write `violations: []` only once
+you've checked: it means "checked, none found". See `docs/annotation/example.yaml`.
 
-- `[]` means "checked, none found"; a missing key means "not annotated yet". `violations: []`
-  covers only the hand-labelled checks: travel-time and hotel labels are derived anyway.
+- **Drafts** may come from an LLM, but never from Anthropic (Claude is the extractor, and a
+  draft from the same provider would reward shared blind spots). `drafted_by` records the
+  model ID, or `human`. A draft counts only after you've checked every label against reality
+  and set `verified_by_human: true`; fix, add or delete labels freely before that.
+- **`hotel`:** the hotel the prompt names, as its key in hotels.yaml (leave it out if none).
+  Its red flags become the hotel labels, so you don't write those.
 - `notes` is text, not a list: leave it out when there's nothing to say, never `[]`.
 - **Preferences** (if not default) are set before annotating, from the prompt alone, never
   from the reply: "as much as possible" → `packed`, "relaxed" or "not rushed" → `relaxed`,
@@ -172,7 +178,13 @@ checked: it means "checked, none found". See
   work. Always quote times (`"09:00"`). Quote any value containing a comma in inline style,
   and any value containing `: ` or ` #` in either style.
 
-### Stops
+> **Stops and legs below are frozen: dev only, for parser debugging.** No new stop rules
+> are added (decision 74); test files get no stops. Gold stops measure extraction (parse
+> accuracy, gold-stop mode); no label depends on them. Legs no longer produce travel-time
+> labels and the validator no longer asks for them: where the text below says a leg is
+> required or a label is derived, that's how it worked before decision 74.
+
+### Stops (dev only, for parser debugging; frozen)
 
 The stops are what a careful reader would extract from the text, in the order written:
 
@@ -267,7 +279,7 @@ its own time or duration (a timed slot, above).
 Keep stops in the order of the text; if the text's own order is impossible (an afternoon
 stop listed before a morning one), keep the text's order and mention it in `notes`.
 
-### Legs: real travel times
+### Legs: real travel times (dev only, for parser debugging; frozen)
 
 Record a leg for **every pair of consecutive stops on the same day with less than 60
 minutes between them** (the end of one and the start of the next, both stated). A stop with
@@ -298,35 +310,51 @@ the gap (a day trip to Versailles, say).
 - A gap counted from a duration only decides which legs to record. Travel-time labels still
   come only from stated ends, until the check itself uses durations.
 
-You don't label travel-time problems yourself: they are worked out from these times (a gap
-shorter than the journey is a blocker; less than 10 minutes to spare is a warning; stops
-that overlap are always a blocker). This keeps the labels consistent with the times.
+Legs no longer produce labels: travel-time problems are labelled directly (Violations).
 
 ### Violations
 
-Label three checks by hand. Each label has a `severity`, a `note` (one sentence, why) and,
-where you looked something up, a `source`.
+One entry per problem, with:
 
-- **blocker**: the plan doesn't work as written.
-- **warning**: it works, but it's risky or partly wrong.
+| Field | Rule |
+|---|---|
+| `check` | `opening_hours`, `public_holidays`, `travel_time` or `daily_load` |
+| `day` | Day number as in the text (1 = `trip_start`) |
+| `place` | opening_hours and travel_time only: the place **copied exactly** from the cleaned text (`scripts/show_clean.py <id>`); travel_time names the place travelled *to* |
+| `from_place` | travel_time only, optional: the place left, copied the same way |
+| `time` | Optional: the time as written ("9:30 AM – 11:00 AM"), copied exactly |
+| `severity` | `blocker`: doesn't work as written. `warning`: works, but risky or partly wrong |
+| `evidence` | One sentence: what's wrong and the fact that shows it |
+| `source` | Where the fact comes from: the official page (URL), "Google Maps", or "judgement" |
+| `confidence` | `verified`: you looked it up for that date. `estimated`: a judgement (pace, a time you couldn't pin down) |
 
-#### `opening_hours` (names a `stop`)
+The validator checks that `place`, `from_place` and `time` appear in the cleaned text. Label
+each problem once.
+
+**`unknowns`**: something one of the checks would judge that you couldn't establish (no hours
+published, an evening with no time): `check`, `day` and `place` where they apply, and a
+`reason`. A prediction matching one isn't counted either way.
+
+**`other_issues`**: real problems outside these checks (a ticket that sells out weeks ahead,
+a place in the wrong city), one line each. Not scored.
+
+#### `opening_hours` (names a day and place)
 
 Is the place open for the planned visit, on that date? Use the official website (or Google
 Maps if there isn't one), with that date's hours: weekly closing days, seasonal hours,
 holiday closures and last admission.
 
-- **blocker**: closed for the whole visit; closed all day (for a stop with no time); arriving
-  after last admission; permanently closed.
+- **blocker**: closed for the whole visit; closed all day (for a visit with no time);
+  arriving after last admission; permanently closed.
 - **warning**: open for only part of the visit (closes halfway through, opens late).
-- Stops with only `time_of_day` are judged on the standard windows: morning 09:00–12:00,
-  afternoon 13:00–17:00, evening 18:00–21:00.
-- Only venues and named meals. No labels for hotels, transfers, parks and squares that are
-  always open, or places you can't establish hours for (say so in `notes`).
+- Visits with only morning/afternoon/evening are judged on the standard windows: morning
+  09:00–12:00, afternoon 13:00–17:00, evening 18:00–21:00.
+- Only venues and named meals. No labels for hotels, stations, parks and squares that are
+  always open; places you can't establish hours for go in `unknowns`.
 
-#### `public_holidays` (names a `day`)
+#### `public_holidays` (names a day)
 
-Is the day a public holiday in that city, and does it have at least one venue stop?
+Is the day a public holiday in that city, and does it have at least one venue visit?
 
 - National holidays, plus regional ones that apply in the city (Catalonia for Barcelona,
   the state of Vienna, England for London).
@@ -334,7 +362,21 @@ Is the day a public holiday in that city, and does it have at least one venue st
   the holiday, label that separately as `opening_hours`.
 - Use the official government holiday list.
 
-#### `daily_load` (names a `day`)
+#### `travel_time` (names a day and the place travelled to)
+
+Can the traveller get from one place to the next in the time the plan leaves? Look the
+journey up door to door in Google Maps or Citymapper, departing when the first visit ends,
+on the trip's weekday, with the fastest option within `preferences.transport_modes`. Put
+the real time and the gap in `evidence` ("12:00 to 12:10, but the metro takes 25 min").
+
+- **blocker**: the gap is shorter than the journey, or the two visits overlap.
+- **warning**: less than 10 minutes to spare; or the itinerary states the journey's length
+  and the real one is more than 10 minutes longer.
+- Only where the text states both times (an end, or a start + stated duration, and the next
+  start) or states the journey. Otherwise there's no gap to judge: a day that can't fit is
+  `daily_load`.
+
+#### `daily_load` (names a day)
 
 Is the day too much for this traveller, given their `preferences` (pace, walking limit)?
 Judge it as a traveller would. Don't count against a formula.
@@ -344,11 +386,11 @@ Judge it as a traveller would. Don't count against a formula.
 - **blocker**: can't realistically be done: the activities need more hours than the day
   has, or the walking is far over the limit.
 - Walking distance: roughly add up the walking legs (Google Maps shows distances).
+- Usually `confidence: estimated`.
 
-#### Not labelled by hand
+#### Not labelled in the file
 
-- `travel_time`: worked out from `legs` (above).
-- `hotel_red_flags`: worked out from hotels.yaml, once per hotel per itinerary.
+- `hotel_red_flags`: worked out from hotels.yaml for the itinerary's `hotel`.
 - Minor notes (info level): not part of the evaluation.
 
 ## Rules that keep the dataset honest
@@ -356,7 +398,9 @@ Judge it as a traveller would. Don't count against a formula.
 1. **Truth is the real world**, not this project's data. Don't run the checker, and don't
    look up OpenStreetMap opening hours or Nager.Date to decide a label. Otherwise the
    evaluation only measures whether the checker agrees with its own sources.
-2. **Don't use an LLM to annotate**, even for a first draft. The labels must be yours.
+2. **Drafts only from another provider than the extractor** (GPT or Gemini, never Claude),
+   and never shown our checker's output. Every label is checked by you before
+   `verified_by_human: true`; the labels you keep are yours.
 3. **Don't edit the generated text.** Mistakes in it are the point.
 4. **When unsure, don't label**, and explain in `notes`.
 5. **Vienna:** annotate it like the others. The held-out rule is about the checker's results,
@@ -376,8 +420,8 @@ uv run python scripts/validate_dataset.py --partial
 It prints counts per split and city, how many are annotated, the label counts, and a
 version hash; then every problem, with the file name. Run it after every few files.
 
-To put every file in the standard layout (block-style stops, one-line legs and violations,
-quoted times, fixed key order):
+To put every file in the standard layout (gold first, block-style violations and stops,
+one-line legs, quoted times, fixed key order):
 
 ```sh
 uv run python scripts/format_dataset.py           # lists the files that would change

@@ -1,12 +1,18 @@
+from datetime import date
+
 from trip_feasibility.checks.models import Violation
+from trip_feasibility.dataset.models import Unknown
+from trip_feasibility.dataset.validate import GoldViolation
 from trip_feasibility.evals.align import align
 from trip_feasibility.evals.score import (
     PARSE_FIELDS,
     Counts,
+    Finding,
     compare,
+    findings,
     parse_counts,
-    predicted_targets,
 )
+from trip_feasibility.itinerary import Stop
 from trip_feasibility.parse.schema import ExtractedStop
 
 
@@ -41,45 +47,78 @@ def v(check, severity, *stop_ids):
                      evidence={}, source="x")  # fmt: skip
 
 
-def test_predictions_in_label_terms():
-    days = {"p1": 1, "p2": 1, "p3": 2}
-    ids = {"p1": "s1", "p2": "s2"}  # p3 wasn't aligned
-    hotels = {"s1": "paris-regina"}
-    got = predicted_targets(
+def stop(id, day, name, type="venue"):
+    return Stop(id=id, day=day, date=date(2026, 12, 7 + day), place_name=name, type=type)
+
+
+def gold(check, day, place, severity="warning", from_place=None):
+    return GoldViolation(itinerary_id="x", check=check, severity=severity, day=day, place=place,
+                         from_place=from_place, confidence="verified", derived=False)  # fmt: skip
+
+
+def test_findings_in_label_terms():
+    stops = [stop("p1", 1, "Hôtel Regina", "hotel"), stop("p2", 1, "Louvre"),
+             stop("p3", 2, "Orsay")]  # fmt: skip
+    got = findings(
         [
             v("opening_hours", "blocker", "p2"),
             v("travel_time", "warning", "p1", "p2"),
-            v("travel_time", "blocker", "p2", "p3"),
             v("daily_load", "warning", "p1", "p2"),
             v("public_holidays", "info", "p3"),  # info never counts
             v("hotel_red_flags", "warning", "p1"),
             v("opening_hours", "warning", "p2"),  # same target: the worst severity wins
+            v("opening_hours", "warning", "gone"),  # names no stop: dropped
         ],
-        gold_id=ids.get,
-        day_of=days.__getitem__,
-        hotel_of=lambda p: hotels.get(ids.get(p, "")),
+        stops,
     )
-    assert got == {
-        ("opening_hours", ("stop", "s2")): "blocker",
-        ("travel_time", ("leg", "s1", "s2")): "warning",
-        ("travel_time", ("leg", "s2", "unaligned:p3")): "blocker",
-        ("daily_load", ("day", "1")): "warning",
-        ("hotel_red_flags", ("hotel", "paris-regina")): "warning",
+    assert set(got) == {
+        Finding("opening_hours", "blocker", 1, "Louvre"),
+        Finding("travel_time", "warning", 1, "Louvre", "Hôtel Regina"),
+        Finding("daily_load", "warning", 1, None),
+        Finding("hotel_red_flags", "warning", None, "Hôtel Regina"),
     }
+    assert Finding("travel_time", "warning", 1, "Louvre", "Hôtel Regina").label() == (
+        "travel_time day 1: Hôtel Regina → Louvre"
+    )
 
 
-def test_compare_and_metrics():
-    gold = {
-        ("opening_hours", ("stop", "s2")): "blocker",
-        ("travel_time", ("leg", "s3", "s4")): "warning",
-    }
-    pred = {("opening_hours", ("stop", "s2")): "warning", ("daily_load", ("day", "1")): "warning"}
-    counts = compare(pred, gold)
+def test_compare_matches_check_day_and_place():
+    labels = [
+        gold("opening_hours", 1, "Louvre Museum", "blocker"),
+        gold("travel_time", 1, "Eiffel Tower"),
+        gold("daily_load", 2, None),
+        gold("hotel_red_flags", None, "Hôtel Regina"),
+    ]
+    pred = [
+        Finding("opening_hours", "warning", 1, "The Louvre Museum"),  # name inside: a match
+        Finding("travel_time", "warning", 2, "Eiffel Tower"),  # wrong day
+        Finding("daily_load", "warning", 2, None),
+        Finding("hotel_red_flags", "warning", None, "Hotel Regina"),
+        Finding("public_holidays", "warning", 1, None),
+    ]
+    counts = compare(pred, labels)
     oh, tt, dl = counts["opening_hours"], counts["travel_time"], counts["daily_load"]
-    assert (oh.tp, oh.severity_agree, tt.fn, dl.fp) == (1, 0, 1, 1)
+    assert (oh.tp, oh.severity_agree, tt.tp, tt.fp, tt.fn, dl.tp) == (1, 0, 0, 1, 1, 1)
+    assert counts["hotel_red_flags"].tp == 1 and counts["public_holidays"].fp == 1
     total = Counts()
     for c in counts.values():
         total.add(c)
     m = total.metrics()
-    assert (m["precision"], m["recall"], m["severity_agreement"]) == (0.5, 0.5, 0.0)
+    assert (m["precision"], m["recall"], m["severity_agreement"]) == (0.6, 0.75, 2 / 3)
     assert Counts().metrics()["precision"] is None  # nothing predicted: undefined, not 0
+
+
+def test_matches_are_one_to_one():
+    labels = [gold("opening_hours", 1, "Louvre Museum")]
+    pred = [Finding("opening_hours", "warning", 1, "Louvre"),
+            Finding("opening_hours", "warning", 1, "Louvre Museum")]  # fmt: skip
+    c = compare(pred, labels)["opening_hours"]
+    assert (c.tp, c.fp) == (1, 1)
+
+
+def test_a_prediction_on_an_unknown_isnt_counted():
+    unknowns = [Unknown(check="opening_hours", day=1, place="Bateaux Parisiens", reason="r")]
+    pred = [Finding("opening_hours", "warning", 1, "Bateaux Parisiens"),
+            Finding("opening_hours", "warning", 2, "Bateaux Parisiens")]  # fmt: skip
+    c = compare(pred, [], unknowns)["opening_hours"]
+    assert (c.tp, c.fp, c.fn) == (0, 1, 0)

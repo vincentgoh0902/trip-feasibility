@@ -13,7 +13,51 @@ preferences:
   max_walk_km: 10
   transport_modes: [walk, transit]
 
-# --- annotation ---
+hotel: paris-regina # from the prompt; its red flags in hotels.yaml are gold labels too
+
+# --- gold ---
+drafted_by: human
+verified_by_human: true
+# Place and time copied as written. travel_time names the place travelled to (and the one
+# left, as from_place); public_holidays and daily_load name only a day.
+violations:
+  - check: opening_hours
+    day: 1
+    place: Louvre Museum
+    time: 9:00 – 12:00
+    severity: blocker
+    evidence: The Louvre is closed every Tuesday.
+    source: louvre.fr visitor information
+    confidence: verified
+  - check: travel_time
+    day: 1
+    place: Musée d'Orsay
+    from_place: Café Marly
+    time: 13:45 – 16:00
+    severity: warning
+    evidence: 15 minutes from lunch to the Orsay, and the walk takes 15. It fits, with no slack.
+    source: Google Maps (illustrative)
+    confidence: verified
+  - check: travel_time
+    day: 1
+    place: Eiffel Tower
+    from_place: Musée d'Orsay
+    time: 16:10 – 17:30
+    severity: blocker
+    evidence: 10 minutes between the Orsay and the Eiffel Tower; the metro takes 25.
+    source: Google Maps (illustrative)
+    confidence: verified
+# No public_holidays label: 8 December isn't a holiday in France.
+# No daily_load label: three venues and two meals is fine at a moderate pace.
+unknowns:
+  - check: opening_hours
+    day: 1
+    place: Bateaux Parisiens
+    reason: Only "Evening", so which sailing they'd take can't be told.
+other_issues:
+  - The Eiffel Tower summit usually needs a timed ticket booked well ahead.
+
+# --- dev only, for parser debugging (frozen rules) ---
 stops:
   - id: s1
     day: 1
@@ -52,24 +96,9 @@ stops:
     time_of_day: evening
     place_name: Bateaux Parisiens
     type: meal
-
-# Real door-to-door times for every leg with under 60 minutes between stops.
 legs:
   - { from: s1, to: s2, mode: walk, minutes: 5, source: Google Maps (illustrative) }
   - { from: s2, to: s3, mode: walk, minutes: 3, source: Google Maps (illustrative) }
-  # 15 min gap, 15 min walk: fits, but with no buffer -> derived travel_time warning
   - { from: s3, to: s4, mode: walk, minutes: 15, source: Google Maps (illustrative) }
-  # 10 min gap, 25 min by metro -> derived travel_time blocker
   - { from: s4, to: s5, mode: transit, minutes: 25, source: Google Maps (illustrative) }
-
-# Hand labels: opening_hours (a stop), public_holidays and daily_load (a day).
-violations:
-  - check: opening_hours
-    severity: blocker
-    stop: s2
-    note: The Louvre is closed every Tuesday.
-    source: louvre.fr visitor information
-# No public_holidays label: 8 December isn't a holiday in France.
-# No daily_load label: three venues and two meals is fine at a moderate pace.
-
 notes: Bateaux Parisiens has no time, so its leg from the Eiffel Tower isn't recorded.
