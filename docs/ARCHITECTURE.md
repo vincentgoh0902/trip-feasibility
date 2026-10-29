@@ -1045,7 +1045,8 @@ API key). The drafter refuses Anthropic backends and test files.
 - **What it sees:** the cleaned text (so its quotes can be checked), the traveller's prompt,
   the city, each day's date and weekday, and the preferences. Never gold stops, our checks
   or their output. The rules are a condensed ANNOTATION.md Violations section
-  (`draft-v1`).
+  (`draft-v1`; `draft-v2` from 2026-10-29 adds the travel-time rules of decisions 76-77).
+  When those rules change, `RULES` changes with them and both prompt versions are bumped.
 - **Checking:** output is validated like a hand-written file (shapes, quoted words verbatim,
   duplicates). Problems get one retry with the list of problems; entries still wrong are
   dropped and named in `notes`, so nothing is silently lost.
@@ -1063,7 +1064,7 @@ the `claude-code` backend in `search_llm.py`) on a Claude plan, so no API key. I
 plain model: its system prompt replaced, no settings, MCP servers or tools but WebSearch and
 WebFetch, in an empty folder; a hook that adds to the context, or a run on another model,
 fails it. Same inputs as the drafter (`draft.trip_block`) and the same rules for the four
-checks (`draft.RULES`), with its own framing (`baseline-v1`); never GPT, since GPT drafted
+checks (`draft.RULES`), with its own framing (`baseline-v2`, rules of decisions 76-77); never GPT, since GPT drafted
 the gold. Output is checked for shape only (places are matched fuzzily) and cached per
 itinerary, backend, model, effort and prompt version under `data/evals/baseline/`, keyed to
 a hash of the prompt: a change to the text, dates or preferences reruns it. No hotel

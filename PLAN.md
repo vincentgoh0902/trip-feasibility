@@ -56,7 +56,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   - [x] 5. LLM-only baseline (`scripts/run_baseline.py`): Claude Haiku 5.5 + web search via
         headless Claude Code (no API key), stripped to a plain model; same inputs and
         check rules as the drafter (`baseline-v1`); outputs cached. Checked live on
-        paris-08. Run the rest once preferences are final (they're in the cache key)
+        paris-08. Run the rest once preferences are final (they're in the cache key).
+        2026-10-29: `draft-v2` / `baseline-v2` carry the travel-time rules of decisions
+        76-77; london-08 and london-09 re-drafted with them; baseline re-run on dev
   - [ ] 6. Matcher: ambiguous name scores listed for Vincent, decisions saved
   - [ ] 7. Baseline vs our system (parsed mode) on the first 5 dev files Vincent verifies:
         precision and recall per check

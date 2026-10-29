@@ -24,7 +24,8 @@ from trip_feasibility.dataset.models import DatasetItinerary, LabelledViolation,
 from trip_feasibility.evals.score import Finding
 from trip_feasibility.evals.search_llm import SearchLLM, SearchResult
 
-BASELINE_PROMPT_VERSION = "baseline-v1"
+# v2: draft.RULES updated for decisions 76-77 (travel-time tolerance, areas, overlaps, typos)
+BASELINE_PROMPT_VERSION = "baseline-v2"
 
 INTRO = """\
 A traveller is about to follow the itinerary below, which a chatbot wrote for them. Check

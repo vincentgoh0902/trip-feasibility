@@ -4,9 +4,21 @@ Paste an itinerary; an AI agent reports what will break (closed venues, public h
 travel times that don't fit, hotel red flags, overloaded days), shows the evidence, and
 proposes fixes that are re-checked before you see them.
 
-**Status:** early build. The backend skeleton, database schema and the first check tools
-(public holidays, opening hours, travel time, daily load) are in place; the agent and frontend are next. Evaluation results will be reported here,
-whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works and why:
+## Why I built this
+
+For a trip with friends, I used an AI-generated itinerary that took in the spots we wanted
+to see and the food places we wanted to go. Only after we'd booked accommodation in the
+different cities did we realise that, on the days we'd be in town, a restaurant we really
+wanted to go to would be closed.
+
+Nothing in the itinerary had told us. This project is so that doesn't happen again: check a
+plan against real opening hours, holidays and travel times before you book around it.
+
+**Status:** in development, not yet hosted. Built: all five checks, the parse pipeline, the
+agent with re-checked fixes, the API (live progress over SSE, a demo mode), a prompt-injection
+suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
+dataset (40 chatbot itineraries across four cities, hand-verified labels) is being annotated;
+no evaluation results yet. They will be reported here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works and why:
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Run locally

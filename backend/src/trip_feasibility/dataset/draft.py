@@ -21,7 +21,8 @@ from trip_feasibility.dataset.models import DatasetItinerary, LabelledViolation,
 from trip_feasibility.dataset.validate import _violation_errors
 from trip_feasibility.evals.search_llm import SearchLLM, SearchResult
 
-DRAFT_PROMPT_VERSION = "draft-v1"
+# v2: travel-time rules of decisions 76-77 (10-min shortfall tolerance, areas, overlaps, typos)
+DRAFT_PROMPT_VERSION = "draft-v2"
 LABELLED_CHECKS = ["opening_hours", "public_holidays", "travel_time", "daily_load"]
 COUNTRIES = {"paris": "France", "london": "England", "barcelona": "Spain (Catalonia)",
              "vienna": "Austria (Vienna)"}  # fmt: skip
@@ -107,9 +108,20 @@ traveller get there in the time the plan leaves? Look the journey up door to doo
 Maps or the city's journey planner), departing when the first visit ends, on that weekday,
 using the fastest option within the traveller's transport modes. Put the real time and the
 gap in the evidence ("13:30 to 13:40, but the metro takes 25 min").
-- blocker: the gap is shorter than the journey, or the two visits overlap.
-- warning: less than 10 minutes to spare; or the text states the journey's length and the
+- blocker: the two visits overlap, or the journey is more than 10 minutes longer than the
+  gap.
+- warning: the gap is short by 10 minutes or less (the traveller leaves a few minutes
+  early); less than 10 minutes to spare; or the text states the journey's length and the
   real one is more than 10 minutes longer.
+- Areas (a neighbourhood or quarter: "El Born", "Gothic Quarter"): a journey into an area
+  the traveller is already in or beside takes 0 minutes, so no label. From elsewhere, time
+  it to the area's nearest edge.
+- No label when the destination names no place ("lunch around El Born", "a last wander"):
+  there's nothing to look up. Except overlaps: if the next slot starts before this one
+  ends, label it (blocker) whatever the next slot is, with place copied from it.
+- An obvious time typo that makes visits overlap ("9:30 AM – 11:30 PM" before a 12:00
+  lunch) is one problem: label the overlap only, not the opening hours or the day's length
+  it also breaks, and put the likely typo in other_issues.
 - Only where the text states both times (an end, or a start plus a stated duration, and the
   next start) or states the journey itself. Otherwise there's no gap to judge.
 

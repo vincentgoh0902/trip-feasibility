@@ -4,7 +4,7 @@ import pytest
 
 from tests.test_dataset_draft import FakeLLM, label, output, undrafted
 from trip_feasibility.dataset.draft import RULES
-from trip_feasibility.evals.baseline import build_prompt, run_baseline
+from trip_feasibility.evals.baseline import BASELINE_PROMPT_VERSION, build_prompt, run_baseline
 from trip_feasibility.evals.score import Finding
 from trip_feasibility.evals.search_llm import (
     ClaudeCodeBackend,
@@ -32,7 +32,7 @@ async def test_output_becomes_findings_and_is_cached(tmp_path):
         Finding("travel_time", "blocker", 1, "Eiffel Tower", "Musée d'Orsay"),
     ]
     assert result.invalid == ["violation 3: Value error, opening_hours labels name a place"]
-    assert json.loads(cache.read_text())["prompt_version"] == "baseline-v1"
+    assert json.loads(cache.read_text())["prompt_version"] == BASELINE_PROMPT_VERSION
 
     again = await run_baseline(FakeLLM(), undrafted(), cache)  # no outputs left: must not run
     assert again.cached and again.findings == result.findings
