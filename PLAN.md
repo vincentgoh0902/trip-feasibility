@@ -178,7 +178,12 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 ## Open
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
-  on the dev set once it exists.
+  on the dev set once it exists. Caveat (2026-10-29): the packed limits and the 1.5× walking
+  blocker factor were quoted to Vincent before preferences were set (only london-05 is packed,
+  12 km), so dev preferences aren't fully blind to the limits.
+- Preferences set for all 40 (2026-10-29). No prompt names a car or bike, so no dataset trip
+  has them: the car/bike paths are covered by unit tests only. Re-drafted the 4 dev files whose
+  preferences changed (barcelona-08, london-05, london-09, paris-09).
 - Frontend hosting: no Dockerfile yet; it depends on the hosting shape below.
 - Email magic links need an email provider (not chosen); slice 2 can start with OAuth only.
 
