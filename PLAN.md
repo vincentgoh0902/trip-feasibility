@@ -167,6 +167,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   replaced with drafted stops. ARCHITECTURE decision 73. (2026-10-26)
   The validator checks a file part by part while it's being annotated (stops, then legs, then
   violations), listing what's still to do; evals still use only complete files. (2026-10-26)
+- **Public-holiday warnings are advisory (decided 2026-10-29):** still reported and scored as
+  warnings, but not sent to the fixer (`ADVISORY_CHECKS` in `checks/config.py`, fix prompt
+  `fixes-v3`); real holiday closures are `opening_hours` violations and get fixes.
+  ARCHITECTURE decision 75.
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

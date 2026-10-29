@@ -11,6 +11,7 @@ from trip_feasibility.agent.fixes import (
     Applied,
     ProposedFix,
     apply_fix,
+    fixable,
     judge,
     propose_fixes,
     user_message,
@@ -247,6 +248,36 @@ async def test_model_failure_leaves_the_checks_standing(check_deps):
         model="m",
     )
     assert report.error.startswith("refused") and report.unfixed == ["v1"]
+
+
+async def test_public_holidays_are_shown_but_not_fixed(check_deps):
+    holiday = v("public_holidays", "warning", "s1", "s2", message="Christmas Day")
+    report = CheckReport.from_results(
+        INP,
+        {
+            "opening_hours": CheckResult(
+                check_name="opening_hours", status="ok", violations=[CLOSED]
+            ),
+            "public_holidays": CheckResult(
+                check_name="public_holidays", status="ok", violations=[holiday]
+            ),
+        },
+    )
+    assert list(fixable(report).values()) == [CLOSED]
+
+    only_holiday = CheckReport.from_results(
+        INP,
+        {
+            "public_holidays": CheckResult(
+                check_name="public_holidays", status="ok", violations=[holiday]
+            )
+        },
+    )
+    client = FakeClient()
+    out = await propose_fixes(
+        check_deps, client, INP, only_holiday, fake_checker([]), city=CITY, model="m"
+    )
+    assert out.fixes == [] and out.unfixed == [] and client.calls == []
 
 
 async def test_fix_naming_an_unknown_violation_is_invalid(check_deps):

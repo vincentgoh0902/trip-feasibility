@@ -17,6 +17,9 @@ CHECK_NAMES: tuple[CheckName, ...] = (
     "daily_load",
     "hotel_red_flags",
 )
+# Shown, but never sent to the fixer: a fact about the date, not a fault a change to the plan
+# solves (decision 75). A real holiday closure is an opening_hours violation, which is fixed.
+ADVISORY_CHECKS: frozenset[CheckName] = frozenset({"public_holidays"})
 
 
 class CheckConfig(BaseModel):

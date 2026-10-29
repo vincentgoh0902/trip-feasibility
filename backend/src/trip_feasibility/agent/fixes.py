@@ -1,6 +1,7 @@
 """Fixes (PRD FR-3): Claude proposes, code applies and re-checks.
 
-1. One Claude call gets the stops and every warning/blocker, and returns fixes as operations
+1. One Claude call gets the stops and every warning/blocker (except advisory checks: public
+   holidays are shown, never fixed), and returns fixes as operations
    (move or retime a stop, remove it, replace it with another place, or allow another
    transport mode), in a fixed JSON schema. It never returns a whole new itinerary, and
    never coordinates.
@@ -34,6 +35,7 @@ import anthropic
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from trip_feasibility.agent.models import CheckInput, CheckReport
+from trip_feasibility.checks.config import ADVISORY_CHECKS
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.checks.models import Violation
 from trip_feasibility.itinerary import Stop, StopType, TransportMode
@@ -41,7 +43,8 @@ from trip_feasibility.parse.extract import MessagesClient
 from trip_feasibility.parse.geocode import City, geocode_place
 
 # v2: free-text OSM tags and opening-hours comments filtered out of the evidence
-FIX_PROMPT_VERSION = "fixes-v2"
+# v3: advisory checks (public holidays) no longer sent
+FIX_PROMPT_VERSION = "fixes-v3"
 MAX_TOKENS = 8000
 MAX_FIXES = 20
 EVIDENCE_CHARS = 600
@@ -196,8 +199,12 @@ class FixError(Exception):
 
 
 def fixable(report: CheckReport) -> dict[str, Violation]:
-    """Warnings and blockers, by the ids the model sees: v1, v2, ..."""
-    found = [v for v in report.violations if v.severity in ("warning", "blocker")]
+    """Warnings and blockers outside the advisory checks, by the ids the model sees: v1, v2, ..."""
+    found = [
+        v
+        for v in report.violations
+        if v.severity in ("warning", "blocker") and v.check_name not in ADVISORY_CHECKS
+    ]
     return {f"v{i}": v for i, v in enumerate(found, 1)}
 
 
