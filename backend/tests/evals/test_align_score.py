@@ -4,10 +4,12 @@ from trip_feasibility.checks.models import Violation
 from trip_feasibility.dataset.models import Unknown
 from trip_feasibility.dataset.validate import GoldViolation
 from trip_feasibility.evals.align import align
+from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.score import (
     PARSE_FIELDS,
     Counts,
     Finding,
+    Where,
     compare,
     findings,
     parse_counts,
@@ -122,3 +124,62 @@ def test_a_prediction_on_an_unknown_isnt_counted():
             Finding("opening_hours", "warning", 2, "Bateaux Parisiens")]  # fmt: skip
     c = compare(pred, [], unknowns)["opening_hours"]
     assert (c.tp, c.fp, c.fn) == (0, 1, 0)
+
+
+# --- uncertain names, decided by a human (evals/decisions.py) ---
+
+
+def where(decisions, itinerary="barcelona-02", split="dev"):
+    return Where(itinerary, split, decisions)
+
+
+def test_uncertain_names_wait_for_a_decision():
+    labels = [gold("opening_hours", 2, "Museu Picasso")]
+    pred = [Finding("opening_hours", "warning", 2, "Picasso Museum")]  # name score 0.52
+    decisions = MatchDecisions()
+    c = compare(pred, labels, (), where(decisions))["opening_hours"]
+    assert (c.tp, c.fp, c.fn) == (0, 1, 1)  # undecided counts as no match
+    [pair] = decisions.pending.values()
+    assert (pair.predicted, pair.gold, pair.score) == ("Picasso Museum", "Museu Picasso", 0.52)
+
+    decisions.set(pair, True)
+    c = compare(pred, labels, (), where(decisions))["opening_hours"]
+    assert (c.tp, c.fp, c.fn) == (1, 0, 0) and not decisions.pending
+    decisions.set(pair, False)
+    assert compare(pred, labels, (), where(decisions))["opening_hours"].tp == 0
+    assert compare(pred, labels)["opening_hours"].tp == 0  # no decisions given: never asked
+
+
+def test_only_leftovers_are_asked_about():
+    labels = [gold("opening_hours", 1, "Casa Batlló")]
+    pred = [Finding("opening_hours", "warning", 1, "Casa Batllo"),
+            Finding("opening_hours", "warning", 1, "Casa Milà")]  # fmt: skip
+    decisions = MatchDecisions()
+    c = compare(pred, labels, (), where(decisions))["opening_hours"]
+    # the sure match takes the label, so Casa Milà (0.6 against it) isn't put to anyone
+    assert (c.tp, c.fp) == (1, 1) and not decisions.pending
+
+
+def test_names_far_apart_never_match():
+    labels = [gold("opening_hours", 1, "British Museum")]
+    decisions = MatchDecisions()
+    compare([Finding("opening_hours", "warning", 1, "Tate Modern")], labels, (), where(decisions))
+    assert not decisions.pending
+
+
+def test_decisions_are_saved_and_reloaded(tmp_path):
+    path = tmp_path / "match_decisions.yaml"
+    labels = [gold("opening_hours", 2, "Museu Picasso")]
+    pred = [Finding("opening_hours", "warning", 2, "Picasso Museum")]
+    decisions = MatchDecisions.load(path)
+    compare(pred, labels, (), where(decisions))
+    decisions.save()
+    assert "match: null" in path.read_text()
+    again = MatchDecisions.load(path)
+    [pair] = again.pending.values()
+    assert pair.split == "dev"
+    again.set(pair, True)
+    again.save()
+    final = MatchDecisions.load(path)
+    assert not final.pending and final.decided == {pair.key: True}
+    assert final.version() != MatchDecisions().version()

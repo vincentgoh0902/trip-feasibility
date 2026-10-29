@@ -59,7 +59,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
         paris-08. Run the rest once preferences are final (they're in the cache key).
         2026-10-29: `draft-v2` / `baseline-v2` carry the travel-time rules of decisions
         76-77; london-08 and london-09 re-drafted with them; baseline re-run on dev
-  - [ ] 6. Matcher: ambiguous name scores listed for Vincent, decisions saved
+  - [x] 6. Matcher: names scoring 0.4–0.9 go to Vincent once (`scripts/match_decisions.py
+        --ask`), saved in `data/evals/match_decisions.yaml` and reused by every run and
+        system; undecided pairs make a score provisional (2026-10-29). The 6 verified dev
+        files' baseline outputs raised no uncertain pairs
   - [ ] 7. Baseline vs our system (parsed mode) on the first 5 dev files Vincent verifies:
         precision and recall per check
 - [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
@@ -91,6 +94,77 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [ ] Run the injection suite live (needs the key) and put the numbers in the README
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
+
+## Tier 1 plan from here (decided 2026-10-29)
+
+Annotation showed that much of what breaks a real itinerary is fuzzy (vague stops,
+unrealistic days, "optional" or "X or Y" slots) or only exists as text on the web (the
+London Eye's annual maintenance shutdown). So the core rule changes, and two LLM parts are
+added. Order: matcher and the 5-itinerary side-by-side run first (a baseline number before
+the design changes), then 1 → 2 → 4 → 3 → 5.
+
+1. **New core rule** (replaces "the LLM proposes, code decides"): every fact has a cited
+   source; structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and
+   always run; an LLM may judge fuzzy questions and search the web for facts structured
+   data doesn't have, but every claim carries a source URL and a confidence, and it never
+   states hours, holidays or travel times from memory. Web page text reaches only the
+   tool-less extractor, never the agent, review or fix prompt. In CLAUDE.md, ARCHITECTURE
+   (decision with the London Eye example) and the PRD.
+2. **Closures check** (temporary closures, special or seasonal hours, events), on located
+   venues and named meals, trip dates only, at most 12 places per run (the rest "not
+   checked"), on by default:
+   - step A: Haiku 5.5 with Anthropic web search, `max_uses: 1` per place, returns candidate
+     URLs only;
+   - our own guarded fetch (https only, no private addresses, size and time limits, our
+     User-Agent, HTML only), not Anthropic's web fetch;
+   - step B: Haiku 5.5, no tools, structured output: status (closed | altered_hours | open
+     | unknown), affected dates, source URL; code validates (dates parse, URL from step A);
+   - confidence "official" when the domain matches the OSM `website` tag, else "web";
+     web-only findings are "worth checking", never blockers;
+   - findings (not page text) cached per venue and month, shared across users; eval mode
+     replays them; frozen for reported runs; fix re-checks use cached findings only (a
+     replacement venue is "not verified");
+   - results stream last over SSE; the UI shows "still checking closures…" meanwhile.
+4. **Injection suite** gains web pages: hidden instructions, a fake closure notice,
+   "ignore previous instructions", a fake booking link, a vandalised OSM `website` tag.
+3. **LLM review node** after the checks: judges only (unrealistic days, feeding
+   daily_load; what optional and "X or Y" slots mean). Untimed stops are estimated in code
+   (time-of-day windows, durations, stated journeys). Every finding cites the check results
+   it relies on and is "estimated"; it may call the read-only MCP tools (a few calls at
+   most); findings citing nothing are rejected in code; not sent to the fixer at first.
+5. **Evaluation:** `cause: regular | special` on opening_hours labels (no separate closures
+   type), in the format, validator, drafter and baseline prompts; sweep of the dev drafts'
+   `other_issues` (listed for Vincent to confirm before anything moves); results per check
+   side by side with the LLM-only baseline, opening_hours also split by cause and by which
+   component found it; optional/X-or-Y findings as counts plus Vincent's ratings, unscored.
+   Vienna stays held out; tests mock every LLM and search call.
+
+**Cost (decided):** Claude Haiku 5.5 for everything, no free tiers. One-off eval cost about
+$5–10; reruns and the demo come from the cache. The public demo serves cached sample runs
+only (no live LLM or search calls); live checks on pasted itineraries are for signed-in
+users only, within the hourly limits. Live checks cost about $0.15–0.30 per itinerary with
+closures (web search $10 per 1,000 searches, ~11–12 places per itinerary on the dev set),
+under a monthly spend cap set in the Anthropic Console.
+
+### Definition of done for Tier 1
+
+- All five checks plus closures, each with source and confidence.
+- The LLM review step.
+- The eval on the test split plus synthetic variants (a few per check type), side by side
+  with the baseline; fix validity (share of fixes passing every re-check) reported.
+- The injection suite covering web pages.
+- A deployed demo (fallback if hosting slips: a recorded demo).
+- A README section "What changed and why", including the rule change.
+
+Tier 2 is decided after this is done.
+
+### Future work
+
+- LLM-judged fix quality (PRD metric; noted in the README as not measured in Tier 1) and
+  judge calibration.
+- The provider-agnostic LLM layer (PRD ADR-6).
+- Wikidata cross-check for "official" closure sources (OSM tags can be vandalised).
+- Typo detection ("check this time") for AM/PM slips.
 
 ## Decisions
 

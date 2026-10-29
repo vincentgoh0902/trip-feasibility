@@ -5,7 +5,9 @@ place as the system names it (opening_hours and travel_time; travel_time names t
 travelled to), no place for public_holidays and daily_load, no day for hotel_red_flags.
 Only warning and blocker count, as in the labels. A prediction matches a label with the
 same check and day and a matching place name (evals/align.name_score), one to one,
-whatever the severity; severity agreement is reported separately. A prediction matching
+whatever the severity; severity agreement is reported separately. Names scoring between
+decisions.UNSURE_SCORE and MATCH_SCORE match only if a human said so (evals/decisions.py);
+until then they count as no match and the pair is listed as undecided. A prediction matching
 none of the labels but one of the file's `unknowns` isn't counted. Counts are summed over
 itineraries (micro-averaged).
 """
@@ -16,6 +18,7 @@ from trip_feasibility.checks.models import SEVERITY_RANK, Violation
 from trip_feasibility.dataset.models import Unknown
 from trip_feasibility.dataset.validate import GoldViolation
 from trip_feasibility.evals.align import name_score
+from trip_feasibility.evals.decisions import UNSURE_SCORE, MatchDecisions, Pair
 from trip_feasibility.itinerary import Stop
 from trip_feasibility.parse.schema import ExtractedStop
 
@@ -80,22 +83,51 @@ def place_score(a: str | None, b: str | None) -> float:
     return name_score(a, b)
 
 
-def match(predicted: list[Finding], gold: list[GoldViolation]) -> dict[int, int]:
-    """predicted index -> gold index: same check and day, best place names first."""
-    candidates = []
+@dataclass(frozen=True)
+class Where:
+    """Which itinerary a comparison is for, so uncertain pairs can be decided once."""
+
+    itinerary: str
+    split: str
+    decisions: MatchDecisions
+
+
+def _greedy(candidates: list[tuple], pairs: dict[int, int], used: set[int]) -> None:
+    for _, i, j in sorted(candidates):
+        if i not in pairs and j not in used:
+            pairs[i] = j
+            used.add(j)
+
+
+def match(
+    predicted: list[Finding], gold: list[GoldViolation], where: Where | None = None
+) -> dict[int, int]:
+    """predicted index -> gold index: same check and day, best place names first. Uncertain
+    names are only considered (and asked about) for what's left unmatched after that."""
+    sure, unsure = [], []
     for i, p in enumerate(predicted):
         for j, g in enumerate(gold):
             if p.check != g.check or p.day != g.day:
                 continue
             score = place_score(p.place, g.place)
             if score >= MATCH_SCORE:
-                candidates.append((-score, i, j))
+                sure.append((-score, i, j))
+            elif score >= UNSURE_SCORE and p.place is not None and g.place is not None:
+                unsure.append((-score, i, j))
     pairs: dict[int, int] = {}
     used: set[int] = set()
-    for _, i, j in sorted(candidates):
-        if i not in pairs and j not in used:
-            pairs[i] = j
-            used.add(j)
+    _greedy(sure, pairs, used)
+    if where is None:
+        return pairs
+    decided_yes = []
+    for neg, i, j in unsure:
+        if i in pairs or j in used:
+            continue
+        p, g = predicted[i], gold[j]
+        pair = Pair(where.itinerary, where.split, p.check, p.day, p.place, g.place, round(-neg, 2))
+        if where.decisions.decide(pair) is True:
+            decided_yes.append((neg, i, j))
+    _greedy(decided_yes, pairs, used)
     return pairs
 
 
@@ -137,11 +169,14 @@ class Counts:
 
 
 def compare(
-    predicted: list[Finding], gold: list[GoldViolation], unknowns: list[Unknown] = ()
+    predicted: list[Finding],
+    gold: list[GoldViolation],
+    unknowns: list[Unknown] = (),
+    where: Where | None = None,
 ) -> dict[str, Counts]:
     """Counts per check."""
     counts: dict[str, Counts] = {}
-    pairs = match(predicted, gold)
+    pairs = match(predicted, gold, where)
     for i, p in enumerate(predicted):
         c = counts.setdefault(p.check, Counts())
         if i in pairs:

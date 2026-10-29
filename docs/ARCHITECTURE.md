@@ -1114,8 +1114,22 @@ place name scoring at least 0.9 on `align.name_score` (one name inside the other
 one to one, whatever its severity; severity agreement is reported separately. A prediction
 matching no label but one of the file's `unknowns` isn't counted. Counts are summed over
 itineraries (micro-averaged); precision with nothing predicted is "n/a", not 0. Hotels
-still unlabelled (`red_flags: null`) are left out of both sides. Still to come: a band of
-uncertain name scores listed for a human to decide, with the decisions saved.
+still unlabelled (`red_flags: null`) are left out of both sides.
+
+**Uncertain names** (`evals/decisions.py`, `scripts/match_decisions.py`). Between 0.4 and
+0.9 ("Picasso Museum" vs "Museu Picasso", "Casa Batlló" vs "Casa Milà") a human decides,
+once. Decisions live in `data/evals/match_decisions.yaml` (gitignored; back it up with the
+dataset), keyed by itinerary, check, day and the two names, so they apply to every later
+run and to every system: ours and the baseline are judged by the same calls. Only what's
+left unmatched after the sure matches is asked about, so a correct "Casa Batllo" doesn't
+also raise "Casa Milà". Undecided pairs count as no match; the run prints how many there
+are and stores the count (`undecided_pairs`) and a hash of the decisions
+(`match_decisions_version`) with its metrics, so a provisional score is never mistaken for
+a final one. Test-split pairs are listed and asked only with `--final`, after the final run,
+since deciding them means reading test predictions. `--from-baseline` collects the pairs
+from the cached baseline outputs. Why 0.4: translated names ("Musée d'Orsay" vs "Orsay
+Museum") score 0.42; unrelated places on the same day and check score lower ("British
+Museum" vs "Tate Modern", 0.32), and the same-check-same-day filter keeps the questions few.
 
 **Reported numbers** are counts with percentages ("2 of 3 (67%)"), per check and overall,
 plus coverage (runs where a check was unavailable, stops it couldn't judge), parse metrics,

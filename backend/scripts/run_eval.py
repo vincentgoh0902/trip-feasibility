@@ -12,6 +12,8 @@ calls once every lookup is cached. Only annotated (human-verified) itineraries a
 gold mode only those with gold stops (dev only, for parser debugging). The test split
 (including Vienna) needs --final: it is touched only for reported results, and per-itinerary
 lines are never printed for it. Details per itinerary go to data/evals/runs/ (gitignored).
+Uncertain place-name matches wait for a human decision (scripts/match_decisions.py); the
+run lists how many are undecided, and its scores are provisional until there are none.
 """
 
 import argparse
@@ -31,6 +33,7 @@ from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
 from trip_feasibility.dataset.validate import validate_dataset
 from trip_feasibility.db import make_engine
+from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.runner import Outcome, evaluate, summarise
 from trip_feasibility.models import EvalRun
 from trip_feasibility.parse.clean import CLEAN_VERSION
@@ -39,6 +42,7 @@ from trip_feasibility.parse.extract import PROMPT_VERSION, make_client
 ROOT = Path(__file__).resolve().parents[2]
 DATASET = ROOT / "data" / "dataset"
 OUT = ROOT / "data" / "evals" / "runs"
+DECISIONS = ROOT / "data" / "evals" / "match_decisions.yaml"
 
 
 def _of(n: int, total: int) -> str:
@@ -126,6 +130,7 @@ async def main() -> int:
     engine = make_engine(settings.database_url)
     sessionmaker = async_sessionmaker(engine)
     OUT.mkdir(parents=True, exist_ok=True)
+    decisions = MatchDecisions.load(DECISIONS)
     try:
         async with make_http_client(settings) as http:
             deps = make_check_deps(http, sessionmaker, settings, eval_mode=True)
@@ -144,8 +149,10 @@ async def main() -> int:
                     settings=settings,
                     client=make_client(settings) if mode == "parsed" or args.fixes else None,
                     fixes=args.fixes,
+                    decisions=decisions,
                     progress=progress(args.split),
                 )
+                decisions.save()
                 summary = summarise(outcomes)
                 metrics = {
                     "mode": mode,
@@ -155,6 +162,7 @@ async def main() -> int:
                     "fix_model": settings.fix_model if args.fixes else None,
                     "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
                     "clean_version": CLEAN_VERSION if mode == "parsed" else None,
+                    "match_decisions_version": decisions.version(),
                     **summary,
                 }
                 model_id = settings.extraction_model if mode == "parsed" else "none (gold stops)"
@@ -183,6 +191,11 @@ async def main() -> int:
                     )
                 )
                 print_summary(f"{mode} stops: violations", summary)
+                if summary["undecided_pairs"]:
+                    ask = "--ask --final" if args.split == "test" else "--ask"
+                    n = summary["undecided_pairs"]
+                    print(f"  provisional: {n} place-name pairs need your decision "
+                          f"(scripts/match_decisions.py {ask}), then rerun")  # fmt: skip
                 if "seen_cities" in summary:
                     print_summary(
                         "  seen cities (Paris, London, Barcelona)", summary["seen_cities"]

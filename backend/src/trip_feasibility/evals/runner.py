@@ -13,10 +13,12 @@ from trip_feasibility.dataset.models import DatasetItinerary, Hotel
 from trip_feasibility.dataset.split import UNSEEN_CITY
 from trip_feasibility.dataset.validate import gold_violations
 from trip_feasibility.evals.align import align
+from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.score import (
     PARSE_FIELDS,
     Counts,
     ParseCounts,
+    Where,
     compare,
     findings,
     gold_label,
@@ -56,6 +58,7 @@ class Outcome:
     fix_tokens: tuple[int, int] = (0, 0)
     predicted: dict[str, str] = field(default_factory=dict)  # Finding.label() -> severity
     gold: dict[str, str] = field(default_factory=dict)
+    undecided: int = 0  # uncertain name pairs still waiting for a human (evals/decisions.py)
 
 
 def _gold_extracted(itin: DatasetItinerary) -> list[ExtractedStop]:
@@ -95,6 +98,7 @@ async def evaluate_itinerary(
     settings: Settings,
     client: MessagesClient | None = None,
     fixes: bool = False,
+    decisions: MatchDecisions | None = None,
 ) -> Outcome:
     out = Outcome(id=itin.id, city=itin.city)
     gold = gold_violations(itin, hotels)
@@ -154,7 +158,10 @@ async def evaluate_itinerary(
     if out.hotel_unlabelled:
         predicted = [f for f in predicted if f.check != "hotel_red_flags"]
     out.predicted = {f.label(): f.severity for f in predicted}
-    out.counts = compare(predicted, gold, itin.unknowns)
+    where = Where(itin.id, itin.split, decisions) if decisions is not None else None
+    out.counts = compare(predicted, gold, itin.unknowns, where)
+    if decisions is not None:
+        out.undecided = sum(p.itinerary == itin.id for p in decisions.pending.values())
     out.statuses = {n: r.status for n, r in report.results.items()}
     out.unknown = {n: len(r.unknown) for n, r in report.results.items()}
     out.seconds = time.monotonic() - started
@@ -171,6 +178,7 @@ async def evaluate(
     settings: Settings,
     client: MessagesClient | None = None,
     fixes: bool = False,
+    decisions: MatchDecisions | None = None,
     progress: Any = None,
 ) -> list[Outcome]:
     cities: dict[str, City | None] = {}
@@ -192,6 +200,7 @@ async def evaluate(
                 settings=settings,
                 client=client,
                 fixes=fixes,
+                decisions=decisions,
             )
         outcomes.append(outcome)
         if progress:
@@ -230,6 +239,7 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
     summary["coverage"] = {"unavailable_runs": unavailable, "unknown_stops": unknown}
     summary["errors"] = {o.id: o.error for o in outcomes if o.error}
     summary["hotel_unlabelled"] = [o.id for o in outcomes if o.hotel_unlabelled]
+    summary["undecided_pairs"] = sum(o.undecided for o in outcomes)
 
     parses = [o.parse for o in outcomes if o.parse is not None]
     if parses:

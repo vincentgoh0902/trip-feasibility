@@ -21,10 +21,11 @@ no stops.
 
 **Switching to violations-first evaluation (2026-10-27, decision 74):** gold = violations in
 the text's own words (check, day, place/time as written, evidence, source, confidence), plus
-`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–5
+`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–6
 done (format, validator, conversion, drafter: GPT via the Codex CLI, all 15 dev drafts
-written; LLM-only baseline: Haiku via headless Claude Code); next: matcher with human
-decisions, side-by-side run (PLAN.md).
+written; LLM-only baseline: Haiku via headless Claude Code; matcher with human
+decisions); next: the 5-itinerary side-by-side run, then the Tier 1 plan in PLAN.md (new
+core rule, closures check, injection pages, LLM review, eval).
 
 Waiting on Vincent, in this order:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
@@ -78,6 +79,7 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     dataset/                    annotation format (models.py), split rules, validation + gold labels,
                                 draft.py (violation drafts from a non-Anthropic model)
     evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
+                                decisions.py (human calls on uncertain name matches),
                                 search_llm.py (search-enabled LLM backends: codex,
                                 claude-code), baseline.py (LLM-only baseline),
                                 injection.py (prompt-injection suite)
@@ -215,6 +217,7 @@ uv run python scripts/check_itinerary.py --example    # checks on the example (n
 uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
 uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev split
 uv run python scripts/run_eval.py --split test --final  # reported results only
+uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain name matches
 uv run python scripts/run_injection_suite.py          # needs the key; --defended-only, --no-save
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
