@@ -112,17 +112,21 @@ def _walk_km(mode: TransportMode | None, options: dict[TransportMode, ModeOption
     return 0.0
 
 
-async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences) -> LegPlan:
-    """Raises Unavailable if the routing service fails."""
+def consecutive_pairs(stops: list[Stop]) -> list[tuple[Stop, Stop]]:
+    """Each stop and the next one on the same day, in itinerary order."""
     by_date: dict[date, list[Stop]] = defaultdict(list)
     for s in stops:
         by_date[s.date].append(s)
-    pairs = [
+    return [
         (a, b)
         for day in sorted(by_date)
         for a, b in zip(by_date[day], by_date[day][1:], strict=False)
     ]
-    pairs = [(a, b) for a, b in pairs if not (a.area or b.area)]
+
+
+async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences) -> LegPlan:
+    """Raises Unavailable if the routing service fails."""
+    pairs = [(a, b) for a, b in consecutive_pairs(stops) if not (a.area or b.area)]
     located = [(a, b) for a, b in pairs if _point(a) and _point(b) and _point(a) != _point(b)]
     points = [(_point(a), _point(b)) for a, b in located]
 

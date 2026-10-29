@@ -5,13 +5,15 @@
   ESTIMATE_MARGIN lower, since the estimate itself could be that far off
 - warning: short by up to SHORTFALL_TOLERANCE_MIN (leave a few minutes early or trim a
   visit), or it fits with less slack than the buffer (strictness: 0, 10 or 20 minutes)
-Travel time is the fastest of the traveller's own transport modes (see checks/legs.py for
+Overlaps are found from the times alone, so they're reported even when a stop isn't located
+or is an area ("Lunch" right after a visit that runs into it). Travel time is the fastest of
+the traveller's own transport modes (see checks/legs.py for
 how each is estimated). Legs with a missing time, an unlocated stop or an area stop (a
 neighbourhood) are reported unknown.
 """
 
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
-from trip_feasibility.checks.legs import Leg, plan_legs
+from trip_feasibility.checks.legs import Leg, consecutive_pairs, gap_minutes, plan_legs
 from trip_feasibility.checks.models import CheckResult, Severity, UnknownStop, Violation
 from trip_feasibility.itinerary import Stop, TravelPreferences
 from trip_feasibility.sources.routing import SOURCE_URL
@@ -41,12 +43,25 @@ def _evidence(leg: Leg, buffer_min: int) -> dict:
     }
 
 
+def _overlap(a: Stop, b: Stop) -> Violation | None:
+    gap = gap_minutes(a, b)
+    if gap is None or gap >= 0:
+        return None
+    return Violation(
+        check_name=CHECK_NAME,
+        severity="blocker",
+        stop_ids=[a.id, b.id],
+        message=f"{b.place_name} starts {-round(gap)} min before {a.place_name} ends.",
+        evidence={"gap_min": round(gap, 1)},
+        source="Your itinerary's times",
+    )
+
+
 def _assess(leg: Leg, names: dict[str, str], buffer_min: int) -> tuple[Severity, str] | None:
+    """Legs that don't overlap (overlaps are reported from the times alone)."""
     assert leg.gap_min is not None and leg.travel_min is not None
     a, b = names[leg.from_stop], names[leg.to_stop]
     gap, need, how = round(leg.gap_min), round(leg.travel_min), _HOW[leg.mode]
-    if leg.gap_min < 0:
-        return "blocker", f"{b} starts {-gap} min before {a} ends."
     if leg.travel_min == 0:  # same place: no travel, so no buffer needed
         return None
     estimated = leg.options[leg.mode].estimated
@@ -79,11 +94,19 @@ async def check_travel_time(
 
     names = {s.id: s.place_name for s in stops}
     violations, unknown, checked = [], {}, set()
+    overlapping = set()
+    for a, b in consecutive_pairs(stops):
+        if (v := _overlap(a, b)) is not None:
+            violations.append(v)
+            overlapping.add((a.id, b.id))
+            checked |= {a.id, b.id}
     for stop_id in plan.unlocated_stop_ids:
         unknown[stop_id] = "not located, so travel to and from it can't be checked"
     for stop_id in plan.area_stop_ids:
         unknown[stop_id] = "a neighbourhood, not one place, so travel to and from it isn't timed"
     for leg in plan.legs:
+        if (leg.from_stop, leg.to_stop) in overlapping:
+            continue
         if leg.gap_min is None:
             unknown.setdefault(leg.to_stop, f"no time gap after {names[leg.from_stop]} to check")
             continue

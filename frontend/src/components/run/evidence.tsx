@@ -45,9 +45,12 @@ const MODE_LABELS: Record<string, string> = {
 
 function TravelTime({ e }: { e: Data }) {
   const options = Object.entries(obj(e.options) ?? {}).map(([mode, o]) => [mode, obj(o)] as const);
+  const gap = num(e.gap_min);
   return (
     <>
-      <Row label="Time between stops">{`${num(e.gap_min)} min (buffer ${num(e.buffer_min)} min)`}</Row>
+      <Row label="Time between stops">
+        {gap != null && gap < 0 ? `overlaps by ${-gap} min` : `${gap} min (buffer ${num(e.buffer_min)} min)`}
+      </Row>
       {options.map(([mode, o]) =>
         o ? (
           <Row key={mode} label={MODE_LABELS[mode] ?? mode}>

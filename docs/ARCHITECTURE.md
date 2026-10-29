@@ -411,7 +411,7 @@ and a router like OpenTripPlanner, which is a project of its own.
 
 | Situation | Severity |
 | --- | --- |
-| Stops overlap (the next starts before the previous ends) | blocker |
+| Stops overlap (the next starts before the previous ends): from the times alone, so also next to an unlocated or area stop | blocker |
 | Gap more than 10 min shorter than the travel time (estimates counted 25% lower first) | blocker |
 | Gap short by up to 10 min (leave a few minutes early, trim a visit) | warning: "a few minutes short" |
 | Enough time, but less slack than the buffer (strictness: 0, 10 or 20 min; default 10) | warning |
@@ -434,6 +434,15 @@ point invents a journey. Geocoding marks such stops (`Stop.area`: Nominatim `pla
 legs to or from them are left out of both checks (unknown for travel time; a note on daily
 walking). Annotators label a journey to an area from elsewhere (timed to its nearest edge),
 which the checker can't predict: a known gap.
+
+Why overlaps don't need locations (decision 77): "the next slot starts before this one ends"
+is a fact about the times. It used to be found only on routed legs, so an overlap next to a
+stop with no location ("Lunch") or an area was silently missed. barcelona-10 showed it: a
+visit typed as "9:30 AM – 11:30 PM" runs into an unnamed lunch, and the travel-time check
+said nothing, while opening hours and daily load each flagged the same typo. Overlaps are
+now checked on every pair of consecutive timed stops, before any routing, with the
+itinerary's own times as the source. If routing is down, the whole check is still
+`unavailable` (overlaps included); keeping them would mean a partial result.
 
 **Daily load** looks at each day: number of venue stops, length of the day (first start to
 last end), and walking distance (walking legs, plus 0.4 km to and from stations for each
@@ -1272,6 +1281,7 @@ Postgres. Three things to settle before the first deploy:
 | 74 | **Violations first** (2026-10-27): gold labels name check + day + place and time as written, with severity, evidence, source and confidence (verified / estimated), plus `unknowns` and `other_issues`; scored by matching place names, not stop ids. travel_time is labelled directly (real time in the evidence), no longer derived from legs; hotel labels still come from hotels.yaml via a new `hotel` field. Drafts from a non-Anthropic model are allowed, recorded in `drafted_by`, and count only with `verified_by_human: true`. Gold stops and legs are frozen and dev only, for parser debugging | Keep stop-id labels derived through gold stops; keep "no LLM drafts" | Stop rules kept growing (decisions 68–73) and every new one changed the dataset; a label in the text's own words doesn't depend on how anyone splits the text into stops, so an LLM-only baseline can be scored on the same labels. A drafter from another provider than the extractor avoids rewarding shared blind spots; the human check keeps truth as reality | Fuzzy place matching (some ambiguous pairs need a human decision); drafts can anchor the annotator; travel-time labels lose the guaranteed consistency with recorded times |
 | 75 | Public-holiday warnings are advisory: shown with the results, never sent to the fixer (`ADVISORY_CHECKS`, `fixes-v3`); a fix that moves a stop onto a holiday still lists the new warning beside it (2026-10-29) | Fix every warning and blocker, holidays included | A holiday is a fact about the date, not a fault a change to the plan solves: moving an open venue off 25 December trades a working visit for an unchecked gain. A real holiday closure is an `opening_hours` violation, which is fixed, so fixing the holiday too would duplicate it. Gold and scoring are unchanged (still a warning) | A closure missing from OSM (no `PH` rule) gets no fix, only the holiday warning telling the traveller to check; the fix-coverage metric now counts fewer violations |
 | 76 | Travel time: a gap short by up to 10 min is a warning, a blocker only when overlapping or more than 10 min short (estimates still counted 25% lower). Area stops (neighbourhoods) are marked at geocoding (`Stop.area`) and their legs aren't timed; annotators count a journey into an area they're in or beside as 0 min, from elsewhere to its nearest edge, and don't label journeys to unnamed or activity slots. Same rule in the checker and ANNOTATION.md (2026-10-29) | Blocker whenever the gap is shorter than the journey; route to an area's centre point | Back-to-back slots a few minutes' walk apart are everywhere in chatbot itineraries and a traveller absorbs them; as blockers they drowned out real ones (barcelona-08: cathedral → Santa Caterina, 0 min gap, 5 min walk). An area's centre point is often farther than where the traveller already is, so its routed journeys mostly don't exist | Journeys from elsewhere into an area are labelled in gold but unknown to the checker; a 10-min shortfall on a tight schedule can still cascade, and is only a warning |
+| 77 | Travel-time overlaps come from the times alone: every pair of consecutive timed stops on a day, located or not, area or not, before routing; source "Your itinerary's times". Gold labels an overlap even when the next slot names no place (2026-10-29) | Overlaps only on routed legs (as before) | An overlap needs no lookup, and the old way missed every overlap next to a "Lunch" or area stop (barcelona-10: a 9:30 AM – 11:30 PM typo into an unnamed lunch) | A time typo still also trips opening hours and daily load, which the gold labels once (as the overlap): those count as false positives. Typo detection is an open idea (section 13) |
 
 ## 13. Known gaps and next steps
 
@@ -1284,6 +1294,12 @@ Postgres. Three things to settle before the first deploy:
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
 - Parsed-mode evals need the API key; neither mode has run on real annotations yet.
 - Extraction and fixes have only run against fake models; both need the API key for a live run.
+- Time typos ("9:30 AM – 11:30 PM" for a morning visit) are reported as an overlap, plus
+  opening-hours and daily-load violations for the same slip, where the gold has one label.
+  Idea, not planned: code that spots a probable AM/PM slip and reports "check this time"
+  instead (beyond the PRD's five checks; decision 77).
+- Travel time doesn't time journeys into an area from elsewhere, which the gold labels
+  (decision 76).
 - Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
   `min_share` / `min_reviews` are untuned against the hotel labels.
 - API runs, live feeds, rate-limit counters and demo runs live in one process's memory; more

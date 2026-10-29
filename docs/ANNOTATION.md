@@ -383,7 +383,11 @@ the real time and the gap in `evidence` ("12:00 to 12:10, but the metro takes 25
   you're already in or beside takes 0 minutes, so no label. From elsewhere, time it to the
   area's nearest edge.
 - **No label** when the destination names no place ("lunch around El Born", "a last
-  wander"): there's nothing to look up.
+  wander"): there's nothing to look up. **Except overlaps**: if the next slot starts before
+  this one ends, label it (blocker) whatever the next slot is, with `place` copied from it.
+- **An obvious time typo** that makes visits overlap ("9:30 AM – 11:30 PM" before a 12:00
+  lunch) is one problem: label the overlap only, not the opening hours or the day's length
+  it also breaks, and add the likely typo to `other_issues`.
 - Only where the text states both times (an end, or a start + stated duration, and the next
   start) or states the journey. Otherwise there's no gap to judge: a day that can't fit is
   `daily_load`.

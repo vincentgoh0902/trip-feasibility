@@ -128,6 +128,27 @@ async def test_only_consecutive_stops_on_the_same_day(check_deps, osrm):
     assert result.violations == [] and result.unknown == []
 
 
+async def test_overlaps_need_no_location(check_deps, osrm):
+    # a visit typed as 9:30 AM – 11:30 PM runs into an unlocated lunch and an area stop
+    stops = [
+        stop("a", DAY, "09:30", "23:30", at=A, name="Sant Pau"),
+        stop("b", DAY, "12:00", "13:30", name="farewell lunch"),  # not located
+        stop("c", DAY, "14:00", "16:00", at=FAR, name="El Born").model_copy(update={"area": True}),
+    ]
+    result = await check_travel_time(check_deps, stops, WALK)
+    [v] = result.violations
+    assert v.severity == "blocker" and v.stop_ids == ["a", "b"]
+    assert v.message == "farewell lunch starts 690 min before Sant Pau ends."
+    assert v.evidence == {"gap_min": -690.0}
+    assert result.checked_stop_ids == ["a", "b"]
+    assert not osrm.calls
+
+
+async def test_an_overlap_is_reported_once(check_deps, osrm):
+    result = await check_travel_time(check_deps, two_stops("10:00", "09:50"), WALK)
+    assert [v.severity for v in result.violations] == ["blocker"]
+
+
 async def test_area_stops_are_not_timed(check_deps, osrm):
     # "El Born" right after a market at its edge: routing to the centre would invent a journey
     stops = [
