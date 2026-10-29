@@ -56,6 +56,8 @@ async def check_daily_load(
             walk_by_day[leg.date] += leg.walk_km
         if plan.unlocated_stop_ids:
             notes.append("Walking distance leaves out legs to or from stops that weren't located.")
+        if plan.area_stop_ids:
+            notes.append("Walking distance leaves out legs to or from neighbourhoods.")
     except Unavailable as e:
         walk_by_day = None
         notes.append(f"Walking distance not checked: {e}")

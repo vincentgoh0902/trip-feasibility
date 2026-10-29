@@ -17,6 +17,14 @@ from trip_feasibility.sources.nominatim import Place, search
 
 MAX_KM_FROM_CITY = 60
 CANDIDATES = 5
+# Nominatim results that are a neighbourhood or district rather than a place you go to
+AREA_TYPES = {
+    ("place", t) for t in ("suburb", "quarter", "neighbourhood", "borough", "city_district")
+} | {("boundary", "administrative")}
+
+
+def is_area(place: Place) -> bool:
+    return (place.category, place.type) in AREA_TYPES
 
 
 class City(BaseModel):
@@ -86,6 +94,13 @@ async def geocode_stops(
         g = by_name[s.place_name]
         results[s.id] = g
         if g.place is not None:
-            s = s.model_copy(update={"osm": g.place.osm, "lat": g.place.lat, "lon": g.place.lon})
+            s = s.model_copy(
+                update={
+                    "osm": g.place.osm,
+                    "lat": g.place.lat,
+                    "lon": g.place.lon,
+                    "area": is_area(g.place),
+                }
+            )
         located.append(s)
     return located, results

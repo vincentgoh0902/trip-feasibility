@@ -2,7 +2,9 @@
 
 Shared by the travel-time and daily-load checks (the second call is served from the cache).
 Stops are taken in itinerary order, not re-sorted by time: an itinerary whose times run
-backwards is itself a problem for the travel-time check to report.
+backwards is itself a problem for the travel-time check to report. Legs to or from an area
+stop (a neighbourhood) are left out: routing to its centre point would time a journey that
+mostly doesn't exist (you're often already at its edge).
 
 Estimates, all documented in docs/ARCHITECTURE.md and tuned from the dev set:
 - walk: OSRM foot profile; only offered for legs up to WALK_LEG_MAX_KM, unless walking is
@@ -51,6 +53,7 @@ class Leg(BaseModel):
 class LegPlan(BaseModel):
     legs: list[Leg]
     unlocated_stop_ids: list[str]
+    area_stop_ids: list[str] = []
 
 
 def _point(stop: Stop) -> Point | None:
@@ -119,6 +122,7 @@ async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences
         for day in sorted(by_date)
         for a, b in zip(by_date[day], by_date[day][1:], strict=False)
     ]
+    pairs = [(a, b) for a, b in pairs if not (a.area or b.area)]
     located = [(a, b) for a, b in pairs if _point(a) and _point(b) and _point(a) != _point(b)]
     points = [(_point(a), _point(b)) for a, b in located]
 
@@ -148,4 +152,8 @@ async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences
                 walk_km=_walk_km(mode, options),
             )
         )
-    return LegPlan(legs=legs, unlocated_stop_ids=[s.id for s in stops if _point(s) is None])
+    return LegPlan(
+        legs=legs,
+        unlocated_stop_ids=[s.id for s in stops if _point(s) is None],
+        area_stop_ids=[s.id for s in stops if s.area and _point(s) is not None],
+    )

@@ -53,13 +53,13 @@ ITIN = DatasetItinerary.model_validate(
                 "source": "test",
                 "confidence": "verified",
             },
-            # 5 min gap, 12 min walk
+            # 5 min gap, 12 min walk: 7 min short, within the 10 min tolerance
             {
                 "check": "travel_time",
                 "day": 1,
                 "place": "Museum B",
                 "from_place": "Museum A",
-                "severity": "blocker",
+                "severity": "warning",
                 "evidence": "12 min walk",
                 "source": "test",
                 "confidence": "verified",
@@ -102,7 +102,7 @@ async def test_gold_mode_scores_the_checks(check_deps, services):
     assert o.error is None
     assert o.gold == {
         "opening_hours day 1: Museum A": "blocker",
-        "travel_time day 1: Museum A → Museum B": "blocker",
+        "travel_time day 1: Museum A → Museum B": "warning",
     }
     assert o.predicted == o.gold
     s = summarise([o])

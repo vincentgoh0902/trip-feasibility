@@ -34,7 +34,9 @@ def two_stops(end_a: str, start_b: str, b_at=B):
     [
         ("10:00", "10:30", None),  # 30 min gap, 12 min walk
         ("10:00", "10:15", "warning"),  # fits, but under 12 + 10 buffer
-        ("10:00", "10:10", "blocker"),  # 10 min gap < 12 min walk
+        ("10:00", "10:10", "warning"),  # 2 min short: leave a little early
+        ("10:00", "10:02", "warning"),  # 10 min short: still within the tolerance
+        ("10:00", "10:01", "blocker"),  # 11 min short
         ("10:00", "09:50", "blocker"),  # overlap
     ],
 )
@@ -80,10 +82,11 @@ async def test_long_legs_use_transit_estimate_not_walking(check_deps, osrm):
 
 @pytest.mark.parametrize(
     ("start_b", "expected"),
-    [("10:40", None), ("10:30", "warning"), ("10:20", "warning"), ("10:18", "blocker")],
-)
+    [("10:40", None), ("10:30", "warning"), ("10:18", "warning"), ("10:09", "warning"),
+     ("10:08", "blocker")],
+)  # fmt: skip
 async def test_estimated_times_only_block_when_clearly_short(check_deps, osrm, start_b, expected):
-    # transit estimate 25 min; within 25% of it (>= 18.75 min) is a warning, not a blocker
+    # transit estimate 25 min, counted as 18.75 (25% margin); blocker under 18.75 - 10 min
     prefs = TravelPreferences(transport_modes=["transit"])
     result = await check_travel_time(check_deps, two_stops("10:00", start_b, b_at=FAR), prefs)
     assert [v.severity for v in result.violations] == ([expected] if expected else [])
@@ -123,6 +126,21 @@ async def test_only_consecutive_stops_on_the_same_day(check_deps, osrm):
     ]
     result = await check_travel_time(check_deps, stops, WALK)
     assert result.violations == [] and result.unknown == []
+
+
+async def test_area_stops_are_not_timed(check_deps, osrm):
+    # "El Born" right after a market at its edge: routing to the centre would invent a journey
+    stops = [
+        stop("a", DAY, "09:00", "11:00", at=A),
+        stop("b", DAY, "11:00", "12:00", at=FAR, name="El Born").model_copy(update={"area": True}),
+        stop("c", DAY, "12:00", "13:00", at=A),
+    ]
+    result = await check_travel_time(check_deps, stops, WALK)
+    assert result.violations == []
+    assert [(u.stop_id, u.reason) for u in result.unknown] == [
+        ("b", "a neighbourhood, not one place, so travel to and from it isn't timed")
+    ]
+    assert not osrm.calls
 
 
 async def test_missing_times_and_locations_are_unknown(check_deps, osrm):

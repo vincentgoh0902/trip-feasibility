@@ -171,6 +171,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
   warnings, but not sent to the fixer (`ADVISORY_CHECKS` in `checks/config.py`, fix prompt
   `fixes-v3`); real holiday closures are `opening_hours` violations and get fixes.
   ARCHITECTURE decision 75.
+- **Travel-time severity and areas (decided 2026-10-29):** short by up to 10 min is a
+  warning, blocker only when overlapping or more than 10 min short; area stops (`Stop.area`,
+  set at geocoding) aren't timed. Same rule in ANNOTATION.md. ARCHITECTURE decision 76.
+  Drafts made before this may have travel-time blockers that are now warnings: check while
+  verifying.
 - Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
   checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
   replies moved there. ARCHITECTURE decision 53. (2026-10-24)

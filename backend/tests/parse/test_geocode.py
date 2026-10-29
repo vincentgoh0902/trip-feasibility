@@ -76,6 +76,15 @@ async def test_search_inside_the_city_box(check_deps, paris, respx_mock):
     assert geocodes["s1"].outside_city is False
 
 
+async def test_neighbourhoods_are_marked_as_areas(check_deps, paris, respx_mock):
+    marais = result("relation", 2, "Le Marais", 48.859, 2.362, category="place", type="quarter")
+    search_route(respx_mock, q="Le Marais", bounded="1").respond(json=[marais])
+    search_route(respx_mock, q="Louvre", bounded="1").respond(json=[LOUVRE])
+    city = await locate_city(check_deps, "Paris")
+    located, _ = await geocode_stops(check_deps, stops("Le Marais", "Louvre"), city)
+    assert [s.area for s in located] == [True, False]
+
+
 async def test_day_trip_outside_the_city_box(check_deps, paris, respx_mock):
     search_route(respx_mock, q="Versailles", bounded="1").respond(json=[])
     search_route(respx_mock, q="Versailles", countrycodes="fr").respond(json=[NICE, VERSAILLES])

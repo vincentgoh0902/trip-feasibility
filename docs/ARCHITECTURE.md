@@ -412,15 +412,28 @@ and a router like OpenTripPlanner, which is a project of its own.
 | Situation | Severity |
 | --- | --- |
 | Stops overlap (the next starts before the previous ends) | blocker |
-| Gap shorter than the travel time (walk/bike: exact; estimates: more than 25% short) | blocker |
-| Estimated time slightly over the gap (within 25%) | warning: "may not be enough time" |
+| Gap more than 10 min shorter than the travel time (estimates counted 25% lower first) | blocker |
+| Gap short by up to 10 min (leave a few minutes early, trim a visit) | warning: "a few minutes short" |
 | Enough time, but less slack than the buffer (strictness: 0, 10 or 20 min; default 10) | warning |
 | Two stops at the same place | never flagged; the buffer only applies when there's travel |
-| A missing time, an unlocated stop, or no route | unknown |
+| A missing time, an unlocated stop, an area stop (neighbourhood), or no route | unknown |
 
 Why the 25% margin: in the first live run, "21 min needed, 20 available" came out as a
 blocker, but 21 was an estimate. A blocker should mean "this cannot work", so estimated
 times only block when they're clearly over.
+
+Why the 10-minute tolerance (decision 76): chatbot itineraries put slots back to back
+("9:30–11:00 Cathedral, 11:00–11:30 Santa Caterina Market", a 5-minute walk). A traveller
+absorbs that by leaving a few minutes early, so calling it "cannot work" made blockers
+common and meaningless. The annotation guide uses the same rule for gold labels.
+
+Why area stops aren't timed (decision 76): a neighbourhood ("El Born") geocodes to one
+point near its middle, but the traveller is often already at its edge, so routing to that
+point invents a journey. Geocoding marks such stops (`Stop.area`: Nominatim `place=suburb`,
+`quarter`, `neighbourhood`, `borough`, `city_district`, or an administrative boundary), and
+legs to or from them are left out of both checks (unknown for travel time; a note on daily
+walking). Annotators label a journey to an area from elsewhere (timed to its nearest edge),
+which the checker can't predict: a known gap.
 
 **Daily load** looks at each day: number of venue stops, length of the day (first start to
 last end), and walking distance (walking legs, plus 0.4 km to and from stations for each
@@ -1258,6 +1271,7 @@ Postgres. Three things to settle before the first deploy:
 | 70 | A timed slot is a stop: a meal or activity with its own stated time or duration counts even with no named place (`place_name` = the most specific area words, not a landmark it's near; else the activity's words). Travel sections are routes, not stops or durations. Both in the guide and the prompt (`extract-v6`); partly reverses 68 for timed slots (2026-10-26) | Keep 68 (no named place → no stop) | Leaving a timed lunch out turns its hour into travel slack, so a tight day looks feasible: the opposite of the product's job. Untimed unnamed meals still add nothing | No opening-hours check for these stops; an area geocodes roughly and a bare activity not at all (its legs unknown); opening hours must stay quiet on area stops, to verify when durations are wired in |
 | 74 | **Violations first** (2026-10-27): gold labels name check + day + place and time as written, with severity, evidence, source and confidence (verified / estimated), plus `unknowns` and `other_issues`; scored by matching place names, not stop ids. travel_time is labelled directly (real time in the evidence), no longer derived from legs; hotel labels still come from hotels.yaml via a new `hotel` field. Drafts from a non-Anthropic model are allowed, recorded in `drafted_by`, and count only with `verified_by_human: true`. Gold stops and legs are frozen and dev only, for parser debugging | Keep stop-id labels derived through gold stops; keep "no LLM drafts" | Stop rules kept growing (decisions 68–73) and every new one changed the dataset; a label in the text's own words doesn't depend on how anyone splits the text into stops, so an LLM-only baseline can be scored on the same labels. A drafter from another provider than the extractor avoids rewarding shared blind spots; the human check keeps truth as reality | Fuzzy place matching (some ambiguous pairs need a human decision); drafts can anchor the annotator; travel-time labels lose the guaranteed consistency with recorded times |
 | 75 | Public-holiday warnings are advisory: shown with the results, never sent to the fixer (`ADVISORY_CHECKS`, `fixes-v3`); a fix that moves a stop onto a holiday still lists the new warning beside it (2026-10-29) | Fix every warning and blocker, holidays included | A holiday is a fact about the date, not a fault a change to the plan solves: moving an open venue off 25 December trades a working visit for an unchecked gain. A real holiday closure is an `opening_hours` violation, which is fixed, so fixing the holiday too would duplicate it. Gold and scoring are unchanged (still a warning) | A closure missing from OSM (no `PH` rule) gets no fix, only the holiday warning telling the traveller to check; the fix-coverage metric now counts fewer violations |
+| 76 | Travel time: a gap short by up to 10 min is a warning, a blocker only when overlapping or more than 10 min short (estimates still counted 25% lower). Area stops (neighbourhoods) are marked at geocoding (`Stop.area`) and their legs aren't timed; annotators count a journey into an area they're in or beside as 0 min, from elsewhere to its nearest edge, and don't label journeys to unnamed or activity slots. Same rule in the checker and ANNOTATION.md (2026-10-29) | Blocker whenever the gap is shorter than the journey; route to an area's centre point | Back-to-back slots a few minutes' walk apart are everywhere in chatbot itineraries and a traveller absorbs them; as blockers they drowned out real ones (barcelona-08: cathedral → Santa Caterina, 0 min gap, 5 min walk). An area's centre point is often farther than where the traveller already is, so its routed journeys mostly don't exist | Journeys from elsewhere into an area are labelled in gold but unknown to the checker; a 10-min shortfall on a tight schedule can still cascade, and is only a warning |
 
 ## 13. Known gaps and next steps
 

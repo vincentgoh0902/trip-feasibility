@@ -5,7 +5,7 @@ import type { Stop, Violation } from "@/lib/api/types";
 import { groupDays, placeViolations } from "./layout";
 
 function stop(id: string, day: number): Stop {
-  return { id, day, date: `2026-12-0${7 + day}`, place_name: id, type: "venue" };
+  return { id, day, date: `2026-12-0${7 + day}`, place_name: id, type: "venue", area: false };
 }
 
 function violation(id: string, check: string, stopIds: string[], severity: Violation["severity"] = "warning"): Violation {

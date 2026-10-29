@@ -536,6 +536,11 @@ export interface components {
             lat?: number | null;
             /** Lon */
             lon?: number | null;
+            /**
+             * Area
+             * @default false
+             */
+            area: boolean;
             /** Resolved */
             resolved: boolean;
             /**
@@ -720,6 +725,11 @@ export interface components {
             lat?: number | null;
             /** Lon */
             lon?: number | null;
+            /**
+             * Area
+             * @default false
+             */
+            area: boolean;
         };
         /**
          * StopIn

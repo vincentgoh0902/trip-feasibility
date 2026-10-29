@@ -12,6 +12,7 @@ const stop: Stop = {
   end_time: "12:00:00",
   place_name: "Louvre Museum",
   type: "venue",
+  area: false,
 };
 
 const violation: Violation = {

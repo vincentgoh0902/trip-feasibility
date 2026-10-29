@@ -38,6 +38,8 @@ class Stop(BaseModel):
     osm: OsmRef | None = None
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
+    # Located at a neighbourhood or district, not one point: travel to and from it isn't timed
+    area: bool = False
 
 
 class TravelPreferences(BaseModel):
