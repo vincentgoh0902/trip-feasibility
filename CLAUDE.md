@@ -285,8 +285,9 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 - **Parallel checks share lookups:** cache-check-and-fetch must hold a lock
   (`deps.routing_lock`), or both checks fetch and the service sees a burst.
 - **Transit and taxi times are estimates** (constants in `checks/legs.py`): label them as
-  estimated, and keep the 25% margin before an estimate becomes a blocker and the 10-min
-  shortfall tolerance (same rule in ANNOTATION.md, decision 76). They and the pace limits in
+  estimated, and keep the 25% margin before an estimate becomes a blocker and the bands
+  (up to 10 min short: nothing; warning; over 30 min short: blocker; same rule in
+  ANNOTATION.md, decisions 76 and 78). They and the pace limits in
   `checks/daily_load.py` are untuned; tune on the dev set, not by guessing.
 - `opening-hours-py` rejects common-but-invalid hours like `Mo-Fr 9-17` (→ unknown) and uses
   its own `PH` calendar, separate from Nager.Date.

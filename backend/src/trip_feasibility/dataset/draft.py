@@ -22,7 +22,8 @@ from trip_feasibility.dataset.validate import _violation_errors
 from trip_feasibility.evals.search_llm import SearchLLM, SearchResult
 
 # v2: travel-time rules of decisions 76-77 (10-min shortfall tolerance, areas, overlaps, typos)
-DRAFT_PROMPT_VERSION = "draft-v2"
+# v3: decision 78 (up to 10 min short: no label; warning to 30; blocker beyond)
+DRAFT_PROMPT_VERSION = "draft-v3"
 LABELLED_CHECKS = ["opening_hours", "public_holidays", "travel_time", "daily_load"]
 COUNTRIES = {"paris": "France", "london": "England", "barcelona": "Spain (Catalonia)",
              "vienna": "Austria (Vienna)"}  # fmt: skip
@@ -108,11 +109,12 @@ traveller get there in the time the plan leaves? Look the journey up door to doo
 Maps or the city's journey planner), departing when the first visit ends, on that weekday,
 using the fastest option within the traveller's transport modes. Put the real time and the
 gap in the evidence ("13:30 to 13:40, but the metro takes 25 min").
-- blocker: the two visits overlap, or the journey is more than 10 minutes longer than the
+- No label when the gap is short by 10 minutes or less, or fits: the traveller leaves a few
+  minutes early. Back-to-back slots a short walk apart are normal, not a problem.
+- warning: the gap is short by more than 10 minutes, up to 30; or the text states the
+  journey's length and the real one is more than 10 minutes longer.
+- blocker: the two visits overlap, or the journey is more than 30 minutes longer than the
   gap.
-- warning: the gap is short by 10 minutes or less (the traveller leaves a few minutes
-  early); less than 10 minutes to spare; or the text states the journey's length and the
-  real one is more than 10 minutes longer.
 - Areas (a neighbourhood or quarter: "El Born", "Gothic Quarter"): a journey into an area
   the traveller is already in or beside takes 0 minutes, so no label. From elsewhere, time
   it to the area's nearest edge.

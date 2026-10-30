@@ -58,7 +58,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
         check rules as the drafter (`baseline-v1`); outputs cached. Checked live on
         paris-08. Run the rest once preferences are final (they're in the cache key).
         2026-10-29: `draft-v2` / `baseline-v2` carry the travel-time rules of decisions
-        76-77; london-08 and london-09 re-drafted with them; baseline re-run on dev
+        76-77; london-08 and london-09 re-drafted with them; baseline re-run on dev.
+        2026-10-30: `draft-v3` / `baseline-v3` for decision 78 (travel-time bands); the
+        baseline cache misses on the new version, so rerun it before step 7
   - [x] 6. Matcher: names scoring 0.4–0.9 go to Vincent once (`scripts/match_decisions.py
         --ask`), saved in `data/evals/match_decisions.yaml` and reused by every run and
         system; undecided pairs make a score provisional (2026-10-29). The 6 verified dev
@@ -252,6 +254,12 @@ Tier 2 is decided after this is done.
   set at geocoding) aren't timed. Same rule in ANNOTATION.md. ARCHITECTURE decision 76.
   Drafts made before this may have travel-time blockers that are now warnings: check while
   verifying.
+- **Travel-time bands (decided 2026-10-30):** short by up to 10 min (or fits) → no label;
+  more than 10 min short → warning; overlapping or more than 30 min short → blocker. Default
+  buffer 0 (was 10). Back-to-back slots were a warning at nearly every changeover. Checker,
+  ANNOTATION.md and drafter/baseline prompts (`draft-v3`, `baseline-v3`) changed together.
+  ARCHITECTURE decision 78. Existing drafts: delete travel-time warnings 10 min short or
+  less, and recheck blockers 11–30 min short (now warnings), while verifying.
 - **Overlaps from times alone (decided 2026-10-29):** the travel-time check reports an overlap
   on any consecutive timed stops, even unlocated or area ones (was routed legs only, so
   overlaps next to "Lunch" were missed). Gold labels a typo-caused overlap once.

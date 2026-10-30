@@ -144,7 +144,7 @@ async def test_saved_run_is_recorded(api, services, nominatim):
         row = await session.get(models.CheckRun, uuid.UUID(run["run_id"]))
     assert row.status == "done" and row.latency_ms is not None and row.finished_at
     assert row.model_id == "claude-haiku-5-5" and row.prompt_version == FIX_PROMPT_VERSION
-    assert row.config_snapshot["config"]["travel_buffer_min"] == 10
+    assert row.config_snapshot["config"]["travel_buffer_min"] == 0
     assert row.cost_usd == 0  # the fake model made no calls
     # a finished run's event stream is its result
     [again] = await events(api, run, ANA)

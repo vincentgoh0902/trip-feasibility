@@ -374,11 +374,13 @@ journey up door to door in Google Maps or Citymapper, departing when the first v
 on the trip's weekday, with the fastest option within `preferences.transport_modes`. Put
 the real time and the gap in `evidence` ("12:00 to 12:10, but the metro takes 25 min").
 
-- **blocker**: the two visits overlap, or the journey is more than 10 minutes longer than
+- **No label** when the gap is short by 10 minutes or less, or the journey fits: the
+  traveller leaves a few minutes early. Back-to-back slots a short walk apart are how
+  chatbot itineraries are written, not a problem (decision 78).
+- **warning**: the gap is short by more than 10 minutes, up to 30; or the itinerary states
+  the journey's length and the real one is more than 10 minutes longer.
+- **blocker**: the two visits overlap, or the journey is more than 30 minutes longer than
   the gap.
-- **warning**: the gap is short by 10 minutes or less (the traveller leaves a few minutes
-  early); less than 10 minutes to spare; or the itinerary states the journey's length and
-  the real one is more than 10 minutes longer.
 - **Areas** (a neighbourhood or quarter: "El Born", "Gothic Quarter"): a journey into an area
   you're already in or beside takes 0 minutes, so no label. From elsewhere, time it to the
   area's nearest edge.

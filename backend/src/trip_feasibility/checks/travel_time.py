@@ -1,10 +1,13 @@
 """Travel time check: flags consecutive stops whose gap is shorter than the travel time.
 
-- blocker: the stops overlap, or the gap is more than SHORTFALL_TOLERANCE_MIN shorter than
+- blocker: the stops overlap, or the gap is more than BLOCKER_SHORTFALL_MIN shorter than
   the travel time. For estimated times (transit, taxi) the travel time counted is
   ESTIMATE_MARGIN lower, since the estimate itself could be that far off
-- warning: short by up to SHORTFALL_TOLERANCE_MIN (leave a few minutes early or trim a
-  visit), or it fits with less slack than the buffer (strictness: 0, 10 or 20 minutes)
+- warning: short by more than SHORTFALL_TOLERANCE_MIN. Up to that is no problem: the
+  traveller leaves a few minutes early (chatbot itineraries put slots back to back)
+- strictness (buffer_min: 0, 10 or 20) is the slack wanted on top: 0 accepts up to 10 min
+  short, 10 flags any shortfall, 20 wants 10 min to spare. The default, 0, is the rule
+  docs/ANNOTATION.md uses for gold labels
 Overlaps are found from the times alone, so they're reported even when a stop isn't located
 or is an area ("Lunch" right after a visit that runs into it). Travel time is the fastest of
 the traveller's own transport modes (see checks/legs.py for
@@ -19,9 +22,11 @@ from trip_feasibility.itinerary import Stop, TravelPreferences
 from trip_feasibility.sources.routing import SOURCE_URL
 
 CHECK_NAME = "travel_time"
-DEFAULT_BUFFER_MIN = 10
+DEFAULT_BUFFER_MIN = 0
 ESTIMATE_MARGIN = 0.25
-SHORTFALL_TOLERANCE_MIN = 10  # docs/ANNOTATION.md uses the same rule for gold labels
+# docs/ANNOTATION.md uses the same rule for gold labels (decision 78)
+SHORTFALL_TOLERANCE_MIN = 10
+BLOCKER_SHORTFALL_MIN = 30
 _HOW = {
     "walk": "on foot",
     "bike": "by bike",
@@ -66,18 +71,19 @@ def _assess(leg: Leg, names: dict[str, str], buffer_min: int) -> tuple[Severity,
         return None
     estimated = leg.options[leg.mode].estimated
     least = leg.travel_min * (1 - ESTIMATE_MARGIN) if estimated else leg.travel_min
-    if leg.gap_min < least - SHORTFALL_TOLERANCE_MIN:
+    if leg.gap_min < least - BLOCKER_SHORTFALL_MIN:
         return "blocker", (f"{a} → {b} needs about {need} min {how}, but there are only {gap} min.")
+    if leg.gap_min >= leg.travel_min + buffer_min - SHORTFALL_TOLERANCE_MIN:
+        return None
     if leg.gap_min < leg.travel_min:
         return "warning", (
-            f"{a} → {b} is a few minutes short: about {need} min {how}, with {gap} min available."
+            f"{a} → {b} is {need - gap} min short: about {need} min {how}, "
+            f"with {gap} min available."
         )
-    if leg.gap_min < leg.travel_min + buffer_min:
-        return "warning", (
-            f"{a} → {b} is tight: about {need} min {how} with {gap} min available, "
-            f"less than the {buffer_min} min buffer."
-        )
-    return None
+    return "warning", (
+        f"{a} → {b} is tight: about {need} min {how} with {gap} min available, "
+        f"less than the {buffer_min - SHORTFALL_TOLERANCE_MIN} min to spare you asked for."
+    )
 
 
 async def check_travel_time(

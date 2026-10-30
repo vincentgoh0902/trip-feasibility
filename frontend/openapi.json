@@ -729,7 +729,7 @@
               20
             ],
             "title": "Travel Buffer Min",
-            "default": 10
+            "default": 0
           },
           "hotel_min_reviews": {
             "type": "integer",

@@ -279,7 +279,7 @@ export interface components {
             enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags")[];
             /**
              * Travel Buffer Min
-             * @default 10
+             * @default 0
              * @enum {integer}
              */
             travel_buffer_min: 0 | 10 | 20;

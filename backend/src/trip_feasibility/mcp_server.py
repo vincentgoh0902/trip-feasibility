@@ -82,8 +82,9 @@ def create_server(deps: CheckDeps | None = None) -> MCPServer:
         preferences: TravelPreferences | None = None,
         buffer_min: Annotated[int, Field(ge=0, le=60)] = DEFAULT_BUFFER_MIN,
     ) -> CheckResult:
-        """Flag consecutive stops on the same day whose gap is shorter than the travel time
-        (blocker) or leaves less slack than buffer_min (warning). Uses the fastest of the
+        """Flag consecutive stops on the same day whose gap is too short for the travel time:
+        more than 10 min short is a warning, overlapping or more than 30 min short a blocker.
+        buffer_min is extra slack wanted (10: any shortfall warns). Uses the fastest of the
         traveller's transport modes; transit and car times are estimates. Stops need lat/lon.
         """
         return await check_travel_time(_deps(ctx), stops, preferences, buffer_min)

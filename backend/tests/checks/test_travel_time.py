@@ -15,6 +15,7 @@ WALK = TravelPreferences(transport_modes=["walk"])
 # 1 km apart: 12 min on foot in the fake router
 A, B = (48.00, 2.00), (48.01, 2.00)
 FAR = (48.05, 2.00)  # 5 km from A
+FARTHER = (48.20, 2.00)  # 20 km from A
 
 
 @pytest.fixture
@@ -33,10 +34,11 @@ def two_stops(end_a: str, start_b: str, b_at=B):
     ("end_a", "start_b", "expected"),
     [
         ("10:00", "10:30", None),  # 30 min gap, 12 min walk
-        ("10:00", "10:15", "warning"),  # fits, but under 12 + 10 buffer
-        ("10:00", "10:10", "warning"),  # 2 min short: leave a little early
-        ("10:00", "10:02", "warning"),  # 10 min short: still within the tolerance
-        ("10:00", "10:01", "blocker"),  # 11 min short
+        ("10:00", "10:15", None),  # fits with 3 min to spare
+        ("10:00", "10:10", None),  # 2 min short: leave a little early
+        ("10:00", "10:02", None),  # 10 min short: still within the tolerance
+        ("10:00", "10:01", "warning"),  # 11 min short
+        ("10:00", "10:00", "warning"),  # back to back, 12 min walk
         ("10:00", "09:50", "blocker"),  # overlap
     ],
 )
@@ -48,13 +50,13 @@ async def test_gap_against_walking_time(check_deps, osrm, end_a, start_b, expect
 
 
 async def test_violation_evidence(check_deps, osrm):
-    [v] = (await check_travel_time(check_deps, two_stops("10:00", "10:10"), WALK)).violations
+    [v] = (await check_travel_time(check_deps, two_stops("10:00", "10:00"), WALK)).violations
     assert v.stop_ids == ["a", "b"]
-    assert v.evidence["gap_min"] == 10
+    assert v.evidence["gap_min"] == 0
     assert v.evidence["travel_min"] == 12
     assert v.evidence["mode"] == "walk"
     assert v.evidence["options"]["walk"] == {"minutes": 12.0, "km": 1.0, "estimated": False}
-    assert "Museum → Cafe" in v.message
+    assert v.message == "Museum → Cafe is 12 min short: about 12 min on foot, with 0 min available."
     assert v.source == "https://routing.openstreetmap.de"
 
 
@@ -63,17 +65,33 @@ async def test_overlap_message(check_deps, osrm):
     assert v.message == "Cafe starts 10 min before Museum ends."
 
 
-async def test_zero_buffer(check_deps, osrm):
-    result = await check_travel_time(check_deps, two_stops("10:00", "10:15"), WALK, buffer_min=0)
-    assert result.violations == []
+@pytest.mark.parametrize(
+    ("buffer_min", "start_b", "expected"),
+    [(10, "10:12", None), (10, "10:10", "warning"), (20, "10:22", None), (20, "10:15", "warning")],
+)  # fmt: skip
+async def test_buffer_is_slack_on_top_of_the_tolerance(check_deps, osrm, buffer_min, start_b,
+                                                        expected):  # fmt: skip
+    # 10: any shortfall warns; 20: wants 10 min to spare (12 min walk)
+    stops = two_stops("10:00", start_b)
+    result = await check_travel_time(check_deps, stops, WALK, buffer_min=buffer_min)
+    assert [v.severity for v in result.violations] == ([expected] if expected else [])
+
+
+async def test_tight_message(check_deps, osrm):
+    stops = two_stops("10:00", "10:15")
+    [v] = (await check_travel_time(check_deps, stops, WALK, buffer_min=20)).violations
+    assert v.message == (
+        "Museum → Cafe is tight: about 12 min on foot with 15 min available, "
+        "less than the 10 min to spare you asked for."
+    )
 
 
 async def test_long_legs_use_transit_estimate_not_walking(check_deps, osrm):
     # 5 km: walking (60 min) is over the 3 km walking-leg limit; transit = 10 min car x 1.5 + 10
     prefs = TravelPreferences(transport_modes=["walk", "transit"])
-    stops = two_stops("10:00", "10:30", b_at=FAR)
+    stops = two_stops("10:00", "10:10", b_at=FAR)
     [v] = (await check_travel_time(check_deps, stops, prefs)).violations
-    assert v.severity == "warning"  # 30 min gap: 25 min transit fits, but not with the buffer
+    assert v.severity == "warning"  # 10 min gap, 25 min transit: 15 min short
     assert v.evidence["mode"] == "transit"
     assert v.evidence["travel_min"] == 25
     assert v.evidence["options"]["transit"]["estimated"] is True
@@ -82,22 +100,25 @@ async def test_long_legs_use_transit_estimate_not_walking(check_deps, osrm):
 
 @pytest.mark.parametrize(
     ("start_b", "expected"),
-    [("10:40", None), ("10:30", "warning"), ("10:18", "warning"), ("10:09", "warning"),
-     ("10:08", "blocker")],
+    [("11:01", None), ("10:59", "warning"), ("10:23", "warning"), ("10:22", "blocker")],
 )  # fmt: skip
 async def test_estimated_times_only_block_when_clearly_short(check_deps, osrm, start_b, expected):
-    # transit estimate 25 min, counted as 18.75 (25% margin); blocker under 18.75 - 10 min
+    # 20 km: transit estimate 40 x 1.5 + 10 = 70 min, counted as 52.5 (25% margin) for
+    # blockers, so a blocker needs a gap under 22.5 min; a warning, under 60
     prefs = TravelPreferences(transport_modes=["transit"])
-    result = await check_travel_time(check_deps, two_stops("10:00", start_b, b_at=FAR), prefs)
+    stops = two_stops("10:00", start_b, b_at=FARTHER)
+    result = await check_travel_time(check_deps, stops, prefs)
     assert [v.severity for v in result.violations] == ([expected] if expected else [])
 
 
-async def test_walking_only_traveller_walks_long_legs(check_deps, osrm):
-    stops = two_stops("10:00", "10:30", b_at=FAR)
+@pytest.mark.parametrize(("start_b", "expected"), [("10:30", "warning"), ("10:29", "blocker")])
+async def test_walking_only_traveller_walks_long_legs(check_deps, osrm, start_b, expected):
+    # 60 min on foot: 30 min short is still a warning, more is a blocker
+    stops = two_stops("10:00", start_b, b_at=FAR)
     [v] = (await check_travel_time(check_deps, stops, WALK)).violations
     assert v.evidence["mode"] == "walk"
     assert v.evidence["travel_min"] == 60
-    assert v.severity == "blocker"
+    assert v.severity == expected
 
 
 async def test_fastest_preferred_mode_wins(check_deps, osrm):
@@ -106,7 +127,7 @@ async def test_fastest_preferred_mode_wins(check_deps, osrm):
     plan_result = await check_travel_time(check_deps, stops, prefs)
     assert plan_result.violations == []
     # 5 km: bike 20 min, car 10 x 1.3 + 5 = 18 min -> car
-    stops = two_stops("10:00", "10:20", b_at=FAR)
+    stops = two_stops("10:00", "10:05", b_at=FAR)
     [v] = (await check_travel_time(check_deps, stops, prefs)).violations
     assert v.evidence["mode"] == "car"
     assert v.evidence["travel_min"] == 18

@@ -412,9 +412,10 @@ and a router like OpenTripPlanner, which is a project of its own.
 | Situation | Severity |
 | --- | --- |
 | Stops overlap (the next starts before the previous ends): from the times alone, so also next to an unlocated or area stop | blocker |
-| Gap more than 10 min shorter than the travel time (estimates counted 25% lower first) | blocker |
-| Gap short by up to 10 min (leave a few minutes early, trim a visit) | warning: "a few minutes short" |
-| Enough time, but less slack than the buffer (strictness: 0, 10 or 20 min; default 10) | warning |
+| Gap more than 30 min shorter than the travel time (estimates counted 25% lower first) | blocker |
+| Gap more than 10 min short, up to 30 | warning: "N min short" |
+| Gap short by up to 10 min, or enough time (leave a few minutes early) | nothing |
+| Strictness (`travel_buffer_min`: 0, 10 or 20; default 0) is slack wanted on top: 10 flags any shortfall, 20 wants 10 min to spare | warning ("tight" when it fits but with less to spare) |
 | Two stops at the same place | never flagged; the buffer only applies when there's travel |
 | A missing time, an unlocated stop, an area stop (neighbourhood), or no route | unknown |
 
@@ -426,6 +427,16 @@ Why the 10-minute tolerance (decision 76): chatbot itineraries put slots back to
 ("9:30–11:00 Cathedral, 11:00–11:30 Santa Caterina Market", a 5-minute walk). A traveller
 absorbs that by leaving a few minutes early, so calling it "cannot work" made blockers
 common and meaningless. The annotation guide uses the same rule for gold labels.
+
+Why no label up to 10 min short, and blockers only past 30 (decision 78): with decision 76,
+back-to-back slots stopped being blockers but became warnings, so nearly every timed
+itinerary got one at every changeover (london-08: Shoreditch → Spitalfields Market, 0 min
+gap, ~8 min walk). The few that mattered were buried, scores were padded with easy
+arithmetic matches, and Vincent spent verification time on them. A gap that's a few
+minutes short is absorbed, so it's not reported; a warning starts where the traveller
+would actually be late (more than 10 min), a blocker where the plan can't hold (more than
+30). The default buffer went from 10 to 0 with it: "less than 10 min to spare" can't be a
+warning when 10 min short isn't. 30 is a starting guess, to be tuned on the dev set.
 
 Why area stops aren't timed (decision 76): a neighbourhood ("El Born") geocodes to one
 point near its middle, but the traveller is often already at its edge, so routing to that
@@ -704,6 +715,7 @@ START ─► run_check(opening_hours) ─┐
   can write the report as JSON. The example skips hotel_red_flags: its hotel is a dataset hotel.
   Live run on the example: Louvre closed on Tuesday (blocker), Orsay → Eiffel Tower 21 min by
   transit in a 10-minute gap (blocker), a 12.5 h day (warning), two tight walks (warnings).
+  (That was under the old bands; since decision 78 the tight walks aren't reported.)
   0.8 s with a warm cache.
 - Streaming: `stream_agent` yields each check's result as it finishes and then the fixes, for
   the API's live feed (section 6c).
@@ -1045,7 +1057,8 @@ API key). The drafter refuses Anthropic backends and test files.
 - **What it sees:** the cleaned text (so its quotes can be checked), the traveller's prompt,
   the city, each day's date and weekday, and the preferences. Never gold stops, our checks
   or their output. The rules are a condensed ANNOTATION.md Violations section
-  (`draft-v1`; `draft-v2` from 2026-10-29 adds the travel-time rules of decisions 76-77).
+  (`draft-v1`; `draft-v2` from 2026-10-29 adds the travel-time rules of decisions 76-77;
+  `draft-v3` from 2026-10-30 the bands of decision 78).
   When those rules change, `RULES` changes with them and both prompt versions are bumped.
 - **Checking:** output is validated like a hand-written file (shapes, quoted words verbatim,
   duplicates). Problems get one retry with the list of problems; entries still wrong are
@@ -1064,7 +1077,7 @@ the `claude-code` backend in `search_llm.py`) on a Claude plan, so no API key. I
 plain model: its system prompt replaced, no settings, MCP servers or tools but WebSearch and
 WebFetch, in an empty folder; a hook that adds to the context, or a run on another model,
 fails it. Same inputs as the drafter (`draft.trip_block`) and the same rules for the four
-checks (`draft.RULES`), with its own framing (`baseline-v2`, rules of decisions 76-77); never GPT, since GPT drafted
+checks (`draft.RULES`), with its own framing (`baseline-v3`, rules of decisions 76-78); never GPT, since GPT drafted
 the gold. Output is checked for shape only (places are matched fuzzily) and cached per
 itinerary, backend, model, effort and prompt version under `data/evals/baseline/`, keyed to
 a hash of the prompt: a change to the text, dates or preferences reruns it. No hotel
@@ -1297,6 +1310,7 @@ Postgres. Three things to settle before the first deploy:
 | 75 | Public-holiday warnings are advisory: shown with the results, never sent to the fixer (`ADVISORY_CHECKS`, `fixes-v3`); a fix that moves a stop onto a holiday still lists the new warning beside it (2026-10-29) | Fix every warning and blocker, holidays included | A holiday is a fact about the date, not a fault a change to the plan solves: moving an open venue off 25 December trades a working visit for an unchecked gain. A real holiday closure is an `opening_hours` violation, which is fixed, so fixing the holiday too would duplicate it. Gold and scoring are unchanged (still a warning) | A closure missing from OSM (no `PH` rule) gets no fix, only the holiday warning telling the traveller to check; the fix-coverage metric now counts fewer violations |
 | 76 | Travel time: a gap short by up to 10 min is a warning, a blocker only when overlapping or more than 10 min short (estimates still counted 25% lower). Area stops (neighbourhoods) are marked at geocoding (`Stop.area`) and their legs aren't timed; annotators count a journey into an area they're in or beside as 0 min, from elsewhere to its nearest edge, and don't label journeys to unnamed or activity slots. Same rule in the checker and ANNOTATION.md (2026-10-29) | Blocker whenever the gap is shorter than the journey; route to an area's centre point | Back-to-back slots a few minutes' walk apart are everywhere in chatbot itineraries and a traveller absorbs them; as blockers they drowned out real ones (barcelona-08: cathedral → Santa Caterina, 0 min gap, 5 min walk). An area's centre point is often farther than where the traveller already is, so its routed journeys mostly don't exist | Journeys from elsewhere into an area are labelled in gold but unknown to the checker; a 10-min shortfall on a tight schedule can still cascade, and is only a warning |
 | 77 | Travel-time overlaps come from the times alone: every pair of consecutive timed stops on a day, located or not, area or not, before routing; source "Your itinerary's times". Gold labels an overlap even when the next slot names no place (2026-10-29) | Overlaps only on routed legs (as before) | An overlap needs no lookup, and the old way missed every overlap next to a "Lunch" or area stop (barcelona-10: a 9:30 AM – 11:30 PM typo into an unnamed lunch) | A time typo still also trips opening hours and daily load, which the gold labels once (as the overlap): those count as false positives. Typo detection is an open idea (section 13) |
+| 78 | Travel time: a gap short by up to 10 min (or that fits) gets no label; more than 10 min short is a warning; a blocker only when overlapping or more than 30 min short (estimates still counted 25% lower). Default buffer 0 (was 10); the buffer is slack on top (10 flags any shortfall, 20 wants 10 min to spare). Same rule in the checker, ANNOTATION.md and the drafter/baseline prompts (`draft-v3`, `baseline-v3`) (2026-10-30) | Keep decision 76 (any shortfall up to 10 min a warning; less than 10 min to spare a warning) | Back-to-back slots made a warning at nearly every changeover in timed itineraries, burying the ones that matter, padding scores with easy matches and costing verification time (london-08: Shoreditch → Spitalfields Market, 0 min gap, ~8 min walk) | A traveller who can't walk fast, or a chain of 10-min shortfalls across a day, gets no travel-time warning (daily load may still catch a packed day); 30 min is untuned. Drafts made before it carry warnings that are now no label |
 
 ## 13. Known gaps and next steps
 

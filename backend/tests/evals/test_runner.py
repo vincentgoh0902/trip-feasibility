@@ -20,7 +20,7 @@ ITIN = DatasetItinerary.model_validate(
         "source": "claude",
         "trip_start": TUESDAY,
         "preferences": {"transport_modes": ["walk"]},
-        "text": "9-10 Museum A, 10:05-11 Museum B",
+        "text": "9-10 Museum A, 10-11 Museum B",
         "stops": [
             {
                 "id": "s1",
@@ -34,7 +34,7 @@ ITIN = DatasetItinerary.model_validate(
             {
                 "id": "s2",
                 "day": 1,
-                "start_time": "10:05",
+                "start_time": "10:00",
                 "end_time": "11:00",
                 "place_name": "Museum B",
                 "type": "venue",
@@ -53,7 +53,7 @@ ITIN = DatasetItinerary.model_validate(
                 "source": "test",
                 "confidence": "verified",
             },
-            # 5 min gap, 12 min walk: 7 min short, within the 10 min tolerance
+            # back to back, 12 min walk: more than 10 min short
             {
                 "check": "travel_time",
                 "day": 1,
@@ -111,7 +111,7 @@ async def test_gold_mode_scores_the_checks(check_deps, services):
     assert "parse" not in s
 
 
-def extracted(*names, b_start="10:05"):
+def extracted(*names, b_start="10:00"):
     times = [("09:00", "10:00"), (b_start, "11:00"), ("12:00", "13:00")]
     stop = {"day": 1, "time_of_day": None, "type": "venue"}
     pairs = zip(names, times, strict=False)
