@@ -11,8 +11,8 @@
 Overlaps are found from the times alone, so they're reported even when a stop isn't located
 or is an area ("Lunch" right after a visit that runs into it). Travel time is the fastest of
 the traveller's own transport modes (see checks/legs.py for
-how each is estimated). Legs with a missing time, an unlocated stop or an area stop (a
-neighbourhood) are reported unknown.
+how each is estimated). Legs with a missing time, an unlocated stop, or an area stop (a
+neighbourhood) the traveller is already beside (checks/legs.py) are reported unknown.
 """
 
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
@@ -109,7 +109,9 @@ async def check_travel_time(
     for stop_id in plan.unlocated_stop_ids:
         unknown[stop_id] = "not located, so travel to and from it can't be checked"
     for stop_id in plan.area_stop_ids:
-        unknown[stop_id] = "a neighbourhood, not one place, so travel to and from it isn't timed"
+        unknown[stop_id] = (
+            "a neighbourhood right next to the stop before or after it, so that walk isn't timed"
+        )
     for leg in plan.legs:
         if (leg.from_stop, leg.to_stop) in overlapping:
             continue

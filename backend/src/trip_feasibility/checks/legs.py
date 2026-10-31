@@ -2,9 +2,11 @@
 
 Shared by the travel-time and daily-load checks (the second call is served from the cache).
 Stops are taken in itinerary order, not re-sorted by time: an itinerary whose times run
-backwards is itself a problem for the travel-time check to report. Legs to or from an area
-stop (a neighbourhood) are left out: routing to its centre point would time a journey that
-mostly doesn't exist (you're often already at its edge).
+backwards is itself a problem for the travel-time check to report. A leg to or from an area
+stop (a neighbourhood) under AREA_BESIDE_KM on foot is left out: you're already beside it,
+and routing to its centre point would time a journey that mostly doesn't exist. Farther
+than that it's a real journey, timed to the centre (a little over the nearest edge that
+docs/ANNOTATION.md times to). Decision 80; the 2 km was set on the dev set.
 
 Estimates, all documented in docs/ARCHITECTURE.md and tuned from the dev set:
 - walk: OSRM foot profile; only offered for legs up to WALK_LEG_MAX_KM, unless walking is
@@ -31,6 +33,7 @@ CAR_PICKUP_MIN = 5.0
 TRANSIT_FACTOR = 1.5
 TRANSIT_ACCESS_MIN = 10.0
 TRANSIT_ACCESS_WALK_KM = 0.4  # walking to and from stations, counted toward daily walking
+AREA_BESIDE_KM = 2.0
 
 
 class ModeOption(BaseModel):
@@ -53,7 +56,7 @@ class Leg(BaseModel):
 class LegPlan(BaseModel):
     legs: list[Leg]
     unlocated_stop_ids: list[str]
-    area_stop_ids: list[str] = []
+    area_stop_ids: list[str] = []  # areas with a leg left out (one beside them)
 
 
 def _point(stop: Stop) -> Point | None:
@@ -126,7 +129,7 @@ def consecutive_pairs(stops: list[Stop]) -> list[tuple[Stop, Stop]]:
 
 async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences) -> LegPlan:
     """Raises Unavailable if the routing service fails."""
-    pairs = [(a, b) for a, b in consecutive_pairs(stops) if not (a.area or b.area)]
+    pairs = consecutive_pairs(stops)
     located = [(a, b) for a, b in pairs if _point(a) and _point(b) and _point(a) != _point(b)]
     points = [(_point(a), _point(b)) for a, b in located]
 
@@ -134,11 +137,16 @@ async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences
     for profile in _profiles(prefs.transport_modes):
         routes[profile] = await route_pairs(deps, profile, points) if points else {}
 
-    legs = []
+    legs, beside = [], set()
     for a, b in pairs:
         pa, pb = _point(a), _point(b)
         if pa is None or pb is None:
             continue
+        if a.area or b.area:
+            foot = routes["foot"].get((pa, pb)) if pa != pb else None
+            if foot is None or foot.distance_m < AREA_BESIDE_KM * 1000:
+                beside |= {s.id for s in (a, b) if s.area}
+                continue
         if pa == pb:  # same place (e.g. lunch at the museum): no travel
             options = {m: ModeOption(minutes=0, km=0) for m in prefs.transport_modes}
         else:
@@ -159,5 +167,5 @@ async def plan_legs(deps: CheckDeps, stops: list[Stop], prefs: TravelPreferences
     return LegPlan(
         legs=legs,
         unlocated_stop_ids=[s.id for s in stops if _point(s) is None],
-        area_stop_ids=[s.id for s in stops if s.area and _point(s) is not None],
+        area_stop_ids=[s.id for s in stops if s.id in beside],
     )

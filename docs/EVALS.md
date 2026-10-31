@@ -75,5 +75,47 @@ Unknown: 134 stops for opening hours, 138 for travel time. Marked provisional by
 runner because the baseline's undecided name pair sits in a dev itinerary; gold-mode
 predictions don't depend on it.
 
-Next to fix: daily load (13 of 17 remaining false alarms), then the geocoder (unresolved
+Next to fix: daily load (13 of the 17 false alarms left), then the geocoder (unresolved
 English names of local places, in-city matches beating the real day-trip place).
+
+### 2026-10-31 · gold mode · `095a4d6d` · neighbourhood legs from 2 km
+
+What changed: a leg to or from a neighbourhood is timed when it's at least 2 km on foot
+(ARCHITECTURE decision 80), set on this dev set. The baseline's one uncertain name pair was
+decided (same place), so nothing is provisional.
+
+| Check | Precision | Recall | Severity | vs `8ef09a3b` |
+|---|---|---|---|---|
+| Opening hours | 10 of 12 | 10 of 17 | 90% | unchanged |
+| Public holidays | 4 of 4 | 4 of 4 | 100% | unchanged |
+| Travel time | 5 of 7 | 5 of 8 | 80% | both lost hits back, no new false alarms |
+| Daily load | 2 of 15 | 2 of 2 | 100% | unchanged |
+| **All four** | **21 of 38 (55%)** | **21 of 31 (68%)** | | |
+| Hotel red flags | 1 of 1 | 1 of 2 | 100% | unchanged |
+
+Unknown: 134 stops for opening hours, 137 for travel time.
+
+### 2026-10-31 · LLM-only baseline · `baseline-v4`
+
+Rerun for the slot-splitting rule (decision 79); scored with `scripts/score_baseline.py`.
+Two files each had one entry dropped as invalid after the retry. The model isn't
+deterministic, so part of the change from `baseline-v3` is run-to-run noise, not the rule.
+
+| Check | Precision | Recall | Severity |
+|---|---|---|---|
+| Opening hours | 11 of 12 | 11 of 17 | 100% |
+| Public holidays | 4 of 4 | 4 of 4 | 100% |
+| Travel time | 2 of 2 | 2 of 8 | 50% |
+| Daily load | 1 of 4 | 1 of 2 | 100% |
+| **All four** | **18 of 22 (82%)** | **18 of 31 (58%)** | 94% |
+
+Side by side on the four checks (not like-for-like: ours on gold stops, the baseline from
+the raw text; parsed mode is the fair comparison):
+
+| | Precision | Recall |
+|---|---|---|
+| Ours, gold mode `095a4d6d` | 21 of 38 (55%) | 21 of 31 (68%) |
+| Baseline `baseline-v4` | 18 of 22 (82%) | 18 of 31 (58%) |
+
+We find more of the real problems; the baseline raises far fewer false alarms, and 13 of our
+17 come from daily load.

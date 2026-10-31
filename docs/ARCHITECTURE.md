@@ -417,7 +417,7 @@ and a router like OpenTripPlanner, which is a project of its own.
 | Gap short by up to 10 min, or enough time (leave a few minutes early) | nothing |
 | Strictness (`travel_buffer_min`: 0, 10 or 20; default 0) is slack wanted on top: 10 flags any shortfall, 20 wants 10 min to spare | warning ("tight" when it fits but with less to spare) |
 | Two stops at the same place | never flagged; the buffer only applies when there's travel |
-| A missing time, an unlocated stop, an area stop (neighbourhood), or no route | unknown |
+| A missing time, an unlocated stop, a neighbourhood under 2 km on foot from the stop before or after it, or no route | unknown |
 
 Why the 25% margin: in the first live run, "21 min needed, 20 available" came out as a
 blocker, but 21 was an estimate. A blocker should mean "this cannot work", so estimated
@@ -438,13 +438,17 @@ would actually be late (more than 10 min), a blocker where the plan can't hold (
 30). The default buffer went from 10 to 0 with it: "less than 10 min to spare" can't be a
 warning when 10 min short isn't. 30 is a starting guess, to be tuned on the dev set.
 
-Why area stops aren't timed (decision 76): a neighbourhood ("El Born") geocodes to one
-point near its middle, but the traveller is often already at its edge, so routing to that
-point invents a journey. Geocoding marks such stops (`Stop.area`: Nominatim `place=suburb`,
-`quarter`, `neighbourhood`, `borough`, `city_district`, or an administrative boundary), and
-legs to or from them are left out of both checks (unknown for travel time; a note on daily
-walking). Annotators label a journey to an area from elsewhere (timed to its nearest edge),
-which the checker can't predict: a known gap.
+Why nearby area stops aren't timed (decisions 76 and 80): a neighbourhood ("El Born")
+geocodes to one point near its middle, but the traveller is often already at its edge, so
+routing to that point invents a journey. Geocoding marks such stops (`Stop.area`: Nominatim
+`place=suburb`, `quarter`, `neighbourhood`, `borough`, `city_district`, or an administrative
+boundary). A leg to or from one under `AREA_BESIDE_KM` (2 km) on foot is left out of both
+checks (unknown for travel time; a note on daily walking): the traveller is beside it,
+which the annotation guide counts as 0 minutes. Farther than that it's a real journey from
+elsewhere, which the guide times to the area's nearest edge; the checker times it to the
+centre point, a few minutes over. The 2 km came from the dev set (decision 80): every
+area leg the gold labels was over 2 km on foot (2.2 and 4.4), every unlabelled one under
+(0.7 to 1.8). The margin is narrow, so the test set will show whether it holds.
 
 Why overlaps don't need locations (decision 77): "the next slot starts before this one ends"
 is a fact about the times. It used to be found only on routed legs, so an overlap next to a
@@ -1314,7 +1318,8 @@ Postgres. Three things to settle before the first deploy:
 | 76 | Travel time: a gap short by up to 10 min is a warning, a blocker only when overlapping or more than 10 min short (estimates still counted 25% lower). Area stops (neighbourhoods) are marked at geocoding (`Stop.area`) and their legs aren't timed; annotators count a journey into an area they're in or beside as 0 min, from elsewhere to its nearest edge, and don't label journeys to unnamed or activity slots. Same rule in the checker and ANNOTATION.md (2026-10-29) | Blocker whenever the gap is shorter than the journey; route to an area's centre point | Back-to-back slots a few minutes' walk apart are everywhere in chatbot itineraries and a traveller absorbs them; as blockers they drowned out real ones (barcelona-08: cathedral → Santa Caterina, 0 min gap, 5 min walk). An area's centre point is often farther than where the traveller already is, so its routed journeys mostly don't exist | Journeys from elsewhere into an area are labelled in gold but unknown to the checker; a 10-min shortfall on a tight schedule can still cascade, and is only a warning |
 | 77 | Travel-time overlaps come from the times alone: every pair of consecutive timed stops on a day, located or not, area or not, before routing; source "Your itinerary's times". Gold labels an overlap even when the next slot names no place (2026-10-29) | Overlaps only on routed legs (as before) | An overlap needs no lookup, and the old way missed every overlap next to a "Lunch" or area stop (barcelona-10: a 9:30 AM – 11:30 PM typo into an unnamed lunch) | A time typo still also trips opening hours and daily load, which the gold labels once (as the overlap): those count as false positives. Typo detection is an open idea (section 13) |
 | 78 | Travel time: a gap short by up to 10 min (or that fits) gets no label; more than 10 min short is a warning; a blocker only when overlapping or more than 30 min short (estimates still counted 25% lower). Default buffer 0 (was 10); the buffer is slack on top (10 flags any shortfall, 20 wants 10 min to spare). Same rule in the checker, ANNOTATION.md and the drafter/baseline prompts (`draft-v3`, `baseline-v3`) (2026-10-30) | Keep decision 76 (any shortfall up to 10 min a warning; less than 10 min to spare a warning) | Back-to-back slots made a warning at nearly every changeover in timed itineraries, burying the ones that matter, padding scores with easy matches and costing verification time (london-08: Shoreditch → Spitalfields Market, 0 min gap, ~8 min walk) | A traveller who can't walk fast, or a chain of 10-min shortfalls across a day, gets no travel-time warning (daily load may still catch a packed day); 30 min is untuned. Drafts made before it carry warnings that are now no label |
-| 79 | Four fixes from the gold-mode diagnosis (eval runs `730a021b` → `8ef09a3b`, 2026-10-31): consecutive stops in one morning/afternoon/evening slot share its window in equal parts, in order (normalisation, annotation guide, `draft-v4`/`baseline-v4`); the holiday check gets every ISO 3166-2 code of the city's address (`regions`), so a regional holiday where the trip is becomes a warning; opening hours are evaluated with the stop's coordinates, so sunrise/sunset rules are placed; gold-mode stops are located like parsed ones (`located: false` never looked up, areas marked) | Keep full windows for every stop; one region code; leave the eval runner as it was | Shared windows made consecutive stops overlap by hours and put "late morning" at 09:00; regional holidays came back "may not apply"; without coordinates sunset is a fixed 19:00; the runner geocoded activity words (one landed 45 km away) and timed legs into neighbourhoods, which the app doesn't do | Equal shares are a guess (a 3-hour museum and a 20-minute walk get the same time); marking areas drops gold travel-time labels between far-apart areas, so the area rule needs a decision (PLAN.md) |
+| 79 | Four fixes from the gold-mode diagnosis (eval runs `730a021b` → `8ef09a3b`, 2026-10-31): consecutive stops in one morning/afternoon/evening slot share its window in equal parts, in order (normalisation, annotation guide, `draft-v4`/`baseline-v4`); the holiday check gets every ISO 3166-2 code of the city's address (`regions`), so a regional holiday where the trip is becomes a warning; opening hours are evaluated with the stop's coordinates, so sunrise/sunset rules are placed; gold-mode stops are located like parsed ones (`located: false` never looked up, areas marked) | Keep full windows for every stop; one region code; leave the eval runner as it was | Shared windows made consecutive stops overlap by hours and put "late morning" at 09:00; regional holidays came back "may not apply"; without coordinates sunset is a fixed 19:00; the runner geocoded activity words (one landed 45 km away) and timed legs into neighbourhoods, which the app doesn't do | Equal shares are a guess (a 3-hour museum and a 20-minute walk get the same time); marking areas drops gold travel-time labels between far-apart areas (settled by decision 80) |
+| 80 | A leg to or from a neighbourhood is timed when it's at least 2 km on foot (`legs.AREA_BESIDE_KM`); under that the traveller is beside it and the leg is left out, as before for every area leg (2026-10-31) | Never time area legs (decision 76); time all of them; subtract an edge allowance | Decision 79 marked areas in gold mode and two gold travel-time labels between far-apart areas disappeared; on the dev set every labelled area leg was 2.2 km or more on foot and every unlabelled one 1.8 km or less (run `095a4d6d`: travel time back to 5 of 8 found, no new false alarms) | Set on 7 dev legs with a narrow margin: tuned on dev, to be confirmed by the test set; timing to the centre overstates the journey a little |
 
 ## 13. Known gaps and next steps
 

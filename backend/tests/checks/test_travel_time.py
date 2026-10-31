@@ -170,19 +170,30 @@ async def test_an_overlap_is_reported_once(check_deps, osrm):
     assert [v.severity for v in result.violations] == ["blocker"]
 
 
-async def test_area_stops_are_not_timed(check_deps, osrm):
+async def test_area_beside_the_stop_is_not_timed(check_deps, osrm):
     # "El Born" right after a market at its edge: routing to the centre would invent a journey
     stops = [
         stop("a", DAY, "09:00", "11:00", at=A),
-        stop("b", DAY, "11:00", "12:00", at=FAR, name="El Born").model_copy(update={"area": True}),
+        stop("b", DAY, "11:00", "12:00", at=B, name="El Born").model_copy(update={"area": True}),
         stop("c", DAY, "12:00", "13:00", at=A),
     ]
     result = await check_travel_time(check_deps, stops, WALK)
     assert result.violations == []
     assert [(u.stop_id, u.reason) for u in result.unknown] == [
-        ("b", "a neighbourhood, not one place, so travel to and from it isn't timed")
+        ("b", "a neighbourhood right next to the stop before or after it, so that walk isn't timed")
     ]
-    assert not osrm.calls
+
+
+async def test_area_across_town_is_timed(check_deps, osrm):
+    # 5 km to "Soho" with no gap: a real journey, whatever its edge
+    stops = [
+        stop("a", DAY, "09:00", "11:00", at=A, name="Museum"),
+        stop("b", DAY, "11:00", "12:00", at=FAR, name="Soho").model_copy(update={"area": True}),
+    ]
+    result = await check_travel_time(check_deps, stops, WALK)
+    [v] = result.violations
+    assert v.severity == "blocker" and v.stop_ids == ["a", "b"]
+    assert result.unknown == []
 
 
 async def test_missing_times_and_locations_are_unknown(check_deps, osrm):

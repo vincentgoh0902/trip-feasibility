@@ -166,8 +166,10 @@ Fixed 2026-10-31 (decision 79; run `8ef09a3b`; all numbers in `docs/EVALS.md`): 
 recall (was 9 of 13 / 9 of 17), holidays 4 of 4 / 4 of 4 (was 3 of 3 / 3 of 4), travel time
 3 of 5 / 3 of 8 (was 5 of 15 / 5 of 8: both lost hits are legs into areas), daily load
 unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before step 7.
-- Open: legs into areas (untimed today) vs gold labels between far-apart areas; an equal
-  share of a slot can still leave a 0-minute gap between two stops with a walk between them.
+- [x] Legs into areas: timed from 2 km on foot (decision 80; run `095a4d6d`, travel time
+      5 of 7 / 5 of 8).
+- Open: an equal share of a slot can still leave a 0-minute gap between two stops with a
+  walk between them.
 - Later: daily load counts streets, squares, parks and neighbourhoods as venues and meals in
   the day length, and re-counts time typos; the geocoder prefers any in-box match over a
   better one outside (day trips), doesn't resolve English names of local places, and misses

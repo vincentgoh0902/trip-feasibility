@@ -212,6 +212,7 @@ uv run python scripts/format_dataset.py [--write]     # standard YAML layout (la
 uv run python scripts/convert_gold.py [--write]       # old stop-id labels → violations-first (backs up)
 uv run python scripts/draft_gold.py [--ids ...]       # draft dev gold with GPT via Codex CLI (backs up)
 uv run python scripts/run_baseline.py [--ids ...]     # LLM-only baseline, Haiku via claude -p (cached)
+uv run python scripts/score_baseline.py               # baseline vs verified gold (dev)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it
 uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name from hotels.yaml
 
