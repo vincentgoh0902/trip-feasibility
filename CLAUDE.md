@@ -7,7 +7,7 @@ evaluation on a versioned, hand-annotated dataset.
 
 **Read at the start of every session:** `docs/PRD.md` (requirements; its dates are a loose
 reference only), `PLAN.md` (progress, decisions, open items), `docs/ARCHITECTURE.md` (how it
-works and why, with the decision log), `docs/ANNOTATION.md` (dataset rules). **Update PLAN.md
+works and why, with the decision log), `docs/ANNOTATION.md` (dataset rules), `docs/EVALS.md` (every kept eval run's numbers). **Update PLAN.md
 as work lands, and ARCHITECTURE.md (including the decision log) whenever a design choice is
 made or changed: it's how I follow the project.**
 
@@ -89,7 +89,8 @@ frontend/                       Next.js (npm); openapi.json (exported from the b
   src/components/run/ ui/       results page pieces; shadcn/ui components (owned, editable)
   src/lib/                      api/ (generated schema.d.ts, clients, SSE event types), run/
                                 (state reducer, timeline layout), format.ts, config.ts
-docs/                           PRD, ARCHITECTURE, ANNOTATION, TEST_CITIES; annotation/ holds
+docs/                           PRD, ARCHITECTURE, ANNOTATION, EVALS (results log),
+                                TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
 data/  (gitignored)             postgres/ volume; raw/hotel-reviews/Hotel_Reviews.csv (Kaggle,
                                 CC0); dataset/ (hotels.yaml + itineraries/<id>.yaml +
@@ -146,7 +147,9 @@ Planned: `train/` (Tier 2, Mac only).
   prompt sees bumps `FIX_PROMPT_VERSION`; the injection suite measures it.
 - **Evals:** eval mode (`make_check_deps(..., eval_mode=True)`) serves expired cache entries,
   so reruns make no external calls. Every run writes model ID, prompt version, config and
-  dataset version to `eval_runs`. Two modes, reported apart: gold stops (checks alone) and
+  dataset version to `eval_runs`; every run worth keeping also goes in `docs/EVALS.md` with
+  what changed since the last one. Two modes, reported apart: gold stops (checks plus
+  geocoding: gold files have no OSM refs) and
   parsed (end to end; stops aligned to gold by day + name). A prediction matches a label on
   check + day + place name (fuzzy, one to one); severity agreement is separate. The test split needs `--final` and is
   touched only for reported results. The judge model comes from a different provider than

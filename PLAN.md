@@ -162,7 +162,7 @@ mode still geocodes every name: it measures checks + geocoding, not checks alone
       assume a 19:00 sunset.
 - [x] **Shared time-of-day windows:** every stop in a window gets the whole window, so
       consecutive stops in one "afternoon" overlap by 4 h, and "late morning" starts at 09:00.
-Fixed 2026-10-31 (decision 79; run `8ef09a3b`): opening hours 10 of 12 precision / 10 of 17
+Fixed 2026-10-31 (decision 79; run `8ef09a3b`; all numbers in `docs/EVALS.md`): opening hours 10 of 12 precision / 10 of 17
 recall (was 9 of 13 / 9 of 17), holidays 4 of 4 / 4 of 4 (was 3 of 3 / 3 of 4), travel time
 3 of 5 / 3 of 8 (was 5 of 15 / 5 of 8: both lost hits are legs into areas), daily load
 unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before step 7.
