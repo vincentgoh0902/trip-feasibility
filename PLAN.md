@@ -172,9 +172,12 @@ unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before ste
   walk between them.
 - [x] Daily load: venue counts and day length are info hints only; walking stays a warning
       (decision 81; run `146a353c`). "Too much" waits for the LLM review (step 3).
-- Later: the geocoder prefers any in-box match over a better one outside (day trips),
-  doesn't resolve English names of local places, and misses `place=locality` /
-  `boundary=tourist_zone` areas; a start-only stop is judged as a 1-minute point (early
+- [x] Geocoder checks names (decision 82; run `ed8f90eb`): exact names outside the city
+      win over loose ones inside, the day-trip fallback needs a matching name, kind words
+      ("Amusement Park") become a type filter, three more area types. Still unresolved: names
+      unlike any OSM name (an English description of a Catalan site); a same-named place in
+      the city still wins when the real one isn't in Nominatim's results.
+- Later: a start-only stop is judged as a 1-minute point (early
   arrival → blocker); OSM data errors (date ranges with gaps, stale hours) and hours that
   cover tourist visits only (free entry at worship times); "X or Y" alternatives aren't
   stops; stated journey times aren't checked.

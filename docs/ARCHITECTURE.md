@@ -651,10 +651,20 @@ get ids `s1`, `s2`, ... in text order.
 1. **Locate the city** (Nominatim search, `featureType=settlement`). Its bounding box scopes
    every search, and its country code is what the holiday check needs. London resolves to
    Greater London, Paris to the city proper, Barcelona and Vienna to their municipalities.
-2. **Search each place name inside the city's box** (`bounded=1`), taking the top result.
-3. **Otherwise search the whole country**, accepting the first result within 60 km of the
-   centre, marked `outside_city` (day trips such as Versailles).
-4. **Otherwise leave it unresolved** with a reason. The PRD says flag, never guess.
+2. **Search each place name inside the city's box** (`bounded=1`). The top result is taken
+   at once when one of its names is exactly the text's name. Every search asks for
+   `namedetails`, so "exactly" covers `name:en`, `alt_name` and the rest ("Barcelona
+   Cathedral" is the cathedral's English name); accents, case, punctuation and a leading
+   article are ignored.
+3. **Otherwise also search the country within 60 km of the centre.** An exact name there,
+   outside the box, beats an inexact top result inside it (decision 82).
+4. **Otherwise the box's top result**, as Nominatim ranked it.
+5. **Otherwise a nearby result whose name matches** (exactly, or one name containing the
+   other as whole words), marked `outside_city` (day trips such as Versailles).
+6. **Otherwise, a kind word at the end of the name** ("Tibidabo Amusement Park", "La
+   Boqueria Market", `geocode._KINDS`): search the rest of the name and accept only a
+   result of that kind (a theme park, a marketplace).
+7. **Otherwise leave it unresolved** with a reason. The PRD says flag, never guess.
 
 Each distinct name is searched once per itinerary; results, including "no results", are
 cached for `CACHE_TTL_OSM_DAYS`, and every request goes through the Nominatim rate limiter.
@@ -664,6 +674,14 @@ inside the Louvre and Versailles as outside the city.
 Why the top result: Nominatim ranks by importance, which favours the famous place a tourist
 means. The cost is ambiguity (two cafés with the same name in one city); the user-review
 step is where that gets corrected.
+
+Why the name checks (decision 82): on the dev set, taking the box's top result regardless
+of its name sent "Versailles" to Paris Expo Porte de Versailles and "Petit Trianon" to a
+Paris restaurant, and taking any nearby result sent "Montjuïc gardens" to a garden in
+another town 15 km away. Nominatim matches loosely (any shared word), so a result's name is
+the evidence that it's the place meant. The cost: names that differ from every OSM name
+("Santa Maria de Montserrat Abbey" for the Monestir de Montserrat, "Sant Pau Art Nouveau
+Site") stay unresolved, and an inexact name in the box costs a second search (1 s, cached).
 
 ### Extraction (`extract.py`)
 
@@ -1333,6 +1351,7 @@ Postgres. Three things to settle before the first deploy:
 | 79 | Four fixes from the gold-mode diagnosis (eval runs `730a021b` → `8ef09a3b`, 2026-10-31): consecutive stops in one morning/afternoon/evening slot share its window in equal parts, in order (normalisation, annotation guide, `draft-v4`/`baseline-v4`); the holiday check gets every ISO 3166-2 code of the city's address (`regions`), so a regional holiday where the trip is becomes a warning; opening hours are evaluated with the stop's coordinates, so sunrise/sunset rules are placed; gold-mode stops are located like parsed ones (`located: false` never looked up, areas marked) | Keep full windows for every stop; one region code; leave the eval runner as it was | Shared windows made consecutive stops overlap by hours and put "late morning" at 09:00; regional holidays came back "may not apply"; without coordinates sunset is a fixed 19:00; the runner geocoded activity words (one landed 45 km away) and timed legs into neighbourhoods, which the app doesn't do | Equal shares are a guess (a 3-hour museum and a 20-minute walk get the same time); marking areas drops gold travel-time labels between far-apart areas (settled by decision 80) |
 | 80 | A leg to or from a neighbourhood is timed when it's at least 2 km on foot (`legs.AREA_BESIDE_KM`); under that the traveller is beside it and the leg is left out, as before for every area leg (2026-10-31) | Never time area legs (decision 76); time all of them; subtract an edge allowance | Decision 79 marked areas in gold mode and two gold travel-time labels between far-apart areas disappeared; on the dev set every labelled area leg was 2.2 km or more on foot and every unlabelled one 1.8 km or less (run `095a4d6d`: travel time back to 5 of 8 found, no new false alarms) | Set on 7 dev legs with a narrow margin: tuned on dev, to be confirmed by the test set; timing to the centre overstates the journey a little |
 | 81 | Daily load: venue count and day length over the pace limits are **info** ("looks busy"), not warnings; walking over the limit stays a warning, 1.5× a blocker. Whether a day is too much is judged by the LLM review (Tier 1 plan, step 3), with these numbers as evidence (2026-10-31) | Keep counts as warnings; raise the limits | On the dev set the counts flagged 15 of 46 days for 2 real ones, and those 2 had the same numbers as days that were fine; OSM tags can't tell a visit from a walk-through; the guide judges load as a traveller, not by formula. Raising the limits would be tuning on 2 labels and drop both | Until the LLM review exists, the system reports no overloaded days except on walking (dev run `146a353c`: daily load 0 of 2 found, no false alarms). Supersedes 19 for the counts |
+| 82 | Geocoding checks names: searches ask for `namedetails`; an exact name (any OSM name, accents/case/article ignored) outside the box within 60 km beats an inexact top result inside it; the nearby fallback needs a matching name; a trailing kind word ("Amusement Park", "Market", "Abbey" ...) is searched without it and accepted only for a result of that kind; `place=locality`, `boundary=tourist_zone` and `historic=district` are areas (2026-10-31) | Keep top-result-wins; let an LLM supply local names | The dev set showed wrong places from loose matches (a Paris exhibition centre for Versailles, a garden in another town for "Montjuïc gardens") and misses on English descriptors that the bare name finds; the LLM never touches locations | A second search for every inexact in-box name (1 s each, cached); names unlike any OSM name stay unresolved; adding `namedetails` changed every search's cache key (one-off re-query) |
 
 ## 13. Known gaps and next steps
 

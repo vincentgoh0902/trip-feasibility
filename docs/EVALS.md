@@ -157,3 +157,30 @@ Remaining false alarms (4): two opening-hours blockers from OSM data (a date-ran
 for tourist visits only), and two travel-time legs. Remaining misses (11): long closures and
 "X or Y" options (the closures check and the LLM review), unresolved names, OSM hours missing
 or stale, the 2 overloaded days (LLM review), and journeys the checks can't see yet.
+
+### 2026-10-31 · gold mode · `ed8f90eb` · geocoder checks names
+
+What changed (ARCHITECTURE decision 82): searches ask for every OSM name; an exact name
+outside the city beats an inexact one inside; the nearby (day-trip) fallback needs a
+matching name; a trailing kind word ("Amusement Park", "Market") is searched without it and
+accepted only for a place of that kind; three more OSM types count as neighbourhoods. Same
+config and dataset as `146a353c`. Every search was re-queried (new cache keys).
+
+| Check | Precision | Recall | Severity | vs `146a353c` |
+|---|---|---|---|---|
+| Opening hours | 10 of 12 | 10 of 17 | 90% | unchanged |
+| Public holidays | 4 of 4 | 4 of 4 | 100% | unchanged |
+| Travel time | 5 of 6 | 5 of 7 | 80% | one false alarm gone, by chance (below) |
+| Daily load | none reported | 0 of 2 | | unchanged |
+| **All four** | **19 of 22 (86%)** | **19 of 30 (63%)** | | |
+| Hotel red flags | 1 of 1 | 1 of 2 | 100% | unchanged |
+
+What the geocoder fixed on the dev set: "Versailles" is now the town (was a Paris exhibition
+centre), "Tibidabo Amusement Park" and "La Boqueria Market" resolve (were unresolved),
+"Montjuïc gardens" is unresolved (was a garden in another town), and the West End,
+Saint-Germain and Montmartre are areas. None of these moved a score: the newly found places
+have no OSM hours, or no labelled problem. The one false alarm that went away (a street to a
+house on that street) went because the street now resolves to a different segment of
+itself: luck, not the fix. Still wrong: "Petit Trianon" resolves to a Paris restaurant
+called "Le Petit Trianon" (the real one isn't among Nominatim's results), and the Montserrat
+abbey, the Sant Pau site and the Expo Hotel stay unresolved.

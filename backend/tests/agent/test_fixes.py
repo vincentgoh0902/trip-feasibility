@@ -102,6 +102,7 @@ async def test_replace_geocodes_the_new_place(check_deps, respx_mock):
         json=[result("way", 42, "Musée Rodin", 48.855, 2.316)]
     )
     search_route(respx_mock, q="Nowhere Museum").respond(json=[])
+    search_route(respx_mock, q="Nowhere").respond(json=[])  # "Museum" is a kind word
     applied = await apply_fix(
         check_deps, INP, fix(op("replace", stop_id="s1", place_name="Musée Rodin")), CITY
     )

@@ -18,6 +18,8 @@ from trip_feasibility.itinerary import OsmRef
 LOOKUP_BATCH = 50  # Nominatim's maximum IDs per /lookup request
 _PREFIX = {"node": "N", "way": "W", "relation": "R"}
 _BACK_OFF_STATUSES = {403, 429, 503}
+# namedetails keys that are current names of the place (not old_name, not ref)
+_NAME_KEYS = ("name:", "alt_name", "official_name", "short_name", "int_name", "loc_name")
 
 
 def tags_key(ref: OsmRef) -> str:
@@ -114,6 +116,8 @@ class Place(BaseModel):
     lat: float
     lon: float
     name: str
+    # every name OSM has for it (name, name:en, alt_name ...), for matching what a text says
+    names: list[str] = []
     display_name: str
     category: str
     type: str
@@ -138,6 +142,11 @@ def _place(raw: dict[str, Any]) -> Place | None:
         lat=float(raw["lat"]),
         lon=float(raw["lon"]),
         name=raw.get("name") or "",
+        names=[
+            v
+            for k, v in (raw.get("namedetails") or {}).items()
+            if isinstance(v, str) and (k == "name" or k.startswith(_NAME_KEYS))
+        ],
         display_name=raw.get("display_name") or "",
         category=raw.get("category") or "",
         type=raw.get("type") or "",
@@ -158,7 +167,7 @@ async def search(
 ) -> list[Place]:
     """Free-text search, best match first. viewbox (south, north, west, east) restricts results
     to that box. Cached, including "no results"; never use it for autocomplete (policy)."""
-    params = {"q": query, "limit": str(limit), "addressdetails": "1"}
+    params = {"q": query, "limit": str(limit), "addressdetails": "1", "namedetails": "1"}
     if viewbox is not None:
         south, north, west, east = viewbox
         params |= {"viewbox": f"{west},{north},{east},{south}", "bounded": "1"}
