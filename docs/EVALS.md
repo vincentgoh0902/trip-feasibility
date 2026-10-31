@@ -119,3 +119,41 @@ the raw text; parsed mode is the fair comparison):
 
 We find more of the real problems; the baseline raises far fewer false alarms, and 13 of our
 17 come from daily load.
+
+### 2026-10-31 · gold mode · `146a353c` · daily load counts become hints
+
+What changed: daily load's venue counts and day length are info, not warnings (ARCHITECTURE
+decision 81); only walking over the limit is reported. Dataset: one travel-time label
+removed from a dev file on re-checking it against the 10-minute rule (decision 78), so
+travel time has 7 labels, not 8, and the dataset version changed (`34429875d542`).
+
+| Check | Precision | Recall | Severity | vs `095a4d6d` |
+|---|---|---|---|---|
+| Opening hours | 10 of 12 | 10 of 17 | 90% | unchanged |
+| Public holidays | 4 of 4 | 4 of 4 | 100% | unchanged |
+| Travel time | 5 of 7 | 5 of 7 | 80% | one label fewer |
+| Daily load | none reported | 0 of 2 | | 13 false alarms and 2 lucky hits gone |
+| **All four** | **19 of 23 (83%)** | **19 of 30 (63%)** | | |
+| Hotel red flags | 1 of 1 | 1 of 2 | 100% | unchanged |
+
+The baseline (`baseline-v4`, same outputs) on this dataset version:
+
+| Check | Precision | Recall |
+|---|---|---|
+| Opening hours | 11 of 12 | 11 of 17 |
+| Public holidays | 4 of 4 | 4 of 4 |
+| Travel time | 2 of 2 | 2 of 7 |
+| Daily load | 1 of 4 | 1 of 2 |
+| **All four** | **18 of 22 (82%)** | **18 of 30 (60%)** |
+
+Side by side (still not like-for-like: ours on gold stops, the baseline from the raw text):
+
+| | Precision | Recall |
+|---|---|---|
+| Ours, gold mode `146a353c` | 19 of 23 (83%) | 19 of 30 (63%) |
+| Baseline `baseline-v4` | 18 of 22 (82%) | 18 of 30 (60%) |
+
+Remaining false alarms (4): two opening-hours blockers from OSM data (a date-range gap; hours
+for tourist visits only), and two travel-time legs. Remaining misses (11): long closures and
+"X or Y" options (the closures check and the LLM review), unresolved names, OSM hours missing
+or stale, the 2 overloaded days (LLM review), and journeys the checks can't see yet.

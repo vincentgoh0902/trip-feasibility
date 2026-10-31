@@ -170,12 +170,14 @@ unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before ste
       5 of 7 / 5 of 8).
 - Open: an equal share of a slot can still leave a 0-minute gap between two stops with a
   walk between them.
-- Later: daily load counts streets, squares, parks and neighbourhoods as venues and meals in
-  the day length, and re-counts time typos; the geocoder prefers any in-box match over a
-  better one outside (day trips), doesn't resolve English names of local places, and misses
-  `place=locality` / `boundary=tourist_zone` areas; a start-only stop is judged as a
-  1-minute point (early arrival → blocker); OSM data errors (date ranges with gaps, stale
-  hours); "X or Y" alternatives aren't stops; stated journey times aren't checked.
+- [x] Daily load: venue counts and day length are info hints only; walking stays a warning
+      (decision 81; run `146a353c`). "Too much" waits for the LLM review (step 3).
+- Later: the geocoder prefers any in-box match over a better one outside (day trips),
+  doesn't resolve English names of local places, and misses `place=locality` /
+  `boundary=tourist_zone` areas; a start-only stop is judged as a 1-minute point (early
+  arrival → blocker); OSM data errors (date ranges with gaps, stale hours) and hours that
+  cover tourist visits only (free entry at worship times); "X or Y" alternatives aren't
+  stops; stated journey times aren't checked.
 
 ### Definition of done for Tier 1
 

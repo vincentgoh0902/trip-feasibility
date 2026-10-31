@@ -1,11 +1,14 @@
-"""Daily load check: flags days that are too full for the traveller's pace or walking limit.
+"""Daily load check: walking against the traveller's limit, and how busy each day looks.
 
 Per day: number of venue stops, length of the day (first start to last end), and walking
-distance (from checks/legs.py). One violation per overloaded day, listing every limit it
-exceeds.
-- warning: more venues or a longer day than the pace allows, or walking over the limit
+distance (from checks/legs.py). One violation per day that crosses a limit, listing each.
 - blocker: walking more than WALK_BLOCKER_FACTOR times the limit
-The pace limits are starting defaults, to be tuned against the annotated dev set.
+- warning: walking over the limit
+- info: more venues or a longer day than the pace usually allows. Only a hint (decision
+  81): counts can't tell a whole-afternoon palace from a square you walk across, or a long
+  day with a show in the evening from an exhausting one, so whether a day is too much is a
+  judgement for the LLM review, with these numbers as its evidence. On the dev set the
+  counts flagged 15 days, 2 of them really too much, and those for other reasons.
 """
 
 from collections import defaultdict
@@ -72,25 +75,28 @@ async def check_daily_load(
         hours = _day_hours(day_stops)
         walk_km = walk_by_day[day] if walk_by_day is not None else None
         reasons: list[str] = []
-        severity: Severity = "warning"
-        if venues > max_venues:
-            reasons.append(f"{venues} venues (a {prefs.pace} pace allows {max_venues})")
-        if hours is not None and hours > max_hours:
-            reasons.append(f"a {hours:.1f} h day (a {prefs.pace} pace allows {max_hours:g} h)")
+        severity: Severity = "info"
         if walk_km is not None and walk_km > prefs.max_walk_km:
             reasons.append(
                 f"about {walk_km:.1f} km of walking (your limit is {prefs.max_walk_km:g})"
             )
-            if walk_km > prefs.max_walk_km * WALK_BLOCKER_FACTOR:
-                severity = "blocker"
+            too_far = walk_km > prefs.max_walk_km * WALK_BLOCKER_FACTOR
+            severity = "blocker" if too_far else "warning"
+        if venues > max_venues:
+            reasons.append(f"{venues} venues (a {prefs.pace} pace usually allows {max_venues})")
+        if hours is not None and hours > max_hours:
+            reasons.append(
+                f"a {hours:.1f} h day (a {prefs.pace} pace usually allows {max_hours:g} h)"
+            )
         if not reasons:
             continue
+        verdict = "is overloaded" if severity != "info" else "looks busy"
         violations.append(
             Violation(
                 check_name=CHECK_NAME,
                 severity=severity,
                 stop_ids=[s.id for s in day_stops],
-                message=f"{day:%a %d %b} is overloaded: " + "; ".join(reasons) + ".",
+                message=f"{day:%a %d %b} {verdict}: " + "; ".join(reasons) + ".",
                 evidence={
                     "date": day.isoformat(),
                     "venues": venues,

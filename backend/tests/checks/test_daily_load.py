@@ -42,6 +42,8 @@ async def test_venue_count_against_pace(check_deps, osrm, pace, n, overloaded):
         v for v in result.violations if v.evidence["venues"] > v.evidence["limits"]["venues"]
     ]
     assert bool(flagged) is overloaded
+    # a count is a hint for the review, not a fault (decision 81)
+    assert all(v.severity == "info" and "looks busy" in v.message for v in flagged)
 
 
 async def test_long_day(check_deps, osrm):
@@ -50,7 +52,7 @@ async def test_long_day(check_deps, osrm):
         stop("b", DAY, "19:00", "21:00", at=(48.0, 2.0), type="meal"),
     ]
     [v] = (await check_daily_load(check_deps, stops, TravelPreferences())).violations
-    assert v.severity == "warning"
+    assert v.severity == "info"
     assert v.evidence["day_hours"] == 13.0
     assert "13.0 h day" in v.message
 
@@ -63,6 +65,17 @@ async def test_walking_against_limit(check_deps, osrm, limit, expected):
     assert [v.severity for v in result.violations] == ([expected] if expected else [])
     if expected:
         assert result.violations[0].evidence["walk_km"] == 3.2
+        assert "is overloaded" in result.violations[0].message
+
+
+async def test_walking_outranks_a_busy_day(check_deps, osrm):
+    # 6 venues for a moderate pace (info) and 4 km walked against a 3 km limit (warning)
+    prefs = TravelPreferences(pace="moderate", max_walk_km=3, transport_modes=["walk"])
+    [v] = (
+        await check_daily_load(check_deps, venues(6, start_hour=7, km_apart=0.8), prefs)
+    ).violations
+    assert v.severity == "warning"
+    assert "km of walking" in v.message and "6 venues" in v.message
 
 
 async def test_transit_legs_count_station_walking_only(check_deps, osrm):

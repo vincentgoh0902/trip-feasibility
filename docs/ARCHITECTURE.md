@@ -461,7 +461,7 @@ itinerary's own times as the source. If routing is down, the whole check is stil
 
 **Daily load** looks at each day: number of venue stops, length of the day (first start to
 last end), and walking distance (walking legs, plus 0.4 km to and from stations for each
-transit leg). Limits by pace (PRD FR-4), starting defaults to tune on the dev set:
+transit leg). Pace limits (PRD FR-4), untuned defaults:
 
 | Pace | Venues per day | Day length |
 | --- | --- | --- |
@@ -469,10 +469,22 @@ transit leg). Limits by pace (PRD FR-4), starting defaults to tune on the dev se
 | moderate (default) | 5 | 10 h |
 | packed | 7 | 13 h |
 
-Over any limit → one **warning** per day, listing every limit exceeded. Walking more than
-1.5× the traveller's limit → **blocker**. If routing is down, the day is still checked for
-venues and hours, and a note says walking wasn't checked; that's why `CheckResult` has
-`notes`.
+One result per day that crosses a limit, listing each. Walking over the traveller's limit →
+**warning**; more than 1.5× → **blocker**. More venues or a longer day than the pace allows
+→ **info** only ("looks busy"; decision 81): a hint shown to the traveller and evidence for
+the LLM review, which judges whether the day is really too much. If routing is down, the
+day is still checked for venues and hours, and a note says walking wasn't checked; that's
+why `CheckResult` has `notes`.
+
+Why counts are only a hint (decision 81): on the dev set they flagged 15 of 46 days, and
+only 2 days are really too much, both for reasons a count can't see ("two galleries, a
+matinee and maybe a second show"; "the Trianon estate needs a whole afternoon before a
+17:00 train"). Those 2 were flagged by the same numbers as days that were fine (a 12-hour
+morning-to-show day; 6 stops). OSM tags can't sort real visits from walk-throughs either
+(a Gaudí house is tagged artwork, parks and avenues attraction, sights geocode to the
+station named after them). The annotation guide says to judge load as a traveller would,
+not by a formula, so the judgement belongs to the LLM review, with these numbers as its
+evidence.
 
 ### Hotel reviews (`models.py` Hotel/HotelReview, `scripts/load_reviews.py`)
 
@@ -1320,14 +1332,16 @@ Postgres. Three things to settle before the first deploy:
 | 78 | Travel time: a gap short by up to 10 min (or that fits) gets no label; more than 10 min short is a warning; a blocker only when overlapping or more than 30 min short (estimates still counted 25% lower). Default buffer 0 (was 10); the buffer is slack on top (10 flags any shortfall, 20 wants 10 min to spare). Same rule in the checker, ANNOTATION.md and the drafter/baseline prompts (`draft-v3`, `baseline-v3`) (2026-10-30) | Keep decision 76 (any shortfall up to 10 min a warning; less than 10 min to spare a warning) | Back-to-back slots made a warning at nearly every changeover in timed itineraries, burying the ones that matter, padding scores with easy matches and costing verification time (london-08: Shoreditch → Spitalfields Market, 0 min gap, ~8 min walk) | A traveller who can't walk fast, or a chain of 10-min shortfalls across a day, gets no travel-time warning (daily load may still catch a packed day); 30 min is untuned. Drafts made before it carry warnings that are now no label |
 | 79 | Four fixes from the gold-mode diagnosis (eval runs `730a021b` → `8ef09a3b`, 2026-10-31): consecutive stops in one morning/afternoon/evening slot share its window in equal parts, in order (normalisation, annotation guide, `draft-v4`/`baseline-v4`); the holiday check gets every ISO 3166-2 code of the city's address (`regions`), so a regional holiday where the trip is becomes a warning; opening hours are evaluated with the stop's coordinates, so sunrise/sunset rules are placed; gold-mode stops are located like parsed ones (`located: false` never looked up, areas marked) | Keep full windows for every stop; one region code; leave the eval runner as it was | Shared windows made consecutive stops overlap by hours and put "late morning" at 09:00; regional holidays came back "may not apply"; without coordinates sunset is a fixed 19:00; the runner geocoded activity words (one landed 45 km away) and timed legs into neighbourhoods, which the app doesn't do | Equal shares are a guess (a 3-hour museum and a 20-minute walk get the same time); marking areas drops gold travel-time labels between far-apart areas (settled by decision 80) |
 | 80 | A leg to or from a neighbourhood is timed when it's at least 2 km on foot (`legs.AREA_BESIDE_KM`); under that the traveller is beside it and the leg is left out, as before for every area leg (2026-10-31) | Never time area legs (decision 76); time all of them; subtract an edge allowance | Decision 79 marked areas in gold mode and two gold travel-time labels between far-apart areas disappeared; on the dev set every labelled area leg was 2.2 km or more on foot and every unlabelled one 1.8 km or less (run `095a4d6d`: travel time back to 5 of 8 found, no new false alarms) | Set on 7 dev legs with a narrow margin: tuned on dev, to be confirmed by the test set; timing to the centre overstates the journey a little |
+| 81 | Daily load: venue count and day length over the pace limits are **info** ("looks busy"), not warnings; walking over the limit stays a warning, 1.5× a blocker. Whether a day is too much is judged by the LLM review (Tier 1 plan, step 3), with these numbers as evidence (2026-10-31) | Keep counts as warnings; raise the limits | On the dev set the counts flagged 15 of 46 days for 2 real ones, and those 2 had the same numbers as days that were fine; OSM tags can't tell a visit from a walk-through; the guide judges load as a traveller, not by formula. Raising the limits would be tuning on 2 labels and drop both | Until the LLM review exists, the system reports no overloaded days except on walking (dev run `146a353c`: daily load 0 of 2 found, no false alarms). Supersedes 19 for the counts |
 
 ## 13. Known gaps and next steps
 
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
 - Nominatim's 1 request/second limit is per process; fine for one API container, but several
   processes calling it would need a shared limiter (e.g. in Postgres).
-- Transit times are estimates; the travel-mode constants and pace limits are untuned
-  guesses until the dev set exists.
+- Transit times are estimates; the travel-mode constants are untuned guesses. The pace
+  limits only produce info hints (decision 81); whether a day is too much waits for the
+  LLM review.
 - The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
 - Parsed-mode evals need the API key; neither mode has run on real annotations yet.
