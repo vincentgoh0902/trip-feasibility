@@ -70,6 +70,15 @@ async def test_visit_past_midnight(check_deps, respx_mock, hours, expected):
     assert [v.severity for v in result.violations] == ([expected] if expected else [])
 
 
+async def test_sunset_hours_use_the_place_coordinates(check_deps, respx_mock):
+    # a park closing 30 min before sunset: about 16:35 in Paris on 2 Jan, not 18:30
+    respx_mock.get(LOOKUP).respond(json=[way(1, opening_hours="sunrise-(sunset-00:30)")])
+    afternoon = stop("a", date(2027, 1, 2), "13:00", "17:00", at=(48.8467, 2.3364))
+    [v] = (await check_opening_hours(check_deps, [afternoon], "fr")).violations
+    assert v.severity == "warning"
+    assert v.evidence["open_that_day"] == ["08:43-16:34"]
+
+
 async def test_public_holiday_rule_uses_country(check_deps, respx_mock):
     respx_mock.get(LOOKUP).respond(json=[way(1, opening_hours="Mo-Su 09:00-18:00; PH off")])
     christmas = [stop("a", date(2026, 12, 25), "10:00", "12:00")]

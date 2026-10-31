@@ -65,7 +65,14 @@ async def test_no_holiday_no_violation(check_deps, fr):
 
 @pytest.mark.parametrize(
     ("region", "expected"),
-    [("DE-BY", "warning"), ("de-by", "warning"), ("DE-BE", None), (None, "info")],
+    [
+        (["DE-BY"], "warning"),
+        (["de-by"], "warning"),
+        (["DE-BE"], None),
+        (["DE-BE", "DE-BY"], "warning"),  # any level of the trip's address may match
+        (None, "info"),
+        ([], "info"),
+    ],
 )
 async def test_regional_holidays(check_deps, respx_mock, region, expected):
     respx_mock.get(f"{NAGER}/2026/DE").respond(json=DE_2026)
@@ -73,7 +80,7 @@ async def test_regional_holidays(check_deps, respx_mock, region, expected):
     result = await check_public_holidays(check_deps, stops, "DE", region)
     severities = [v.severity for v in result.violations]
     assert severities == ([expected] if expected else [])
-    if region is None:
+    if not region:
         assert "may not apply" in result.violations[0].message
 
 

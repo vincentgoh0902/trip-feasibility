@@ -55,6 +55,7 @@ async def test_every_enabled_check_runs_with_its_settings():
         stops=STOPS,
         city="Paris",
         country_code="FR",
+        regions=["FR-IDF", "FR-75C"],
         preferences=TravelPreferences(pace="relaxed"),
         config=CheckConfig(travel_buffer_min=20, hotel_min_reviews=10),
     )
@@ -75,6 +76,7 @@ async def test_every_enabled_check_runs_with_its_settings():
         "min_reviews": 10,
     }
     assert mcp.calls["public_holidays"]["country_code"] == "FR"
+    assert mcp.calls["public_holidays"]["regions"] == ["FR-IDF", "FR-75C"]
 
 
 async def test_disabled_checks_dont_run():

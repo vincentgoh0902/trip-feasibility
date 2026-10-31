@@ -26,11 +26,11 @@ from trip_feasibility.evals.score import (
 )
 from trip_feasibility.itinerary import Stop
 from trip_feasibility.parse.extract import MessagesClient
-from trip_feasibility.parse.geocode import City, geocode_place, locate_city
+from trip_feasibility.parse.geocode import City, geocode_stops, is_area_tags, locate_city
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.parse.pipeline import ParseError, parse_itinerary
 from trip_feasibility.parse.schema import ExtractedStop
-from trip_feasibility.sources.nominatim import fetch_osm_points, tags_key
+from trip_feasibility.sources.nominatim import fetch_osm_points, fetch_osm_tags, tags_key
 
 Mode = Literal["gold", "parsed"]
 
@@ -67,20 +67,31 @@ def _gold_extracted(itin: DatasetItinerary) -> list[ExtractedStop]:
 
 
 async def gold_stops(deps: CheckDeps, itin: DatasetItinerary, city: City) -> list[Stop]:
-    """The gold stops as checkable Stops: gold ids, located from their OSM refs (the truth),
-    or geocoded by name like the agent would when a stop has no ref."""
+    """The gold stops as checkable Stops with gold ids, located the way the parse pipeline
+    would: from their OSM refs (the truth) when given, otherwise geocoded by name, marked
+    as areas from the OSM place type, and never looked up when `located: false`."""
     assert itin.stops is not None
-    refs = [s.osm for s in itin.stops if s.osm]
-    points = await fetch_osm_points(deps, refs) if refs else {}
+    stops = [
+        stop.model_copy(update={"id": g.id})
+        for stop, g in zip(
+            normalise(_gold_extracted(itin), itin.trip_start), itin.stops, strict=True
+        )
+    ]
+    refs = {g.id: g.osm for g in itin.stops if g.osm and g.located}
+    not_places = frozenset(g.id for g in itin.stops if not g.located)
+    unreffed = [s for s in stops if s.id not in refs]
+    geocoded, _ = await geocode_stops(deps, unreffed, city, not_places)
+    by_id = {s.id: s for s in geocoded}
+    points = await fetch_osm_points(deps, list(refs.values())) if refs else {}
+    tags = await fetch_osm_tags(deps, list(refs.values())) if refs else {}
     out = []
-    for stop, g in zip(normalise(_gold_extracted(itin), itin.trip_start), itin.stops, strict=True):
-        update: dict[str, Any] = {"id": g.id, "osm": g.osm}
-        point = points.get(tags_key(g.osm)) if g.osm else None
-        if point is None:
-            found = await geocode_place(deps, g.place_name, city)
-            if found.place is not None:
-                point = (found.place.lat, found.place.lon)
-                update["osm"] = g.osm or found.place.osm
+    for stop in stops:
+        ref = refs.get(stop.id)
+        if ref is None:
+            out.append(by_id[stop.id])
+            continue
+        update: dict[str, Any] = {"osm": ref, "area": is_area_tags(tags.get(tags_key(ref)) or {})}
+        point = points.get(tags_key(ref))
         if point is not None:
             update |= {"lat": point[0], "lon": point[1]}
         out.append(stop.model_copy(update=update))
@@ -135,6 +146,7 @@ async def evaluate_itinerary(
                 stops=stops,
                 city=city.name,
                 country_code=city.country_code.upper() if city.country_code else None,
+                regions=city.regions,
                 preferences=itin.preferences,
                 config=config,
             ),

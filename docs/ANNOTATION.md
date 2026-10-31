@@ -353,7 +353,9 @@ holiday closures and last admission.
   arriving after last admission; permanently closed.
 - **warning**: open for only part of the visit (closes halfway through, opens late).
 - Visits with only morning/afternoon/evening are judged on the standard windows: morning
-  09:00–12:00, afternoon 13:00–17:00, evening 18:00–21:00.
+  09:00–12:00, afternoon 13:00–17:00, evening 18:00–21:00. Several places in a row in one
+  slot share it in equal parts, in order: two in a morning are 09:00–10:30 and 10:30–12:00
+  (decision 79).
 - Only venues and named meals. No labels for hotels, stations, parks and squares that are
   always open; places you can't establish hours for go in `unknowns`.
 

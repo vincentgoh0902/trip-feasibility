@@ -72,7 +72,7 @@ def tool_arguments(check: CheckName, inp: CheckInput) -> dict[str, Any] | str:
         case "public_holidays":
             if inp.country_code is None:
                 return "the trip's country is unknown"
-            return {"stops": stops, "country_code": inp.country_code}
+            return {"stops": stops, "country_code": inp.country_code, "regions": inp.regions}
         case "opening_hours":
             return {"stops": stops, "country_code": inp.country_code}
         case "travel_time":

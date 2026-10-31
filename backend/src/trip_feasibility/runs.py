@@ -255,6 +255,7 @@ class RunService:
             stops=stops,
             city=city.name,
             country_code=city.country_code.upper() if city.country_code else None,
+            regions=city.regions,
             preferences=req.preferences,
             config=req.config,
         )

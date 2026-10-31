@@ -23,7 +23,7 @@ from trip_feasibility.evals.search_llm import SearchLLM, SearchResult
 
 # v2: travel-time rules of decisions 76-77 (10-min shortfall tolerance, areas, overlaps, typos)
 # v3: decision 78 (up to 10 min short: no label; warning to 30; blocker beyond)
-DRAFT_PROMPT_VERSION = "draft-v3"
+DRAFT_PROMPT_VERSION = "draft-v4"
 LABELLED_CHECKS = ["opening_hours", "public_holidays", "travel_time", "daily_load"]
 COUNTRIES = {"paris": "France", "london": "England", "barcelona": "Spain (Catalonia)",
              "vienna": "Austria (Vienna)"}  # fmt: skip
@@ -95,7 +95,8 @@ admission.
   after last admission; permanently closed.
 - warning: open for only part of the visit (closes halfway through, opens late).
 - A visit given only as morning/afternoon/evening is judged on morning 09:00-12:00,
-  afternoon 13:00-17:00, evening 18:00-21:00.
+  afternoon 13:00-17:00, evening 18:00-21:00. Several places in a row in one slot share it
+  in equal parts, in order (two in a morning: 09:00-10:30, then 10:30-12:00).
 - Only venues and named restaurants/cafés/markets. Never hotels, stations, airports, or
   parks and squares that are always open. If you can't establish the hours, it's an unknown.
 

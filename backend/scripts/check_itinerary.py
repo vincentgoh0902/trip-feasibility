@@ -168,6 +168,7 @@ async def main() -> int:
                 stops=stops,
                 city=city.name,
                 country_code=city.country_code.upper() if city.country_code else None,
+                regions=city.regions,
                 preferences=preferences,
                 config=config,
             )

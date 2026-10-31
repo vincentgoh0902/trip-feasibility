@@ -118,6 +118,8 @@ class Place(BaseModel):
     category: str
     type: str
     country_code: str | None = None
+    # ISO 3166-2 codes from the address, broadest first (e.g. ["ES-CT", "ES-B"])
+    regions: list[str] = []
     # south, north, west, east
     bbox: tuple[float, float, float, float] | None = None
 
@@ -126,6 +128,11 @@ def _place(raw: dict[str, Any]) -> Place | None:
     if raw.get("osm_type") not in _PREFIX:
         return None
     bbox = raw.get("boundingbox")
+    address = raw.get("address") or {}
+    iso_levels = sorted(
+        (k for k in address if k.startswith("ISO3166-2-lvl") and k[13:].isdigit()),
+        key=lambda k: int(k[13:]),
+    )
     return Place(
         osm=OsmRef(type=raw["osm_type"], id=raw["osm_id"]),
         lat=float(raw["lat"]),
@@ -134,7 +141,8 @@ def _place(raw: dict[str, Any]) -> Place | None:
         display_name=raw.get("display_name") or "",
         category=raw.get("category") or "",
         type=raw.get("type") or "",
-        country_code=(raw.get("address") or {}).get("country_code"),
+        country_code=address.get("country_code"),
+        regions=[address[k] for k in iso_levels],
         bbox=tuple(float(x) for x in bbox) if bbox and len(bbox) == 4 else None,
     )
 

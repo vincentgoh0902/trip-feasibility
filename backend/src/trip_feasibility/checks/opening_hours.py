@@ -128,8 +128,13 @@ async def check_opening_hours(
         if not raw:
             unknown.append(UnknownStop(stop_id=stop.id, reason="no opening_hours in OSM"))
             continue
+        # coordinates place sunrise/sunset ("sunset-00:30"); without them the library
+        # assumes a fixed 07:00/19:00
+        coords = (stop.lat, stop.lon) if stop.lat is not None and stop.lon is not None else None
         try:
-            oh = OpeningHours(raw, country=country_code.upper() if country_code else None)
+            oh = OpeningHours(
+                raw, country=country_code.upper() if country_code else None, coords=coords
+            )
         except (ParserError, SyntaxError, ValueError):
             unknown.append(
                 UnknownStop(stop_id=stop.id, reason=f"unparseable opening_hours: {raw!r}")

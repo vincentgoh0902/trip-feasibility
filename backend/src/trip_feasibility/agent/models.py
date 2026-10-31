@@ -11,6 +11,7 @@ class CheckInput(BaseModel):
     stops: list[Stop]
     city: str  # in English, e.g. "Paris"
     country_code: str | None  # ISO 3166-1 alpha-2; holiday checks need it
+    regions: list[str] = []  # ISO 3166-2, any level; decides whether regional holidays apply
     preferences: TravelPreferences = TravelPreferences()
     config: CheckConfig = CheckConfig()
 

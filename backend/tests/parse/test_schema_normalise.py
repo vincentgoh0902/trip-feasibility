@@ -67,3 +67,28 @@ def test_normalise_dates_ids_and_time_windows():
     assert (stops[1].start_time, stops[1].end_time) == (time(13), time(17))
     assert (stops[2].start_time, stops[2].end_time) == (None, None)
     assert all(s.osm is None and s.lat is None for s in stops)
+
+
+def test_stops_in_one_slot_share_its_window_in_order():
+    def at(day, slot, name):
+        return ExtractedStop(day=day, time_of_day=slot, place_name=name, type="venue")
+
+    stops = normalise(
+        [
+            at(1, "morning", "Museum"),
+            at(1, "morning", "Gallery"),  # "late morning" → morning
+            at(1, "afternoon", "Palace"),
+            at(1, "afternoon", "River walk"),
+            at(1, "afternoon", "Market"),
+            at(2, "afternoon", "Park"),  # another day: its own window
+        ],
+        TUE,
+    )
+    assert [(s.start_time, s.end_time) for s in stops] == [
+        (time(9), time(10, 30)),
+        (time(10, 30), time(12)),
+        (time(13), time(14, 20)),
+        (time(14, 20), time(15, 40)),
+        (time(15, 40), time(17)),
+        (time(13), time(17)),
+    ]

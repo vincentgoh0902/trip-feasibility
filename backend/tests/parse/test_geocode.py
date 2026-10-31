@@ -59,6 +59,15 @@ async def test_locate_city(check_deps, paris):
     assert city.place.bbox == (48.8155755, 48.902156, 2.224122, 2.4697602)
 
 
+async def test_city_regions_from_the_address(check_deps, respx_mock):
+    barcelona = result("relation", 347950, "Barcelona", 41.38, 2.17, country_code="es")
+    barcelona["address"] |= {"ISO3166-2-lvl6": "ES-B", "ISO3166-2-lvl4": "ES-CT"}
+    search_route(respx_mock, q="Barcelona", featureType="settlement").respond(json=[barcelona])
+    city = await locate_city(check_deps, "Barcelona")
+    assert city is not None
+    assert city.regions == ["ES-CT", "ES-B"]  # broadest first
+
+
 async def test_city_not_found(check_deps, respx_mock):
     respx_mock.get(SEARCH).respond(json=[])
     assert await locate_city(check_deps, "Atlantis") is None

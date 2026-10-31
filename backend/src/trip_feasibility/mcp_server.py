@@ -55,14 +55,15 @@ def create_server(deps: CheckDeps | None = None) -> MCPServer:
 
     @server.tool()
     async def public_holidays(
-        stops: list[Stop], country_code: str, ctx: Context, region: str | None = None
+        stops: list[Stop], country_code: str, ctx: Context, regions: list[str] | None = None
     ) -> CheckResult:
         """Flag stops that fall on a public holiday in the trip's country.
 
-        country_code: ISO 3166-1 alpha-2 (e.g. "FR"). region: ISO 3166-2 (e.g. "DE-BY"), used
-        to decide whether regional holidays apply; leave empty if unknown.
+        country_code: ISO 3166-1 alpha-2 (e.g. "FR"). regions: the ISO 3166-2 codes the trip
+        is in, at any level (e.g. ["DE-BY"]), used to decide whether regional holidays
+        apply; leave empty if unknown.
         """
-        return await check_public_holidays(_deps(ctx), stops, country_code, region)
+        return await check_public_holidays(_deps(ctx), stops, country_code, regions)
 
     @server.tool()
     async def opening_hours(

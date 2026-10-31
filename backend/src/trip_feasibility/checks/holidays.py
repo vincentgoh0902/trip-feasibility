@@ -56,19 +56,20 @@ async def fetch_holidays(deps: CheckDeps, country_code: str, year: int) -> list[
     return [Holiday.model_validate(h) for h in raw]
 
 
-def _applies(holiday: Holiday, region: str | None) -> bool | None:
+def _applies(holiday: Holiday, regions: list[str] | None) -> bool | None:
     """True if it applies to the trip's region, False if not, None if unknown."""
     if holiday.global_ or not holiday.counties:
         return True
-    if region is None:
+    if not regions:
         return None
-    return region.upper() in holiday.counties
+    return any(r.upper() in holiday.counties for r in regions)
 
 
 async def check_public_holidays(
-    deps: CheckDeps, stops: list[Stop], country_code: str, region: str | None = None
+    deps: CheckDeps, stops: list[Stop], country_code: str, regions: list[str] | None = None
 ) -> CheckResult:
-    """region: ISO 3166-2 code (e.g. "DE-BY") to resolve regional holidays; optional."""
+    """regions: the ISO 3166-2 codes the trip is in, at any level (e.g. ["FR-GES", "FR-67"]),
+    to resolve regional holidays; optional."""
     if not stops:
         return CheckResult(check_name=CHECK_NAME, status="ok")
     try:
@@ -86,7 +87,7 @@ async def check_public_holidays(
     violations = []
     for day, day_stops in sorted(stops_by_date.items()):
         for h in by_date.get(day, []):
-            applies = _applies(h, region)
+            applies = _applies(h, regions)
             if applies is False:
                 continue
             has_venue = any(s.type == "venue" for s in day_stops)

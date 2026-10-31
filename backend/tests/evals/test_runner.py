@@ -186,6 +186,32 @@ async def test_gold_stop_without_osm_ref_is_geocoded_with_its_ref(check_deps, se
     assert "opening_hours day 1: Museum A" in o.predicted
 
 
+async def test_gold_stop_not_located_is_never_looked_up(check_deps, services, respx_mock):
+    # a lookalike place exists (a café called "Lunch"), but the gold says it's not a place
+    lunch = search_route(respx_mock, q="Lunch").respond(
+        json=[result("node", 9, "Lunch", 48.01, 2.0, category="amenity", type="cafe")]
+    )
+    data = ITIN.model_dump(mode="json", by_alias=True, exclude_none=True)
+    del data["stops"][1]["osm"]
+    data["stops"][1] |= {"place_name": "Lunch", "type": "meal", "located": False}
+    data["violations"] = data["violations"][:1]
+    [o] = await run_itin(check_deps, DatasetItinerary.model_validate(data))
+    assert not lunch.called
+    assert o.predicted == {"opening_hours day 1: Museum A": "blocker"}  # no leg to "Lunch"
+
+
+async def test_gold_neighbourhood_is_an_area(check_deps, services, respx_mock):
+    search_route(respx_mock, q="Le Marais").respond(
+        json=[result("relation", 5, "Le Marais", 48.01, 2.0, category="place", type="suburb")]
+    )
+    data = ITIN.model_dump(mode="json", by_alias=True, exclude_none=True)
+    del data["stops"][1]["osm"]
+    data["stops"][1]["place_name"] = "Le Marais"
+    [o] = await run_itin(check_deps, DatasetItinerary.model_validate(data))
+    # back to back, but a leg into a neighbourhood isn't timed
+    assert not any(k.startswith("travel_time") for k in o.predicted)
+
+
 async def run_itin(check_deps, itin):
     return await evaluate(
         check_deps, [itin], {}, mode="gold", config=CONFIG, settings=get_settings()

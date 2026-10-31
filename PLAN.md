@@ -148,6 +148,33 @@ users only, within the hourly limits. Live checks cost about $0.15–0.30 per it
 closures (web search $10 per 1,000 searches, ~11–12 places per itinerary on the dev set),
 under a monthly spend cap set in the Anthropic Console.
 
+### Gold-mode diagnosis (2026-10-31, eval run `730a021b`, dev, before any tuning)
+
+Every false alarm and miss traced to a cause. Gold files carry no OSM refs, so "gold stops"
+mode still geocodes every name: it measures checks + geocoding, not checks alone.
+
+- [x] **Eval runner:** `gold_stops` geocodes `located: false` stops (activity words land on
+      unrelated places tens of km away) and never sets `area`. Setting `area` also drops
+      some true positives, so the area rule (legs to areas untimed) needs a decision.
+- [x] **Public holidays:** the graph never passes `region`, so regional holidays come back as
+      "info" (unscored). The city lookup already has `ISO3166-2-lvl4`.
+- [x] **Opening hours:** `OpeningHours` is built without coordinates, so sunset-based hours
+      assume a 19:00 sunset.
+- [x] **Shared time-of-day windows:** every stop in a window gets the whole window, so
+      consecutive stops in one "afternoon" overlap by 4 h, and "late morning" starts at 09:00.
+Fixed 2026-10-31 (decision 79; run `8ef09a3b`): opening hours 10 of 12 precision / 10 of 17
+recall (was 9 of 13 / 9 of 17), holidays 4 of 4 / 4 of 4 (was 3 of 3 / 3 of 4), travel time
+3 of 5 / 3 of 8 (was 5 of 15 / 5 of 8: both lost hits are legs into areas), daily load
+unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before step 7.
+- Open: legs into areas (untimed today) vs gold labels between far-apart areas; an equal
+  share of a slot can still leave a 0-minute gap between two stops with a walk between them.
+- Later: daily load counts streets, squares, parks and neighbourhoods as venues and meals in
+  the day length, and re-counts time typos; the geocoder prefers any in-box match over a
+  better one outside (day trips), doesn't resolve English names of local places, and misses
+  `place=locality` / `boundary=tourist_zone` areas; a start-only stop is judged as a
+  1-minute point (early arrival → blocker); OSM data errors (date ranges with gaps, stale
+  hours); "X or Y" alternatives aren't stops; stated journey times aren't checked.
+
 ### Definition of done for Tier 1
 
 - All five checks plus closures, each with source and confidence.

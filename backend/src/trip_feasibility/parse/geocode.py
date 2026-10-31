@@ -8,6 +8,7 @@ All calls go through Nominatim's rate limiter and are cached.
 """
 
 from math import asin, cos, radians, sin, sqrt
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -27,6 +28,11 @@ def is_area(place: Place) -> bool:
     return (place.category, place.type) in AREA_TYPES
 
 
+def is_area_tags(tags: dict[str, Any]) -> bool:
+    """The same test on a place's OSM tags (from a /lookup by ref)."""
+    return any((k, v) in AREA_TYPES for k, v in tags.items())
+
+
 class City(BaseModel):
     name: str
     place: Place
@@ -34,6 +40,11 @@ class City(BaseModel):
     @property
     def country_code(self) -> str | None:
         return self.place.country_code
+
+    @property
+    def regions(self) -> list[str]:
+        """ISO 3166-2 codes the city is in, for regional holidays."""
+        return self.place.regions
 
 
 class Geocode(BaseModel):
