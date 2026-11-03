@@ -184,3 +184,48 @@ house on that street) went because the street now resolves to a different segmen
 itself: luck, not the fix. Still wrong: "Petit Trianon" resolves to a Paris restaurant
 called "Le Petit Trianon" (the real one isn't among Nominatim's results), and the Montserrat
 abbey, the Sant Pau site and the Expo Hotel stay unresolved.
+
+### 2026-11-03 · correction · `baseline-v4` rescored
+
+`scripts/score_baseline.py` excused a baseline prediction when it matched one of the
+baseline's *own* `unknowns`, where the eval runner uses the gold file's `unknowns`. It
+mattered once on dev: the baseline flagged MNAC (barcelona-06, day 3) for opening hours and
+also listed it as unknown, so that false alarm was never counted. Fixed: both scorers now use
+the gold file's `unknowns` (`match_decisions.py` too, where it changed nothing). The baseline
+numbers in the `146a353c` entry above become:
+
+| Check | Precision | Recall |
+|---|---|---|
+| Opening hours | 11 of 13 | 11 of 17 |
+| **All four** | **18 of 23 (78%)** | **18 of 30 (60%)** |
+
+The other checks are unchanged. Side by side, ours `ed8f90eb` 19 of 22 (86%) / 19 of 30 (63%).
+
+### 2026-11-03 · gold mode + baseline · union and intersection
+
+Analysis only, no new run: our `ed8f90eb` predictions and `baseline-v4`'s outputs combined,
+scored the same way (one-to-one matching, gold `unknowns`, no undecided name pairs). A false
+alarm both raise (same check, day and place) counts once. Hotels left out. Still not
+like-for-like (ours on gold stops, the baseline from raw text).
+
+| | Precision | Recall |
+|---|---|---|
+| Ours `ed8f90eb` | 19 of 22 (86%) | 19 of 30 (63%) |
+| Baseline `baseline-v4` | 18 of 23 (78%) | 18 of 30 (60%) |
+| Union (either flags it) | 23 of 31 (74%) | 23 of 30 (77%) |
+| Intersection (both flag it) | 14 of 14 (100%) | 14 of 30 (47%) |
+
+Per check (union / intersection): opening hours 13 of 17 precision, 13 of 17 recall / 8 of 8,
+8 of 17; travel time 5 of 6, 5 of 7 / 2 of 2, 2 of 7; public holidays 4 of 4 both; daily load
+1 of 4, 1 of 2 / none reported.
+
+Found by one side only: ours, Bar del Pla and Luxembourg Gardens (opening hours) and three
+travel-time legs (barcelona-10 day 5, london-08 days 1 and 3); the baseline, Bar Cañete, the
+Tower of London and Borough Market (opening hours) and one overloaded day (paris-08 day 2).
+
+Reading: the two mostly find the same problems (14 shared hits), and every shared flag is
+real. Travel time is ours; opening hours splits evenly; the baseline's daily load costs 3
+false alarms for 1 hit. Without the baseline's daily load, the union is 22 of 27 (81%) /
+22 of 30 (73%), but that choice is made on this same dev set. The differences are 4–5 labels:
+a direction for the hybrid design (agreement = confirmed, one side only = worth checking),
+not a result. Redo in parsed mode once extraction runs.

@@ -13,7 +13,7 @@ made or changed: it's how I follow the project.**
 
 ## Status (2026-10-27; details in PLAN.md)
 
-Built: all five checks, parse pipeline (`extract-v8`), LangGraph agent with re-checked fixes,
+Built: all five checks, parse pipeline (`extract-v10`), LangGraph agent with re-checked fixes,
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
 results), restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels
 labelled. Stops drafted for all 15 dev itineraries (parser debugging only now); test files get

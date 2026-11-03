@@ -18,3 +18,4 @@ mlruns/
 .pytest_cache/
 .ruff_cache/
 .Rhistory
+.claude/settings.local.json

@@ -49,7 +49,7 @@ def main() -> int:
             continue
         gold = [g for g in gold_violations(itin, hotels) if g.check != "hotel_red_flags"]
         where = Where(itin.id, itin.split, decisions)
-        for check, c in compare(result.findings, gold, result.unknowns, where).items():
+        for check, c in compare(result.findings, gold, itin.unknowns, where).items():
             per_check.setdefault(check, Counts()).add(c)
         scored.append(itin.id)
     decisions.save()

@@ -40,7 +40,7 @@ def collect_baseline(report: Report, decisions: MatchDecisions, split: str) -> i
             if result is None:
                 continue  # inputs changed since it ran: rerun scripts/run_baseline.py
             gold = [g for g in gold_violations(itin, hotels) if g.check != "hotel_red_flags"]
-            compare(result.findings, gold, result.unknowns, Where(itin.id, itin.split, decisions))
+            compare(result.findings, gold, itin.unknowns, Where(itin.id, itin.split, decisions))
             scored += 1
     return scored
 

@@ -19,7 +19,7 @@ import anthropic
 from trip_feasibility.config import Settings
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v9"
+PROMPT_VERSION = "extract-v10"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -53,7 +53,8 @@ stays), or "transfer" (stations, airports, journeys between cities).
 Not stops: general tips, optional alternatives ("if it rains..."), a choice the itinerary \
 leaves open ("the art museum or the history museum") unless it has its own time or duration \
 (below), untimed meals or \
-activities with no named place ("lunch nearby", "a boat trip on the river"), and travel \
+activities with no named place ("lunch nearby", "a boat trip on the river"; a named operator \
+or venue is a stop: "Evening: dinner cruise with Harbour Line" → "Harbour Line"), and travel \
 between stops, even under its own heading ("Travel to the Old Harbour: allow 30–40 minutes"; \
 that goes in the next stop's travel fields, not in any duration). For a meal described only \
 by an area ("lunch in Le Marais"), the area is the place_name.

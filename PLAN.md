@@ -181,6 +181,9 @@ unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before ste
   arrival → blocker); OSM data errors (date ranges with gaps, stale hours) and hours that
   cover tourist visits only (free entry at worship times); "X or Y" alternatives aren't
   stops; stated journey times aren't checked.
+- [x] Baseline scorer used the baseline's own `unknowns` (gold's now; `baseline-v4` 18 of
+      23, was 18 of 22). Union / intersection with our `ed8f90eb` (2026-11-03, EVALS.md):
+      union 23 of 31 / 23 of 30, intersection 14 of 14 / 14 of 30; redo in parsed mode.
 
 ### Definition of done for Tier 1
 
@@ -277,6 +280,10 @@ Tier 2 is decided after this is done.
   `extract-v9`: `located: false` for activity-named stops (never geocoded, no legs); marked in
   the dev files (45 stops); the dev files now need 33 legs. paris-07's template placeholders
   replaced with drafted stops. ARCHITECTURE decision 73. (2026-10-26)
+  `extract-v10`: a named operator or venue is a stop even for an activity ("dinner cruise
+  with ..."), the clause ANNOTATION.md had and the prompt had dropped. First live smoke test
+  with the key: 5 of 6 example stops on v9 (the cruise missed), 6 of 6 on v10. ARCHITECTURE
+  decision 83. (2026-11-03)
   The validator checks a file part by part while it's being annotated (stops, then legs, then
   violations), listing what's still to do; evals still use only complete files. (2026-10-26)
 - **Public-holiday warnings are advisory (decided 2026-10-29):** still reported and scored as
