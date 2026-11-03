@@ -4,6 +4,7 @@
     uv run python scripts/run_eval.py --mode parsed           # full pipeline (needs API key)
     uv run python scripts/run_eval.py --mode both
     uv run python scripts/run_eval.py --fixes                 # + fix validity (needs API key)
+    uv run python scripts/run_eval.py --mode parsed --replay  # same LLM replies as last time
     uv run python scripts/run_eval.py --ids paris-01,london-03 --no-save   # trying things out
     uv run python scripts/run_eval.py --split test --final    # reported results only
 
@@ -14,6 +15,8 @@ gold mode only those with gold stops (dev only, for parser debugging). The test 
 lines are never printed for it. Details per itinerary go to data/evals/runs/ (gitignored).
 Uncertain place-name matches wait for a human decision (scripts/match_decisions.py); the
 run lists how many are undecided, and its scores are provisional until there are none.
+--replay serves each model request seen before from data/evals/llm-replay/ (decision 87):
+the model varies from run to run, so this isolates a change to the checks or the geocoder.
 """
 
 import argparse
@@ -35,6 +38,7 @@ from trip_feasibility.config import get_settings
 from trip_feasibility.dataset.validate import validate_dataset
 from trip_feasibility.db import make_engine
 from trip_feasibility.evals.decisions import MatchDecisions
+from trip_feasibility.evals.replay import ReplayClient
 from trip_feasibility.evals.runner import Outcome, evaluate, summarise
 from trip_feasibility.llm import make_client
 from trip_feasibility.models import EvalRun
@@ -92,6 +96,7 @@ async def main() -> int:
     parser.add_argument("--ids", default="", help="comma-separated subset (dev only)")
     parser.add_argument("--fixes", action="store_true", help="also propose and re-check fixes")
     parser.add_argument("--no-save", action="store_true", help="don't write eval_runs")
+    parser.add_argument("--replay", action="store_true", help="reuse saved model replies")
     parser.add_argument("--dir", type=Path, default=DATASET)
     args = parser.parse_args()
     if args.split == "test" and not args.final:
@@ -133,6 +138,11 @@ async def main() -> int:
     sessionmaker = async_sessionmaker(engine)
     OUT.mkdir(parents=True, exist_ok=True)
     decisions = MatchDecisions.load(DECISIONS)
+    client = None
+    if "parsed" in modes or args.fixes:
+        client = make_client(settings)
+        if args.replay:
+            client = ReplayClient(client, paths.EVALS / "llm-replay")
     try:
         async with make_http_client(settings) as http:
             deps = make_check_deps(http, sessionmaker, settings, eval_mode=True)
@@ -149,7 +159,7 @@ async def main() -> int:
                     mode=mode,
                     config=config,
                     settings=settings,
-                    client=make_client(settings) if mode == "parsed" or args.fixes else None,
+                    client=client if mode == "parsed" or args.fixes else None,
                     fixes=args.fixes,
                     decisions=decisions,
                     progress=progress(args.split),
@@ -165,6 +175,11 @@ async def main() -> int:
                     "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
                     "clean_version": CLEAN_VERSION if mode == "parsed" else None,
                     "match_decisions_version": decisions.version(),
+                    "replay": (
+                        {"hits": client.hits, "misses": client.misses}
+                        if isinstance(client, ReplayClient)
+                        else None
+                    ),
                     **summary,
                 }
                 model_id = settings.extraction_model if mode == "parsed" else "none (gold stops)"
@@ -222,6 +237,9 @@ async def main() -> int:
                     print(
                         "  hotel check not scored (hotel unlabelled):", summary["hotel_unlabelled"]
                     )
+                if metrics["replay"]:
+                    r = metrics["replay"]
+                    print(f"  replay: {r['hits']} model replies reused, {r['misses']} new")
                 saved = "not saved" if args.no_save else f"eval_runs {run_id}"
                 print(f"  {saved}; details in {detail.relative_to(ROOT)}")
     finally:

@@ -96,6 +96,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       account deletion)
 - [x] Injection suite: 4 vectors × 6 attacks, with and without defences, judged in code
       (`evals/injection.py`); closed a gap it exposed (free-text OSM tags in fix evidence)
+- [x] Parser misses (2026-11-03): `scripts/diagnose_parse.py`; `extract-v11` (the guide's
+      slot, area, near and equal-option rules) at medium effort: stop recall 73% → 89%,
+      violations within noise of before (EVALS.md). Geocoder leaves rivers and former
+      boundaries unresolved (decision 86); `run_eval.py --replay` (decision 87)
 - [x] Refactor pass (2026-11-03): one Claude call helper (`llm.py`), `CheckInput.for_city`,
       `paths.py`, the example loader; `convert_gold.py` removed (one-off, done). Gate:
       `e2e/run.sh` (behaviour snapshot + Playwright on the full stack), decision 84

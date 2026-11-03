@@ -12,8 +12,10 @@ is what the holiday check needs. Each place name is then resolved in this order 
    the other): Nominatim's loose matches far from the city are other places that share a word.
 5. Otherwise, if the name ends in a word saying what kind of place it is ("Tibidabo Amusement
    Park"), the rest of the name, accepting only a result of that kind (a theme park).
-Anything else is left unresolved, never guessed. Results outside the box are marked
-outside_city. All calls go through Nominatim's rate limiter and are cached.
+Anything else is left unresolved, never guessed. So is a name whose match is somewhere you
+can't visit (a river, a former boundary: NOT_VISITABLE), rather than a place sharing a word
+with it (decision 86). Results outside the box are marked outside_city. All calls go
+through Nominatim's rate limiter and are cached.
 """
 
 import re
@@ -53,6 +55,10 @@ _KINDS: dict[str, set[tuple[str, str]]] = {
     "castle": {("historic", "castle"), ("building", "castle")},
     "hotel": {("tourism", "hotel")},
 }
+# Results that carry a place's name but aren't somewhere to go: "a walk along the Seine" finds
+# the river, or the Seine département abolished in 1968, whose disused: tags would read as
+# "closed down"
+NOT_VISITABLE = {("boundary", "historic")} | {("waterway", t) for t in ("river", "canal", "stream")}
 _ARTICLES = re.compile(r"^(the|le|la|les|l|el|els|il|lo|der|die|das) ")
 
 
@@ -152,14 +158,24 @@ def _found(place_name: str, place: Place, city: City) -> Geocode:
     return Geocode(place_name=place_name, place=place, outside_city=not _in_box(place, city))
 
 
+def _visitable(place: Place) -> bool:
+    return (place.category, place.type) not in NOT_VISITABLE
+
+
 async def geocode_place(deps: CheckDeps, place_name: str, city: City) -> Geocode:
     """See the module docstring for the order."""
     assert city.place.bbox is not None
     query = place_name.strip()
     inside = await search(deps, query, viewbox=city.place.bbox, limit=CANDIDATES)
+    if inside and name_match(query, inside[0]) >= 0.9 and not _visitable(inside[0]):
+        top = inside[0]
+        return Geocode(
+            place_name=place_name, reason=f"not a place to visit ({top.category}={top.type})"
+        )
+    inside = [p for p in inside if _visitable(p)]
     if inside and name_match(query, inside[0]) == 1.0:
         return _found(place_name, inside[0], city)
-    nearby = await _nearby(deps, query, city)
+    nearby = [p for p in await _nearby(deps, query, city) if _visitable(p)]
     exact_outside = [p for p in nearby if name_match(query, p) == 1.0 and not _in_box(p, city)]
     if exact_outside:
         return _found(place_name, exact_outside[0], city)

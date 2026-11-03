@@ -22,8 +22,9 @@ verified by hand, and the 25 test ones (including a held-out city) are untouched
 
 **First results (development set, 30 labelled problems):** given correctly parsed stops, the
 checks find 19 of 30 problems with 19 of 22 flags correct. End to end from the raw text they
-find 16 of 30 (16 of 24 correct), against 18 of 30 (18 of 23) for a plain LLM with web
-search: parsing the itinerary is the weak link. Every run, with what changed, is in
+find 16–17 of 30 over three runs (71–80% of flags correct), against 18 of 30 (78%) for a
+plain LLM with web search. Parsing now finds 89% of the stops; most of the rest of the gap is
+what the checks can't see yet (temporary closures, missing opening hours). Every run, with what changed, is in
 [`docs/EVALS.md`](docs/EVALS.md). Final numbers come from the test set and will be reported
 here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works
 and why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -81,7 +82,7 @@ After changing `src/trip_feasibility/models.py`:
 | `HTTP_USER_AGENT` | `trip-feasibility/0.1 (+repo URL)` | Identifies the app to OSM services |
 | `ANTHROPIC_API_KEY` | none | Claude API key for parse step 1 (secret; `.env` only) |
 | `EXTRACTION_MODEL` | `claude-haiku-5-5` | Model for parse step 1 |
-| `EXTRACTION_EFFORT` | `low` | Effort level for parse step 1 |
+| `EXTRACTION_EFFORT` | `medium` | Effort level for parse step 1 |
 | `FIX_MODEL` | `claude-haiku-5-5` | Claude model that proposes fixes |
 | `FIX_EFFORT` | `medium` | Effort level for fix proposals |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |

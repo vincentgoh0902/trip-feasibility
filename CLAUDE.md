@@ -13,19 +13,20 @@ made or changed: it's how I follow the project.**
 
 ## Status (2026-11-03; details in PLAN.md)
 
-Built: all five checks, parse pipeline (`extract-v10`), LangGraph agent with re-checked fixes,
+Built: all five checks, parse pipeline (`extract-v11`, medium effort), LangGraph agent with re-checked fixes,
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
 results), restyled to the hero illustration; the pre-commit gate `e2e/run.sh` (decision 84).
 Collected: 40 itineraries, splits drawn, 16 hotels labelled; the 15 dev files annotated and
 verified violations-first (decision 74); the 25 test files not labelled yet. Live with the
 key since 2026-11-03.
 
-Measured on dev (`docs/EVALS.md`): on gold stops 19 of 22 / 19 of 30; end to end 16 of 24 /
-16 of 30, against an LLM-only baseline at 18 of 23 / 18 of 30. Parsing (73% stop recall) is
-the gap; flags both systems raise were all real (14 of 14).
+Measured on dev (`docs/EVALS.md`): on gold stops 19 of 22 / 19 of 30; end to end, after the
+parser work, 16–17 of 30 at 71–80% precision over three runs (stop recall 89%), against an
+LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks can't see
+(closures, missing OSM hours, overloaded days); flags both systems raise were all real.
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule, closures check, injection pages,
-LLM review, eval), and the parser's dropped and renamed stops. Not blocked on Vincent: travel
+LLM review, eval). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
@@ -78,7 +79,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 decisions.py (human calls on uncertain name matches),
                                 search_llm.py (search-enabled LLM backends: codex,
                                 claude-code), baseline.py (LLM-only baseline),
-                                injection.py (prompt-injection suite)
+                                injection.py (prompt-injection suite), replay.py (saved
+                                model replies: `run_eval.py --replay`)
   scripts/                      see Commands
 frontend/                       Next.js (npm); openapi.json (exported from the backend)
   e2e/                          Playwright (playwright.config.ts): landing → demo → a live check
@@ -179,7 +181,7 @@ Planned: `train/` (Tier 2, Mac only).
   `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S` (1.0), `ROUTING_TIMEOUT_S`,
   `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`, `CACHE_TTL_OSM_DAYS`,
   `CACHE_TTL_ROUTES_DAYS`, `ANTHROPIC_API_KEY` (secret), `EXTRACTION_MODEL`
-  (claude-haiku-5-5), `EXTRACTION_EFFORT` (low), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
+  (claude-haiku-5-5), `EXTRACTION_EFFORT` (medium), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
   (medium), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
   `API_JWT_AUDIENCE`, `RATE_LIMIT_CHECKS_PER_HOUR` (20), `RATE_LIMIT_PARSES_PER_HOUR` (20),
   `RATE_LIMIT_DEMO_PER_HOUR` (10), `MAX_CONCURRENT_RUNS` (4), `DEMO_RUN_TTL_S` (3600),
@@ -217,6 +219,8 @@ uv run python scripts/sample_reviews.py "Hotel Cavendish" -n 40   # csv_name fro
 uv run python scripts/check_itinerary.py --example    # checks on the example (no key needed)
 uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
 uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev split
+uv run python scripts/run_eval.py --mode parsed --replay   # reuse saved model replies (A/B)
+uv run python scripts/diagnose_parse.py [--ids ...] [--samples N] [--summary]   # parser misses (dev)
 uv run python scripts/run_eval.py --split test --final  # reported results only
 uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain name matches
 uv run python scripts/run_injection_suite.py          # needs the key; --defended-only, --no-save

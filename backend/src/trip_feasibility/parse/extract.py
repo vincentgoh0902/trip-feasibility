@@ -17,7 +17,7 @@ from typing import Any
 from trip_feasibility.llm import LLMError, MessagesClient, create_json
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
-PROMPT_VERSION = "extract-v10"
+PROMPT_VERSION = "extract-v11"
 MAX_TOKENS = 16000
 
 SYSTEM_PROMPT = """\
@@ -61,8 +61,10 @@ A meal or activity with its own stated time or duration is a stop even with no n
 ("12:45 Lunch near the cathedral: pick a café around Market Square, budget 60 minutes"). Its \
 place_name is the most specific area the text gives ("Market Square"), not a landmark it's \
 only near; with no place words at all, or when it leaves the place open ("breakfast at the \
-hotel or a café nearby"), the activity's own words ("Breakfast"). A "Morning:", \
-"Afternoon:" or "Evening:" heading counts as a stated time here.
+hotel or a café nearby"), the activity's own words ("Breakfast"). Near or toward a place \
+isn't at it: "dinner at a casual spot near the harbour" is "Dinner", "head toward the centre \
+for lunch" is "Lunch", each with located false. A "Morning:", "Afternoon:" or "Evening:" \
+heading counts as a stated time here.
 
 More rules:
 - Downtime with no place ("early night", "free time", "back to the hotel to rest") is not a \
@@ -71,12 +73,18 @@ they name a station, airport or hotel. Items marked optional are not stops.
 - A timed line that is only a journey ("12:00 Taxi up to the museum", "08:00 Train to the \
 palace, about 40 minutes") gives the next stop its travel_start (and travel_min/max), not \
 its start_time.
-- Several named places in one timed slot ("14:00 Walk to the Panthéon and the Luxembourg \
-Gardens") are one stop each: the first gets the slot's start time, the last its end time, \
-any in between no time. Places only walked past are not stops; rooms or features of one \
-venue are part of it.
+- Several named places in one timed slot are one stop each, whether the slot's heading \
+joins them ("10:00–12:00 Old Harbour & Fish Market") or its lines name them ("14:00 Walk to \
+the Panthéon and the Luxembourg Gardens"): the first gets the slot's start time, the last \
+its end time, any in between no time. Never give each the whole range. Places inside an \
+area visit ("the Old Town, stopping by the Clock Tower and Mill Square"; "wander down Rope \
+Street and Bell Lane") are stops too, after the area. Places only walked past ("past the \
+town hall") are route, not stops; rooms or features of one venue are part of it.
 - A choice where the itinerary favours one option ("A, or B as an alternative") is a stop \
-for the favoured option.
+for the favoured option. Equal options are not yours to pick: a timed slot offering them \
+("15:00 art at a museum like the City Gallery or the Maritime Museum", "a short walk or the \
+Town Museum") is one stop named by the activity's words ("art", "short walk"), located \
+false.
 - A slot that carries on at the place just named ("6:00 Head to Sky Garden", then "6:30 \
 Drinks with a view") takes that place's name.
 
@@ -175,7 +183,7 @@ async def extract_stops(
     city: str,
     trip_start: date,
     model: str,
-    effort: str = "low",
+    effort: str = "medium",
 ) -> ExtractionResult:
     messages: list[dict[str, Any]] = [
         {"role": "user", "content": _user_message(text, city, trip_start)}

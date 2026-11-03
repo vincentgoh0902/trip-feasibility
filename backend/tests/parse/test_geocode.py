@@ -173,6 +173,24 @@ def test_name_match(query, names, score):
     assert name_match(query, place) == score
 
 
+@pytest.mark.parametrize(
+    ("category", "type_"), [("boundary", "historic"), ("waterway", "river"), ("waterway", "canal")]
+)
+async def test_a_place_you_cant_visit_stays_unresolved(
+    check_deps, paris, respx_mock, category, type_
+):
+    # "a walk along the Seine": the exact name is the river, or the département abolished in
+    # 1968, whose disused: tags read as closed down; the next result is a town sharing a word
+    seine = result("relation", 5, "Seine", 48.85, 2.35, category=category, type=type_)
+    town = result("relation", 4, "Neuilly-sur-Seine", 48.88, 2.27, category="boundary",
+                  type="administrative")  # fmt: skip
+    search_route(respx_mock, q="Seine", bounded="1").respond(json=[seine, town])
+    city = await locate_city(check_deps, "Paris")
+    located, geocodes = await geocode_stops(check_deps, stops("Seine"), city)
+    assert located[0].osm is None and located[0].lat is None
+    assert geocodes["s1"].reason == f"not a place to visit ({category}={type_})"
+
+
 async def test_unresolved_places_are_flagged_not_guessed(check_deps, paris, respx_mock):
     search_route(respx_mock, q="Promenade des Anglais", bounded="1").respond(json=[])
     search_route(respx_mock, q="Promenade des Anglais", countrycodes="fr").respond(json=[NICE])

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Parse step 1 (LLM extraction). The key is a secret: .env locally, app.env on the server.
     anthropic_api_key: SecretStr | None = None
     extraction_model: str = "claude-haiku-5-5"
-    extraction_effort: str = "low"
+    extraction_effort: str = "medium"
     # Fix proposals (agent/fixes.py): same provider; untuned until the fix-quality judge exists.
     fix_model: str = "claude-haiku-5-5"
     fix_effort: str = "medium"

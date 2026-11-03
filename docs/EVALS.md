@@ -278,3 +278,55 @@ Where parsed mode lost against gold mode:
 Next: the parser, not the checks, is what separates gold mode from the baseline. Look at the
 stops extraction drops or renames on the dev files, and at activity words and rooms inside
 venues reaching the geocoder.
+
+### 2026-11-03 · parsed mode · `58bcdf2e`, `9625b7dc`, `9961761f` · `extract-v11` at medium effort
+
+What changed since `afd18efa` (ARCHITECTURE decisions 33, 86, 87; prompt history in section
+12): `scripts/diagnose_parse.py` lined up each dev file's extraction with its gold stops over
+two samples. The misses were systematic, not noise, and broke rules the guide already had:
+several places in one slot kept as one ("Bankside & Tate Modern Walk" → Bankside only),
+meals named by what they were near ("harbor", "city center"), one of two equal options
+picked ("a museum like the Picasso Museum or MNAC"). `extract-v11` states those rules the
+way the guide does, with made-up examples; extraction effort went from low to medium. Same
+config and dataset as before.
+
+Gold stops missed / extra parsed stops, dev, two samples each (462 gold stops in all):
+
+| | Missed | Extra |
+|---|---|---|
+| `extract-v10`, low effort | 120 | 69 |
+| `extract-v10`, medium | 99 | 53 |
+| `extract-v11`, low | 77 | 59 |
+| `extract-v11`, medium | **47** | **24** |
+
+Then three parsed runs with `extract-v11` at medium effort. `9961761f` also has the
+geocoder's "not a place to visit" rule (decision 86): "Seine" had resolved to a former
+département and been flagged as closed. Replaying its exact extractions with the old
+geocoder gave identical results, because no extraction in that sample produced a "Seine" stop
+(two of the earlier three runs had one), so the rule is unit-tested but not measured here.
+
+| Run | Opening hours | Travel time | All four: precision | All four: recall | Stop recall |
+|---|---|---|---|---|---|
+| `afd18efa` (`extract-v10`, low) | 9 of 13 / 9 of 17 | 3 of 7 / 3 of 7 | 16 of 24 (67%) | 16 of 30 (53%) | 73% |
+| `58bcdf2e` | 8 of 11 / 8 of 17 | 5 of 8 / 5 of 7 | 17 of 23 (74%) | 17 of 30 (57%) | 88% |
+| `9625b7dc` | 8 of 12 / 8 of 17 | 5 of 8 / 5 of 7 | 17 of 24 (71%) | 17 of 30 (57%) | 89% |
+| `9961761f` (+ decision 86) | 8 of 10 / 8 of 17 | 4 of 6 / 4 of 7 | 16 of 20 (80%) | 16 of 30 (53%) | 89% |
+| Baseline `baseline-v4` | 11 of 13 / 11 of 17 | 2 of 2 / 2 of 7 | 18 of 23 (78%) | 18 of 30 (60%) | |
+| Gold stops `a2c3ac70` | 10 of 12 / 10 of 17 | 5 of 6 / 5 of 7 | 19 of 22 (86%) | 19 of 30 (63%) | |
+
+Public holidays 4 of 4 and daily load none reported in every run. Extraction cost about
+$0.04 per run of 15 itineraries (66K input / 70K output tokens), against ~$0.03 at low.
+
+Reading: extraction is now close to the gold stops (stop recall 73% → 89%), and travel time
+reaches the gold-mode 5 of 7 in two of three runs (london-08's three legs are found). The
+violation scores moved by about one label, which is within run-to-run noise: end to end, the
+pipeline is still a label or two behind the plain LLM on recall, level on precision. Gold
+mode is the ceiling at 19 of 30, so better parsing can win at most two or three more; the
+rest of the misses (long closures, missing OSM hours, overloaded days, "X or Y" slots) are
+what the checks can't see, which the closures check and the LLM review are for. Opening
+hours lost Musée Rodin (paris-02, mentioned only as "such as the Musée Rodin", extracted in
+some runs) and Luxembourg Garden (paris-05: the model wrote "Gardens", which geocodes to the
+Petit Luxembourg's garden).
+
+From here, parsed runs use `--replay` (decision 87) to compare changes on identical
+extractions; `9961761f`'s replies are saved.

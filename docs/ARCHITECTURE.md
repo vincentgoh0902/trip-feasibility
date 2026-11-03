@@ -87,7 +87,8 @@ trip-feasibility/
     │   │                     fixes.py (propose → apply → re-check → retry), models.py
     │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py,
     │   │                     decisions.py (human name calls), search_llm.py + baseline.py
-    │   │                     (LLM-only baseline), injection.py (prompt-injection suite)
+    │   │                     (LLM-only baseline), injection.py (prompt-injection suite),
+    │   │                     replay.py (saved model replies for exact reruns)
     │   ├── mcp_server.py     exposes the checks as MCP tools
     │   ├── dataset/          evaluation dataset: file format, split, validation, drafting,
     │   │                     example.py (the made-up worked example)
@@ -652,7 +653,9 @@ get ids `s1`, `s2`, ... in text order.
 6. **Otherwise, a kind word at the end of the name** ("Tibidabo Amusement Park", "La
    Boqueria Market", `geocode._KINDS`): search the rest of the name and accept only a
    result of that kind (a theme park, a marketplace).
-7. **Otherwise leave it unresolved** with a reason. The PRD says flag, never guess.
+7. **Otherwise leave it unresolved** with a reason. The PRD says flag, never guess. So is a
+   name whose match is a river, canal or former boundary (decision 86): not somewhere to go,
+   and the next result would be a guess.
 
 Each distinct name is searched once per itinerary; results, including "no results", are
 cached for `CACHE_TTL_OSM_DAYS`, and every request goes through the Nominatim rate limiter.
@@ -689,10 +692,9 @@ One call to Claude Haiku 5.5 (`EXTRACTION_MODEL`, effort `low`) per itinerary:
   `truncated` (hit `max_tokens`), `unavailable` (API down, rate-limited, no key).
 - **Usage is returned** (`ExtractionResult`: model, prompt version, attempts, tokens), so
   eval runs can log cost per itinerary (PRD target: under $0.01 per check).
-- **Why Haiku at low effort:** extraction is copying, not reasoning, and it's the cheapest
-  current model. On the dev set (run `afd18efa`) it finds 73% of the gold stops with 95% of
-  fields right, and dropped or renamed stops are now the main gap between parsed and gold
-  mode (EVALS.md).
+- **Why Haiku at medium effort:** it's the cheapest current model. At low effort it found
+  73% of the dev gold stops (run `afd18efa`); with `extract-v11` at medium effort, 89% with
+  98% of fields right (decision 33; `scripts/diagnose_parse.py` shows each file's misses).
 - **The call** goes through `llm.create_json` (decision 85), shared with fixes: structured
   output, API failures as `unavailable`, tokens counted even when a reply is unusable.
 - **Not cached:** the system prompt is far below the minimum cacheable length, so prompt
@@ -1179,7 +1181,9 @@ tokens and time per itinerary. When Vienna is in the run, seen and unseen cities
 reported apart.
 
 **Rules it enforces.** Eval mode (expired cache entries served, so reruns make no external
-calls once cached). Only annotated itineraries run, so it works on a partial dev set. The
+calls once cached); with `--replay`, model replies too (decision 87).
+`scripts/diagnose_parse.py` shows, file by file, the gold stops extraction missed, the extra
+ones and the fields that differ, over several samples (dev only). Only annotated itineraries run, so it works on a partial dev set. The
 test split needs `--final`, and prints no per-itinerary lines. Every run writes an
 `eval_runs` row (dataset version, model, prompt version, config, all metrics) unless
 `--no-save`; per-itinerary details go to gitignored `data/evals/runs/`.
@@ -1271,7 +1275,7 @@ Postgres. What to settle before the first deploy:
 Grouped by topic. The numbers are the original decision numbers, which other docs and code
 comments cite; a row carries several when later decisions refined earlier ones. What a
 decision replaced, or what was tried and dropped, is listed under its topic with the reason.
-A new decision takes the next number (86 onwards) and goes under its topic.
+A new decision takes the next number (88 onwards) and goes under its topic.
 
 ### Foundations
 
@@ -1346,9 +1350,10 @@ Replaced or dropped:
 | # | Decision | Why | Cost |
 | --- | --- | --- | --- |
 | 52 | Pasted text cleaned in code before extraction; limits 50,000 characters raw, 15,000 cleaned (2026-10-24) | Users paste whole replies (a ChatGPT reply ran to ~30,000 characters, mostly image links); removing fixed patterns is cheap and testable | The rules follow today's chat UIs and need upkeep |
-| 33, 34 | Claude Haiku 5.5 at low effort for extraction; a hand-written JSON schema, then Pydantic validation and one retry | Extraction is copying, so the cheapest model first; the schema changes only with the prompt version | The judge must come from another provider; schema and model are kept in step by hand |
+| 33, 34 | Claude Haiku 5.5 at **medium** effort for extraction (low until 2026-11-03); a hand-written JSON schema, then Pydantic validation and one retry | The cheapest model first; at medium effort with `extract-v11` it finds 89% of the dev gold stops, against 73% at low with `extract-v10` (`diagnose_parse.py`, runs `9625b7dc`, `afd18efa`) | About $0.003 per itinerary rather than $0.002; the judge must come from another provider; schema and model are kept in step by hand |
 | 31 | Gold stops extend the extraction schema | Parse accuracy compares identical fields | Changing the schema changes the dataset format |
 | 68–73, 83 | Stop rules, the same in ANNOTATION.md and the prompt (versions below): a timed slot is a stop even with no named place; a named operator or venue is a stop; open choices, untimed unnamed activities, downtime, optional items and travel sections aren't; stated durations and journeys have their own fields; activity-named stops are `located: false`. Frozen with 74 | Guide and prompt agree, so extraction is scored against the rules it was given; each rule came from a dev file | Some real visits (optional ones, downtime) go unchecked |
+| 86 | A name whose match in the city is somewhere you can't visit (a river or canal, a former boundary: `geocode.NOT_VISITABLE`) stays unresolved, with that reason (2026-11-03) | "A walk along the Seine" matched the Seine département abolished in 1968, whose `disused:` tags read as "closed down": an opening-hours blocker on a river. Skipping it instead would take the next result, a town sharing the word (Neuilly-sur-Seine) | Such a stop is unknown to every check |
 | 29, 82 | Geocoding searches the city's bounding box, then within 60 km in the same country; outside the box's top result, a result's name must match the text (any OSM name, accents and articles ignored); a trailing kind word ("Market") becomes a type filter; `place=locality`, `boundary=tourist_zone` and `historic=district` are areas (2026-10-31) | Keeps "Louvre" from matching a Louvre elsewhere while still finding day trips; loose matches had sent Versailles to a Paris exhibition centre and "Montjuïc gardens" to another town (run `ed8f90eb`) | Names unlike any OSM name stay unresolved; an inexact name costs a second search |
 
 Extraction prompt versions (the guide changed with each):
@@ -1365,6 +1370,7 @@ Extraction prompt versions (the guide changed with each):
 | `extract-v8` | 2026-10-26 | Ten rules from the dev files: downtime, arrivals and departures, journey lines, several places in one slot, rooms vs areas, favoured options, "Morning:" headings, optional items, time typos, slots that carry on (72) | They came up across the dev files |
 | `extract-v9` | 2026-10-26 | `located: false` for activity-named stops: never geocoded, no legs (73) | A third of dev legs touched them; searching "Lunch" can land on a café of that name |
 | `extract-v10` | 2026-11-03 | A named operator or venue is a stop even for an activity ("dinner cruise with Harbour Line") (83) | The prompt had dropped this clause from the guide; the smoke test missed the example's cruise (5 of 6 stops, then 6 of 6) |
+| `extract-v11` | 2026-11-03 | The guide's rules the prompt lacked or put weakly: several places in one slot whether the heading joins them ("Old Harbour & Fish Market") or its lines name them, never each the whole range; places inside an area visit; near or toward a place isn't at it; equal options are named by the activity, never picked. Examples made up | On dev the model kept one place per slot, named meals by what they were near ("harbor") and picked one of two equal museums: 120 gold stops missed and 69 extra over two samples, against 47 and 24 after (with medium effort) |
 
 Replaced or dropped:
 - **68's "no named place, no stop"** (`extract-v4`), for timed slots: reversed by 70
@@ -1374,6 +1380,9 @@ Replaced or dropped:
 - **One 5,000-character limit**, with users asked to regenerate (before 52): whole replies
   don't fit.
 - **Rules beyond these**: stop rules froze with 74; new ones would change the dataset again.
+- **Low effort for extraction** (33, until 2026-11-03): medium effort alone took the misses
+  from 120 to 99, `extract-v11` alone to 77, both to 47; low with v11 was cheaper but left
+  the "several places in one slot" rule half-followed.
 
 ### Fixes and prompt injection
 
@@ -1417,6 +1426,7 @@ Replaced or dropped:
 | 23, 28, 53 | One YAML per itinerary (metadata and labels) and the reply in `texts/<id>.md`, in gitignored `data/dataset/`; the dataset version is a hash of the files | Hand-written (comments, multi-line text); whole replies are too long for YAML blocks; one copy can't drift; no git needed | YAML's `10:30` trap needs a custom loader; two files per itinerary; the folder needs its own backup |
 | 26 | Labels are judged against reality, not against our data sources | Measures the whole system, data gaps included | Lower scores where OSM is poor |
 | 74 | **Violations first** (2026-10-27): the gold is violations in the text's own words (check, day, place and time as written, severity, evidence, source, confidence), plus `unknowns` and `other_issues`, matched by place name; travel time labelled directly; drafts from a non-Anthropic model count only once verified (`drafted_by`, `verified_by_human`); gold stops and legs frozen, dev only | Stop rules kept growing (68–73) and each changed the dataset; labels in the text's words don't depend on how anyone splits it into stops, so a plain LLM can be scored on the same labels; a drafter from another provider avoids rewarding shared blind spots | Fuzzy name matching needs some human decisions; drafts can anchor the annotator |
+| 87 | Eval runs can replay model replies (`run_eval.py --replay`, `evals/replay.py`): each request's reply is saved under a hash of the whole request and served again for the same request (2026-11-03) | The model varies from run to run (stop recall 77% and 73% on the same text), which hides the effect of a geocoder or check change; replay makes those A/B tests exact and free, extending eval mode's "reruns make no external calls" to the LLM | A prompt, text or model change is a new request (paid once); the replies live in gitignored `data/evals/llm-replay/` |
 | 46, 47 | Two modes, reported apart: gold stops and parsed; a prediction matches a label on check + day + place, with severity scored separately | Separates check errors from parse errors, and gold mode needs no key; a blocker reported as a warning still found the problem | Detection scores look better than severity accuracy |
 | 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Names are copied verbatim, while positions shift | Near-identical names on one day can swap |
 | 79 | Four fixes from the gold-mode diagnosis (2026-10-31, run `730a021b` → `8ef09a3b`): stops sharing a morning/afternoon/evening slot split it in order; regional holidays by the city's ISO 3166-2 codes; sunrise/sunset hours placed by the stop's coordinates; gold stops located like parsed ones | Shared windows made stops overlap by hours; regional holidays came back "may not apply"; sunset was a fixed 19:00; the runner geocoded activity words (one landed 45 km away) | Equal shares are a guess (a museum and a walk get the same time) |
@@ -1435,10 +1445,12 @@ Replaced or dropped:
 
 ## 13. Known gaps and next steps
 
-- **Parsing is the weak link.** End to end, the pipeline is level with a plain LLM with web
-  search (dev run `afd18efa`: 16 of 24 / 16 of 30, the baseline 18 of 23 / 18 of 30), while
-  on gold stops it's ahead (19 of 22 / 19 of 30); extraction finds 73% of the gold stops.
-  Both systems agree on 14 problems, all real (EVALS.md).
+- **End to end, the pipeline trails a plain LLM with web search slightly.** With
+  `extract-v11` at medium effort (three dev runs) it finds 16–17 of 30 problems at 71–80%
+  precision; the baseline 18 of 30 at 78%; the checks on gold stops 19 of 30 at 86%.
+  Extraction now finds 89% of the gold stops, so most of the remaining gap is in what the
+  checks can't see (long closures, missing OSM hours, overloaded days): the closures check
+  and the LLM review. Both systems agree on 14 problems, all real (EVALS.md).
 - A Nominatim timeout fails a whole itinerary's parse (it isn't retried, by the usage
   policy); eval runs are rerun until none fails.
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
