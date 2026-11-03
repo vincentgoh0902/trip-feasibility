@@ -16,8 +16,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       skeletons written (all default preferences), splits drawn with seed 39991414. Dev:
       paris 02 05 07 08 09; london 04 05 08 09 10; barcelona 02 06 07 08 10.
 - [x] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3). Done 2026-10-25.
-- [ ] **Vincent: annotate** the itineraries (step 4); must be done before the first baseline
-      eval **← now**
+- [ ] **Vincent: annotate** the itineraries (step 4): the 15 dev files are verified
+      (by 2026-10-30); the 25 test files are still to label, before the final test run
 - [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
@@ -34,13 +34,13 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       search inside the city's bounding box, 60 km fallback, unresolved otherwise)
 - [x] Parse step 1: Claude Haiku 5.5 extraction, structured output, one validation retry
       (`parse/extract.py`)
-- [ ] **Vincent: add `ANTHROPIC_API_KEY`** to the repo-root `.env`, after setting a monthly
-      spend cap in the Anthropic Console; then `uv run python scripts/smoke_parse.py`
+- [x] **Vincent: add `ANTHROPIC_API_KEY`** to the repo-root `.env` (prepaid credits,
+      auto-reload off); `scripts/smoke_parse.py` passed live (2026-11-03)
 - [x] LangGraph check graph (enabled checks in parallel via in-process MCP), parse pipeline
       end to end, CLI (`scripts/check_itinerary.py`)
 - [x] Eval runner (`scripts/run_eval.py`): gold-stop and parsed modes, alignment, parse
       accuracy, eval_runs rows; checked live on the example annotation
-- [ ] **Violations-first evaluation** (decided 2026-10-27, ARCHITECTURE decision 74):
+- [x] **Violations-first evaluation** (decided 2026-10-27, ARCHITECTURE decision 74):
   - [x] 1. Stop rules frozen in ANNOTATION.md: dev only, for parser debugging
   - [x] 2. Gold format: violations by check + day + place/time as written, severity,
         evidence, source, confidence; `unknowns`, `other_issues`, `drafted_by`,
@@ -69,13 +69,14 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
         run `afd18efa`, EVALS.md): ours 16 of 24 / 16 of 30, baseline 18 of 23 / 18 of 30;
         extraction (stop recall 73%) is the gap from gold mode. Nominatim timeouts can fail
         a whole itinerary; rerun until none, or retry once through the limiter (open)
-- [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
+- [x] First baseline eval on the dev set: gold mode from 2026-10-30, parsed mode 2026-11-03
+      (EVALS.md)
 - [x] Langfuse tracing (optional, no traveller content by default), cost per run and per
       parse, `check_runs` rows with violations and fixes (`tracing.py`, `pricing.py`, `runs.py`)
 - [ ] **Vincent: Langfuse Cloud** project keys in `.env` (optional; tracing stays off without)
 - [x] Fixes with re-checks (`agent/fixes.py`): Claude proposes operations, code applies and
-      re-runs every check, one retry; fix validity in `run_eval.py --fixes`. Untested live
-      (needs the key)
+      re-runs every check, one retry; fix validity in `run_eval.py --fixes` (not run yet).
+      Live on the demo since 2026-11-03
 - [x] FastAPI routes (PRD table), SSE live feed with replay, sign-in via a per-call token
       signed by the Next.js server, demo mode (samples, in memory), rate limits (`api/`,
       `auth.py`, `runs.py`, `ratelimit.py`); checked live on the demo sample
@@ -95,6 +96,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       account deletion)
 - [x] Injection suite: 4 vectors × 6 attacks, with and without defences, judged in code
       (`evals/injection.py`); closed a gap it exposed (free-text OSM tags in fix evidence)
+- [x] Refactor pass (2026-11-03): one Claude call helper (`llm.py`), `CheckInput.for_city`,
+      `paths.py`, the example loader; `convert_gold.py` removed (one-off, done). Gate:
+      `e2e/run.sh` (behaviour snapshot + Playwright on the full stack), decision 84
 - [ ] Run the injection suite live (needs the key) and put the numbers in the README
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
@@ -209,17 +213,19 @@ Tier 2 is decided after this is done.
 
 ## Decisions
 
-- Repo is public: never commit itineraries with personal details, API keys or review dumps.
+The working summary. The reasoning, alternatives and what each replaced are in
+ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt version histories
+(`extract-v1` to `v10`, `fixes-v1` to `v3`, `draft-`/`baseline-v1` to `v4`).
+
+- Repo is public: never commit itineraries, raw replies, annotations, API keys or review dumps.
 - Local API host port is 8020 (8000 is taken on the Mac); the container listens on `PORT`.
 - Dataset cities: Paris, London, Barcelona, Vienna (all in the Kaggle hotel reviews set), with
-  16 hotels, 2 high- and 2 low-scoring per city (`docs/TEST_CITIES.md`).
-- Transit: keep the estimate; annotations record the real transit time per leg, and one global
-  set of constants is fitted on the dev set (no per-city tuning). Try Transitous only if the
-  baseline shows transit dominates travel-time errors.
-- **Vienna is held out (decided 2026-10-24).** Dev: 15 itineraries, 5 each from Paris, London
-  and Barcelona. Test: the other 15 from those cities plus all 10 Vienna ones (25). Test
-  results are reported twice: seen cities (Paris, London, Barcelona) and unseen city (Vienna).
-  Rules:
+  16 hotels, 2 high- and 2 low-scoring per city (`docs/TEST_CITIES.md`) (20).
+- Transit: keep the estimate; one global set of constants fitted on the dev set, no per-city
+  tuning. Try Transitous only if transit dominates travel-time errors (21).
+- **Vienna is held out (decided 2026-10-24)** (22). Dev: 15 itineraries, 5 each from Paris,
+  London and Barcelona. Test: the other 15 from those cities plus all 10 Vienna ones (25).
+  Test results are reported twice: seen cities and the unseen city (Vienna). Rules:
   1. Synthetic variants from the injection script stay in the same set as their parent.
   2. Never show Vienna outputs, results or traces while building; only the final test run
      touches them.
@@ -229,100 +235,37 @@ Tier 2 is decided after this is done.
   5. Cached Nominatim or routing lookups for Vienna are fine; they don't leak labels.
   The validator enforces the counts, Vienna-in-test and variant-with-parent
   (`dataset.split_errors`).
-
-- **Models (decided 2026-10-24):** Anthropic Claude for the agent and parse step 1 (Haiku 5.5
-  for extraction); judge from another provider, chosen later; review embeddings from a local
-  open model (bge-small-en-v1.5, 384 dims); reviews loaded for all hotels in the 4 dataset
-  cities.
-
-- **Hotel label rule (decided 2026-10-24):** out of 40 sampled reviews, a theme is a red flag
-  at about 4+ for noise and cleanliness, 3+ for location, 2+ for safety (ANNOTATION.md step 3).
-  Rarer themes count at fewer reviews.
-- **Eval scoring (decided 2026-10-24):** the eval runner scores checks two ways, reported
-  separately: on the gold stops (checks alone, no API key) and on the agent's own parsed stops
-  (end to end), with parsed stops aligned to gold stops by day, order and name.
-
-- **API (decided 2026-10-25):** the Next.js server signs a short-lived HS256 token per API
-  call (`API_JWT_SECRET`); FastAPI verifies it and creates users by email. Check runs are
-  background tasks with in-memory event logs replayed over SSE; saved runs go to the database
-  when they finish. ARCHITECTURE section 6c, decisions 54–61.
-- **Demo mode (decided 2026-10-25):** ready-made sample itineraries only (no pasted text, so no
-  extraction cost), every check at default settings, fixes on; runs kept in memory for an
-  hour, never in the database (settles the `version_id` question). 10 demo runs per IP per
-  hour.
-- **Injection suite (decided 2026-10-25):** judged in code from structured output, on the demo
-  sample (no dataset, no Vienna); free-text OSM tags and opening-hours comments are kept out of
-  the fix prompt (`fixes-v2`). ARCHITECTURE section 6d, decision 62.
-- Pasted text is cleaned in code before extraction (parse step 0, `parse/clean.py`): image
-  links, citations, entities, escapes and widget text go. Limits 50,000 characters raw and
-  15,000 cleaned (was one 5,000 limit), so whole ChatGPT replies fit; the dataset keeps raw
-  replies. Extraction prompt `extract-v2`: a checklist repeating scheduled places adds no
-  stops; `extract-v3`: nor do places recommended outside the schedule ("where to eat"). ARCHITECTURE decision 52. (2026-10-24)
-  `extract-v4`: nor do open choices ("X or Y") or activities with no named place ("a boat
-  trip"), matching the annotation rule. ARCHITECTURE decision 68. (2026-10-26)
-  `extract-v5`: stated durations ("allow 30–40 minutes") go in `duration_min`/`duration_max`,
-  never `end_time`; a heading's extra words ("photo stop") aren't part of `place_name`.
-  ARCHITECTURE decision 69. Next: travel time and daily load use durations (an estimated
-  end, labelled as estimated). (2026-10-26)
-  Legs are also recorded where start + duration leaves under 60 minutes before the next
-  start (the validator asks for them), so that check has the real times; labels still come
-  from stated ends only. (2026-10-26)
-  `extract-v6`: a timed slot (a meal or activity with its own time or duration) is a stop even
-  with no named place, with the area as place_name; travel sections are routes, not stops.
-  ARCHITECTURE decision 70. To verify with the duration work: opening hours stays quiet on
-  area stops. (2026-10-26)
-  `extract-v7`: stated journeys go on the stop travelled to (`travel_start`, `travel_min/max`);
-  timed open choices are stops named by the activity. The validator asks for a leg wherever a
-  journey is stated; real > claim + 10 min is a derived warning. ARCHITECTURE decision 71.
-  Next (with durations): the travel-time check reports these. (2026-10-26)
-  `extract-v8`: ten more stop rules from the dev files (downtime, arrivals, journey lines,
-  several places in one slot, favoured options, optional items...). ARCHITECTURE decision 72.
-  Dev stops drafted for the 12 files not yet started (paris-02/05/07 are Vincent's); legs,
-  violations and preferences still to do. (2026-10-26)
-  `extract-v9`: `located: false` for activity-named stops (never geocoded, no legs); marked in
-  the dev files (45 stops); the dev files now need 33 legs. paris-07's template placeholders
-  replaced with drafted stops. ARCHITECTURE decision 73. (2026-10-26)
-  `extract-v10`: a named operator or venue is a stop even for an activity ("dinner cruise
-  with ..."), the clause ANNOTATION.md had and the prompt had dropped. First live smoke test
-  with the key: 5 of 6 example stops on v9 (the cruise missed), 6 of 6 on v10. ARCHITECTURE
-  decision 83. (2026-11-03)
-  The validator checks a file part by part while it's being annotated (stops, then legs, then
-  violations), listing what's still to do; evals still use only complete files. (2026-10-26)
-- **Public-holiday warnings are advisory (decided 2026-10-29):** still reported and scored as
-  warnings, but not sent to the fixer (`ADVISORY_CHECKS` in `checks/config.py`, fix prompt
-  `fixes-v3`); real holiday closures are `opening_hours` violations and get fixes.
-  ARCHITECTURE decision 75.
-- **Travel-time severity and areas (decided 2026-10-29):** short by up to 10 min is a
-  warning, blocker only when overlapping or more than 10 min short; area stops (`Stop.area`,
-  set at geocoding) aren't timed. Same rule in ANNOTATION.md. ARCHITECTURE decision 76.
-  Drafts made before this may have travel-time blockers that are now warnings: check while
-  verifying.
-- **Travel-time bands (decided 2026-10-30):** short by up to 10 min (or fits) → no label;
-  more than 10 min short → warning; overlapping or more than 30 min short → blocker. Default
-  buffer 0 (was 10). Back-to-back slots were a warning at nearly every changeover. Checker,
-  ANNOTATION.md and drafter/baseline prompts (`draft-v3`, `baseline-v3`) changed together.
-  ARCHITECTURE decision 78. Existing drafts: delete travel-time warnings 10 min short or
-  less, and recheck blockers 11–30 min short (now warnings), while verifying.
-- **Overlaps from times alone (decided 2026-10-29):** the travel-time check reports an overlap
-  on any consecutive timed stops, even unlocated or area ones (was routed legs only, so
-  overlaps next to "Lunch" were missed). Gold labels a typo-caused overlap once.
-  ARCHITECTURE decision 77.
-- Dataset text lives only in `data/dataset/texts/<id>.md` (was pasted into the YAML and
-  checked against `data/evals/raw/`); the YAML holds metadata and labels. The 26 saved
-  replies moved there. ARCHITECTURE decision 53. (2026-10-24)
+- Models: Claude for the agent and parse step 1 (Haiku 5.5); the judge from another
+  provider, chosen later; review embeddings from a local model (bge-small-en-v1.5) for every
+  hotel in the four cities (33, 35, 36).
+- Hotel labels: out of 40 sampled reviews, a red flag at about 4+ for noise and cleanliness,
+  3+ for location, 2+ for safety (45).
+- Evaluation: violations-first gold, verified by Vincent, drafts only from a non-Anthropic
+  model (74); gold-stop and parsed modes reported apart (46); stop rules frozen, dev only.
+- API: the Next.js server signs a short-lived token per call; runs are background tasks with
+  in-memory events replayed over SSE (54, 55). Demo: ready-made samples only, default
+  settings, fixes on, kept in memory for an hour, 10 runs per IP per hour (56, 59).
+- Third-party free text never reaches a prompt; the injection suite judges in code on the
+  demo sample (51, 62). Public-holiday warnings are advisory, never sent to the fixer (75).
+- Pasted text is cleaned in code (step 0), limits 50,000 raw and 15,000 cleaned (52); the
+  dataset keeps the raw reply, only in `texts/<id>.md` (53).
+- Travel time: no label up to 10 min short, warning past 10, blocker past 30 or on an
+  overlap; overlaps from the times alone; neighbourhoods within 2 km on foot untimed
+  (77, 78, 80). Daily load: counts are info, walking a warning (81). Geocoding checks
+  names (82).
+- A change that shouldn't alter results passes `e2e/run.sh` before it's committed (84).
 
 ## Open
 
 - Tune the travel-mode constants (`checks/legs.py`) and pace limits (`checks/daily_load.py`)
-  on the dev set once it exists. Caveat (2026-10-29): the packed limits and the 1.5× walking
+  on the dev set. Caveat (2026-10-29): the packed limits and the 1.5× walking
   blocker factor were quoted to Vincent before preferences were set (only london-05 is packed,
   12 km), so dev preferences aren't fully blind to the limits.
 - Time typos: an AM/PM slip is reported three ways (overlap, opening hours, daily load)
   where the gold has one label. Possible later: code that flags "check this time" instead.
   Not in the PRD; Vincent decides. (ARCHITECTURE decision 77, section 13.)
-- Preferences set for all 40 (2026-10-29). No prompt names a car or bike, so no dataset trip
-  has them: the car/bike paths are covered by unit tests only. Re-drafted the 4 dev files whose
-  preferences changed (barcelona-08, london-05, london-09, paris-09).
+- No dataset prompt names a car or bike, so the car/bike paths are covered by unit tests
+  only.
 - Frontend hosting: no Dockerfile yet; it depends on the hosting shape below.
 - Email magic links need an email provider (not chosen); slice 2 can start with OAuth only.
 
@@ -333,7 +276,7 @@ Tier 2 is decided after this is done.
 
 - Hosting shape (see CLAUDE.md "Hosting"): Auth.js needs a running Next.js server, so a
   single image means Next.js on the public port proxying `/api` to FastAPI on localhost.
-- Judge model (must not be Anthropic); decide when fixes exist.
+- Judge model (must not be Anthropic); decide when fixes are judged.
 - How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
 - Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
 - More demo samples (one Paris day today); each must be made up, never from the dataset.

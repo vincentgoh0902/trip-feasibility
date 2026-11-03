@@ -11,37 +11,30 @@ works and why, with the decision log), `docs/ANNOTATION.md` (dataset rules), `do
 as work lands, and ARCHITECTURE.md (including the decision log) whenever a design choice is
 made or changed: it's how I follow the project.**
 
-## Status (2026-10-27; details in PLAN.md)
+## Status (2026-11-03; details in PLAN.md)
 
 Built: all five checks, parse pipeline (`extract-v10`), LangGraph agent with re-checked fixes,
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
-results), restyled to the hero illustration. Collected: 40 itineraries, splits drawn, 16 hotels
-labelled. Stops drafted for all 15 dev itineraries (parser debugging only now); test files get
-no stops.
+results), restyled to the hero illustration; the pre-commit gate `e2e/run.sh` (decision 84).
+Collected: 40 itineraries, splits drawn, 16 hotels labelled; the 15 dev files annotated and
+verified violations-first (decision 74); the 25 test files not labelled yet. Live with the
+key since 2026-11-03.
 
-**Switching to violations-first evaluation (2026-10-27, decision 74):** gold = violations in
-the text's own words (check, day, place/time as written, evidence, source, confidence), plus
-`unknowns`/`other_issues`; stops and legs frozen, dev only, for parser debugging. Steps 1–6
-done (format, validator, conversion, drafter: GPT via the Codex CLI, all 15 dev drafts
-written; LLM-only baseline: Haiku via headless Claude Code; matcher with human
-decisions); next: the 5-itinerary side-by-side run, then the Tier 1 plan in PLAN.md (new
-core rule, closures check, injection pages, LLM review, eval).
+Measured on dev (`docs/EVALS.md`): on gold stops 19 of 22 / 19 of 30; end to end 16 of 24 /
+16 of 30, against an LLM-only baseline at 18 of 23 / 18 of 30. Parsing (73% stop recall) is
+the gap; flags both systems raise were all real (14 of 14).
 
-Waiting on Vincent, in this order:
-1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies, hotel labels and
-   drafted stops; the `dataset-backup-*` folders beside it don't count).
-2. **Fix barcelona-06.yaml** (a stray leg line at line 107 makes it invalid YAML).
-3. **Preferences for all 40**, in one go, from the prompts only (dev gets some variety).
-4. **Check each dev draft** (`drafted_by: gpt-6-sol ...`) against official sources; fix, add or
-   delete labels, then set `verified_by_human: true`. The first 5 verified go into step 7.
-
-In parallel: **`ANTHROPIC_API_KEY`** in the repo-root `.env` (none yet), after a monthly spend
-cap in the Console; then `scripts/smoke_parse.py`. Optional: Langfuse Cloud keys; before slice 2
-can be tried, OAuth apps + `API_JWT_SECRET`.
-
-Then (Claude): steps 4–7 of the violations-first plan (PLAN.md). Not blocked on Vincent: travel time and daily load using durations and
-stated journeys, skipping geocoding for activity-word stops, frontend slice 2 code, more demo
+Next (Claude): the Tier 1 plan in PLAN.md (new core rule, closures check, injection pages,
+LLM review, eval), and the parser's dropped and renamed stops. Not blocked on Vincent: travel
+time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
+
+Waiting on Vincent:
+1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies and the labels;
+   the `dataset-backup-*` folders beside it don't count). Also `data/evals/match_decisions.yaml`.
+2. **Label the 25 test files**, before the final test run.
+
+Optional: Langfuse Cloud keys; before slice 2 can be tried, OAuth apps + `API_JWT_SECRET`.
 
 ## Stack
 
@@ -57,6 +50,8 @@ MLflow for Tier 2 training (Mac only).
 backend/                        uv project; Dockerfile, start.sh, alembic/, tests/
   src/trip_feasibility/
     main.py config.py db.py     FastAPI app (lifespan wires Services), env settings, engine/session
+    llm.py                      the one Claude call (structured output, coded errors; decision 85)
+    paths.py                    where local files live (scripts and evals only, never the app)
     errors.py models.py         error shape, database schema
     api/                        routes under /api/v1: itineraries.py, checks.py (runs, SSE,
                                 demo), fixes.py, me.py; schemas.py, common.py (ownership)
@@ -77,7 +72,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     agent/                      graph.py (LangGraph: checks in parallel, then fixes),
                                 fixes.py (propose → apply → re-check → retry), models.py
     dataset/                    annotation format (models.py), split rules, validation + gold labels,
-                                draft.py (violation drafts from a non-Anthropic model)
+                                draft.py (violation drafts from a non-Anthropic model),
+                                example.py (the made-up worked example)
     evals/                      runner.py, align.py (parsed ↔ gold stops), score.py,
                                 decisions.py (human calls on uncertain name matches),
                                 search_llm.py (search-enabled LLM backends: codex,
@@ -85,10 +81,12 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 injection.py (prompt-injection suite)
   scripts/                      see Commands
 frontend/                       Next.js (npm); openapi.json (exported from the backend)
+  e2e/                          Playwright (playwright.config.ts): landing → demo → a live check
   src/app/                      pages; api/v1/[...path]/route.ts proxies every call to FastAPI
   src/components/run/ ui/       results page pieces; shadcn/ui components (owned, editable)
   src/lib/                      api/ (generated schema.d.ts, clients, SSE event types), run/
                                 (state reducer, timeline layout), format.ts, config.ts
+e2e/run.sh                      the pre-commit gate (lint, tests, snapshot, full stack + Playwright)
 docs/                           PRD, ARCHITECTURE, ANNOTATION, EVALS (results log),
                                 TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
@@ -209,7 +207,6 @@ docker compose up -d --build                 # full stack; API on 127.0.0.1:8020
 scripts/save_reply.sh paris-03                        # clipboard → data/dataset/texts/paris-03.md
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
-uv run python scripts/convert_gold.py [--write]       # old stop-id labels → violations-first (backs up)
 uv run python scripts/draft_gold.py [--ids ...]       # draft dev gold with GPT via Codex CLI (backs up)
 uv run python scripts/run_baseline.py [--ids ...]     # LLM-only baseline, Haiku via claude -p (cached)
 uv run python scripts/score_baseline.py               # baseline vs verified gold (dev)
@@ -225,10 +222,15 @@ uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain
 uv run python scripts/run_injection_suite.py          # needs the key; --defended-only, --no-save
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
+uv run python scripts/snapshot.py [--save]            # behaviour snapshot: dev gold eval + example
+
+# before committing (repo root): lint, tests, snapshot, frontend checks, full stack + Playwright
+e2e/run.sh [--no-browser]                             # record the snapshot first (--save) if missing
 
 # frontend (from frontend/)
 npm ci && npm run dev                                 # http://localhost:3000
 npm run typecheck && npm run lint && npm test && npm run build
+npm run e2e                                           # Playwright; needs the API (compose) running
 uv run python scripts/export_openapi.py               # (backend/) after API changes, then
 npm run gen:api                                       # (frontend/) regenerate the types
 
@@ -269,6 +271,11 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 - Run state (live runs, demo runs, rate-limit counts) is per process: one API container.
 - `astral-sh/setup-uv` has no floating major tag (`@v10` fails); pin an exact release.
 - Before committing, check `git status` for stray files (an empty `.Rhistory` slipped in once).
+- Run `e2e/run.sh` before committing a refactor or any change meant to keep results: the
+  snapshot (`data/evals/snapshot.json`) must stay identical. Re-record it (`snapshot.py
+  --save`) only for an intended change, and say so in the commit. Playwright builds and serves
+  the frontend on port 3100 and never reuses a server: an old `next dev` left on 3000 once
+  stood in for the current code.
 
 **Frontend**
 - This is Next.js 16: read `frontend/node_modules/next/dist/docs/` before using an API from

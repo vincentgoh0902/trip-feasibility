@@ -5,18 +5,13 @@ including the tradeoffs and what was given up. Requirements are in [`PRD.md`](PR
 progress and open decisions are in [`../PLAN.md`](../PLAN.md). Keep this file current when
 the design changes.
 
-**Status (Oct 25, 2026):** backend skeleton, database schema, CI, and all five check tools
-(public holidays, opening hours, travel time, daily load, hotel red flags) exist, are tested,
-and work against the live data sources. The evaluation dataset is collected, its hotels are
-labelled, and the itineraries are being annotated. Parse steps 1–4 exist (step 1, Claude
-extraction, is untested against the live API until a key is added). Hotel reviews are
-embedded and loaded. The agent runs parse, checks and fixes from a CLI
-(`scripts/check_itinerary.py`) and from the REST API (section 6c: routes, live progress over
-SSE, sign-in via a token from the frontend, a demo mode, rate limits, Langfuse tracing and
-cost per run). The eval runner scores it on the annotated dataset (`scripts/run_eval.py`), and
-the injection suite (section 6d) is ready to run once a key is set. The frontend (section 6e)
-has its first slice: the landing page, the demo and the live results page; sign-in and the
-signed-in pages are next.
+**Status (Nov 3, 2026):** all five checks, the parse pipeline, the agent with re-checked
+fixes, the API (live progress over SSE, sign-in via a token from the frontend, a demo mode,
+rate limits, tracing and cost per run), the injection suite and the first frontend slice
+(landing, demo, live results) are built and tested, and have run live against the real data
+sources and Claude. The dev split is annotated and verified; the eval runner has scored it in
+both modes against an LLM-only baseline (results in [`EVALS.md`](EVALS.md)). Next: the Tier 1
+plan in `PLAN.md` (closures check, LLM review), then sign-in and the signed-in pages.
 
 ---
 
@@ -65,22 +60,14 @@ trip-feasibility/
 └── backend/                  Python 3.12 project managed by uv
     ├── Dockerfile, start.sh  container image; runs migrations then the server
     ├── alembic/              database migrations
-    ├── scripts/smoke_checks.py   runs the tools once against the real APIs
-    ├── scripts/validate_dataset.py   validates data/dataset, prints its version
-    ├── scripts/sample_reviews.py     random negative reviews of one hotel (for labelling)
-    ├── scripts/smoke_parse.py        parse the example itinerary live (extract if key set)
-    ├── scripts/load_reviews.py       embed + load hotel reviews (Mac only, `embed` group)
-    ├── scripts/embed_hotel_themes.py     theme query vectors → checks/hotel_themes.json (Mac)
-    ├── scripts/calibrate_hotel_themes.py scores the theme matcher on hand-labelled reviews (Mac)
-    ├── scripts/hotel_theme_base_rates.py how often each theme comes up per hotel (min_share)
-    ├── scripts/check_itinerary.py    parse + check one itinerary from the command line
-    ├── scripts/run_eval.py           score the checks on the dataset, log to eval_runs
-    ├── scripts/save_reply.sh         clipboard → data/dataset/texts/<id>.md (raw chatbot reply)
-    ├── scripts/show_clean.py         a saved reply as extraction sees it (after step 0)
-    ├── scripts/run_injection_suite.py  prompt-injection suite, with and without defences
-    ├── scripts/export_openapi.py     the API schema → frontend/openapi.json
+    ├── scripts/              command-line tools, listed with their commands in CLAUDE.md:
+    │                         dataset (save, validate, format, draft), evals (run_eval, baseline,
+    │                         match decisions, injection suite, snapshot), smoke tests, the CLI
+    │                         (check_itinerary), hotel reviews (Mac only), export_openapi
     ├── src/trip_feasibility/
     │   ├── main.py           FastAPI app: lifespan wires the services, /health, /api/v1
+    │   ├── llm.py            the one Claude call: structured output, coded errors (decision 85)
+    │   ├── paths.py          where local files live (scripts and evals only, never the app)
     │   ├── api/              routes: itineraries.py, checks.py (runs, SSE, demo), fixes.py,
     │   │                     me.py; schemas.py (bodies), common.py (ownership, conversions)
     │   ├── auth.py           verifies the frontend's signed token, creates users
@@ -99,9 +86,11 @@ trip-feasibility/
     │   ├── agent/            graph.py (LangGraph: checks in parallel via MCP, then fixes),
     │   │                     fixes.py (propose → apply → re-check → retry), models.py
     │   ├── evals/            eval harness: runner.py, align.py (parsed ↔ gold), score.py,
-    │   │                     injection.py (prompt-injection suite)
+    │   │                     decisions.py (human name calls), search_llm.py + baseline.py
+    │   │                     (LLM-only baseline), injection.py (prompt-injection suite)
     │   ├── mcp_server.py     exposes the checks as MCP tools
-    │   ├── dataset/          evaluation dataset: file format, dev/test split, validation
+    │   ├── dataset/          evaluation dataset: file format, split, validation, drafting,
+    │   │                     example.py (the made-up worked example)
     │   └── checks/
     │       ├── models.py     CheckResult / Violation / UnknownStop
     │       ├── config.py     CheckConfig: enabled checks + strictness (FR-5)
@@ -116,6 +105,8 @@ trip-feasibility/
     │   ├── nominatim.py  OSM place tags and search via Nominatim (rate-limited, cached)
     │   └── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
     └── tests/                pytest; real Postgres, mocked HTTP
+e2e/run.sh                    everything that must pass before a commit (section 8)
+frontend/e2e/                 Playwright: landing → demo → a live check, desktop and 375 px
 ```
 
 ## 3. Backend foundation
@@ -138,8 +129,7 @@ trip-feasibility/
 
 Everything comes from environment variables via `pydantic-settings`, with safe defaults for
 local development. Nothing is hardcoded to a host or path, which is what the homelab
-needs. Settings that exist today: database URL, port, the data-source URLs, HTTP timeouts,
-cache lifetimes.
+needs. The full list, with defaults, is in CLAUDE.md ("Env vars").
 
 ### Why uv, ruff, a `src/` layout
 
@@ -179,9 +169,8 @@ Choices worth knowing:
 | `ON DELETE CASCADE` from users down | "Delete my account" deletes everything with one statement, so nothing is left behind | A careless delete is far-reaching, so deletes go through specific routes only |
 | Naming convention for constraints | Constraint names are predictable, so migrations can refer to them reliably | None |
 
-**Deliberately left out:** `hotel_reviews`. Its `embedding` column needs a fixed vector size,
-which depends on the embedding model you pick (open question). Creating it now would mean
-a migration to change it later. The pgvector *extension* is already enabled.
+**Hotel reviews** (`hotels`, `hotel_reviews`) came later, once the embedding model was
+chosen: `halfvec(384)` vectors, no vector index (section 5, "Hotel reviews").
 
 **Demo runs aren't in the database** (decided 2026-10-25): the PRD says the demo saves
 nothing, so demo runs live in the API process's memory for an hour (section 6c) and
@@ -262,9 +251,8 @@ The cache is the `api_cache` table: `key → response, expires_at`.
 - **"Not found" *is* cached** (OSM elements that don't exist), because that's a real answer.
 - **Lifetimes:** holidays 30 days (they're fixed a year ahead), OSM tags 7 days (hours change
   occasionally). Both configurable.
-- **Known gap:** the PRD says eval reruns make no new external calls. With lifetimes, an old
-  cache entry eventually expires and gets refetched. The fix (planned) is a setting that
-  makes evals use cached data regardless of age, so eval numbers don't drift as OSM changes.
+- **Eval mode** serves expired entries too, so eval reruns make no new external calls and
+  numbers don't drift as OSM changes (section 6, "Eval mode").
 
 ### Public holidays check (`checks/holidays.py`)
 
@@ -589,11 +577,11 @@ step. Only step 1 uses an LLM.
 | Step | Where | Status |
 |---|---|---|
 | 0. Cleaning | `clean.clean_text`: chat-interface debris removed in code | Built |
-| 1. Extraction | `extract.extract_stops`: Claude Haiku 5.5, structured output | Built; live run needs a key |
+| 1. Extraction | `extract.extract_stops`: Claude Haiku 5.5, structured output | Built, works live |
 | 2. Validation | `schema.validate_extraction`: the model, or the error text for one retry | Built |
 | 3. Normalisation | `normalise.normalise` | Built |
 | 4. Geocoding | `geocode.locate_city`, `geocode.geocode_stops` | Built, works live |
-| 5. User review | Frontend table | Later |
+| 5. User review | Frontend table | Frontend slice 2 |
 
 ### Cleaning (`clean.py`)
 
@@ -701,8 +689,12 @@ One call to Claude Haiku 5.5 (`EXTRACTION_MODEL`, effort `low`) per itinerary:
   `truncated` (hit `max_tokens`), `unavailable` (API down, rate-limited, no key).
 - **Usage is returned** (`ExtractionResult`: model, prompt version, attempts, tokens), so
   eval runs can log cost per itinerary (PRD target: under $0.01 per check).
-- **Why Haiku at low effort:** extraction is copying, not reasoning; it's the cheapest current
-  model, and parse accuracy on the dev set will show whether that holds.
+- **Why Haiku at low effort:** extraction is copying, not reasoning, and it's the cheapest
+  current model. On the dev set (run `afd18efa`) it finds 73% of the gold stops with 95% of
+  fields right, and dropped or renamed stops are now the main gap between parsed and gold
+  mode (EVALS.md).
+- **The call** goes through `llm.create_json` (decision 85), shared with fixes: structured
+  output, API failures as `unavailable`, tokens counted even when a reply is unusable.
 - **Not cached:** the system prompt is far below the minimum cacheable length, so prompt
   caching would do nothing here.
 - **Tests** use a fake client: the SDK (2.x) is built on `httpx2`, which respx doesn't
@@ -791,13 +783,14 @@ as theme counts only, OSM tags only as the few that say what a place is (section
 opening hours without their comments. All other tool output is wrapped in `<violations>` and
 declared data. The injection suite (6d) measures how well this holds.
 
-**Untested live:** like extraction, fixes have only run against a fake model so far (no API
-key yet). Model and effort are settings, tuned once the fix-quality judge exists.
+**Live:** fixes run on every demo check (two calls in the e2e run of 2026-11-03); fix
+validity on the dataset (`run_eval.py --fixes`) hasn't been measured yet. Model and effort are
+settings, tuned once the fix-quality judge exists.
 
 ## 6c. The API (`api/`, `runs.py`, `auth.py`)
 
 FastAPI under `/api/v1`, following the PRD's route table. The OpenAPI schema
-(`/openapi.json`) is what the frontend's types will be generated from.
+(`/openapi.json`) is what the frontend's types are generated from (section 6e).
 
 | Route | Who | What |
 |---|---|---|
@@ -1094,8 +1087,7 @@ API key). The drafter refuses Anthropic backends and test files.
 - **What it sees:** the cleaned text (so its quotes can be checked), the traveller's prompt,
   the city, each day's date and weekday, and the preferences. Never gold stops, our checks
   or their output. The rules are a condensed ANNOTATION.md Violations section
-  (`draft-v1`; `draft-v2` from 2026-10-29 adds the travel-time rules of decisions 76-77;
-  `draft-v3` from 2026-10-30 the bands of decision 78).
+  (versions `draft-v1` to `draft-v4`: section 12, "Dataset and evaluation").
   When those rules change, `RULES` changes with them and both prompt versions are bumped.
 - **Checking:** output is validated like a hand-written file (shapes, quoted words verbatim,
   duplicates). Problems get one retry with the list of problems; entries still wrong are
@@ -1114,7 +1106,7 @@ the `claude-code` backend in `search_llm.py`) on a Claude plan, so no API key. I
 plain model: its system prompt replaced, no settings, MCP servers or tools but WebSearch and
 WebFetch, in an empty folder; a hook that adds to the context, or a run on another model,
 fails it. Same inputs as the drafter (`draft.trip_block`) and the same rules for the four
-checks (`draft.RULES`), with its own framing (`baseline-v3`, rules of decisions 76-78); never GPT, since GPT drafted
+checks (`draft.RULES`), with its own framing (`baseline-v4`); never GPT, since GPT drafted
 the gold. Output is checked for shape only (places are matched fuzzily) and cached per
 itinerary, backend, model, effort and prompt version under `data/evals/baseline/`, keyed to
 a hash of the prompt: a change to the text, dates or preferences reruns it. No hotel
@@ -1221,6 +1213,14 @@ hotel → Louvre walk the check estimates at 8 min where the annotation says 5).
   wrong audience, `alg: none`), every route as a second user (404), SSE replay, saved vs demo
   runs, failures as `error` events, rate limits, fix accept/reject. No test can reach Claude or
   Langfuse: conftest blanks their keys.
+- **Before a commit** (decision 84): `e2e/run.sh` runs lint, migrations and every test, then
+  the **behaviour snapshot** (`scripts/snapshot.py`: the dev split's gold-mode eval and the
+  example, from the cache with no LLM, compared field by field with
+  `data/evals/snapshot.json`; record it with `--save` before a change), the frontend checks,
+  and **Playwright** against the full stack (`docker compose up --build`, then the frontend
+  built and started on port 3100: landing → demo → a live check to "Check finished", at
+  desktop and 375 px with no horizontal scroll). The live check calls the real data sources
+  and the fix model. `--no-browser` stops before the full stack.
 - **What they don't cover:** the real APIs. `scripts/smoke_checks.py` runs the tools once
   against them by hand. Live on Oct 23, 2026: all four tools worked (the Eiffel Tower is
   correctly a blocker on 14 July, which its OSM hours mark as closed; a deliberately packed
@@ -1230,8 +1230,9 @@ hotel → Louvre walk the check estimates at 8 min where the annotation says 5).
 ## 9. CI (`.github/workflows/ci.yml`)
 
 On every push to `main` and every PR: ruff lint + format check → apply migrations →
-`alembic check` → pytest against a pgvector Postgres service → gitleaks over full git
-history. Actions are pinned to specific versions. In Tier 3 this gains the eval regression
+`alembic check` → pytest against a pgvector Postgres service; the frontend job (generated types
+match `openapi.json`, eslint, typecheck, vitest, `next build`); gitleaks over full git history.
+The e2e suite isn't in CI: it needs the dataset snapshot and makes live calls. Actions are pinned to specific versions. In Tier 3 this gains the eval regression
 gate (fail a PR if precision or recall drops).
 
 ## 10. Docker
@@ -1250,14 +1251,14 @@ gate (fail a PR if precision or recall drops).
 ## 11. Hosting: the unresolved part
 
 The homelab default is one image, one port, 256 MB. The PRD describes Next.js + FastAPI +
-Postgres. Three things to settle before the first deploy:
+Postgres. What to settle before the first deploy:
 
 1. **Two app services.** Auth.js needs a running Next.js server, so FastAPI can't just serve
    static files. Either one image runs Next.js on `PORT` and proxies `/api` to FastAPI on
    localhost, or the server gets a multi-container project type.
-2. **Postgres size.** All 515K reviews at 1024 dimensions is ~2 GB of vectors before the
-   index. Cheapest fix: load only the hotels in the test-set cities. Alternatives: a smaller
-   embedding model, or `halfvec` (half the size).
+2. **Review data.** Settled at 295 MB (four cities' negative reviews, `halfvec(384)`, no
+   index; decisions 35–38). The server gets it from a dump of `hotels` + `hotel_reviews`, not
+   by re-embedding.
 3. **Langfuse:** use Langfuse Cloud's free tier rather than self-hosting it; self-hosted
    Langfuse needs several more services. The API sends no traveller content by default
    (section 6c).
@@ -1267,121 +1268,203 @@ Postgres. Three things to settle before the first deploy:
 
 ## 12. Decision log
 
-| # | Decision | Alternatives | Why | Cost |
-| --- | --- | --- | --- | --- |
-| 1 | Backend first, frontend once the API works | Build both in parallel | PRD risk table: Tier 1 is overfull, and evals need only the backend | Nothing visible until later |
-| 2 | Postgres + pgvector | SQLite + separate vector store | One database for relational data, vectors and cache | Heavier to host |
-| 3 | Async SQLAlchemy + asyncpg | Sync SQLAlchemy | FastAPI, SSE streaming and many parallel HTTP calls are all async | Slightly more complex code |
-| 4 | Migrations run on container start | Separate migration step | No manual deploy steps at one instance | A broken migration blocks startup |
-| 5 | Checks return `unknown` separately | Treat missing data as pass or fail | Honest precision and coverage numbers | One more field to handle |
-| 6 | Data-source failure → `unavailable`, not an error | Fail the whole run | One bad API shouldn't sink a check run | Results can be partial; the UI must say so |
-| 7 | Cache in Postgres | Redis, in-memory | Already running, persistent, backed up | Slower than Redis (irrelevant here) |
-| 8 | `opening-hours-py` for OSM hours | Write a parser | The format is too complex to do well quickly | Separate holiday calendar from Nager |
-| 9 | Holidays mostly *warn*, never block | Block on any holiday | Most holidays don't close most venues; blocking would hurt precision | A real holiday closure only blocks via OSM `PH off` |
-| 10 | Missing OSM element → warning | Blocker | It may be re-mapped, not closed | A truly closed place is only a warning |
-| 11 | OSM tags from Nominatim `/lookup`, not Overpass | Overpass mirrors; keyed services; self-hosting | Public Overpass is at capacity and asks automated clients to self-host; Nominatim answers ID lookups fast and geocoding needs it anyway | Unindexed places come back "not found"; must keep to 1 request/second |
-| 11b | Throttle + 60 s pause on 429/403/503 | Retry, or fail over immediately | OSM services ban clients that retry into rate limits | A burst of checks waits, or reports "unavailable" for a minute |
-| 12 | MCP tools, connected in-process | Plain functions; separate MCP process | Standard protocol and schemas without network overhead | A dependency on a fast-moving SDK |
-| 13 | Tests on a guarded `_test` database | Tests on the dev database | A test drops the schema; the guard makes data loss impossible | Two databases locally |
-| 14 | Mocked HTTP against fake hosts in tests | Live API calls in tests | Deterministic, fast CI; no accidental real calls | Real API format changes are only caught by the smoke script |
-| 15 | FOSSGIS OSRM (table service) for routing | OpenRouteService; one request per leg | Free, no key, all pairs in one request per mode | 1 request/second; must show OSM attribution |
-| 16 | Transit time estimated from driving time | GTFS + OpenTripPlanner; leave transit out | No free transit router; most city trips use transit | An estimate, so it's labelled, and only blocks when clearly short |
-| 17 | Estimated times block only when >25% short | Treat estimates like exact times | A blocker must mean "can't work"; avoids false blockers | Some real problems show as warnings |
-| 18 | Legs computed once, shared by two checks | Each check routes on its own | One routing cost, consistent numbers | The checks are coupled through `legs.py` |
-| 19 | Pace limits as fixed starting defaults | Ask the LLM to judge load | Deterministic and testable; tuned on the dev set | Defaults may not suit everyone until tuned |
-| 20 | Dataset cities: Paris, London, Barcelona, Vienna; 2 high- + 2 low-scoring hotels each | Any cities; Amsterdam/Milan too | All four have hotel reviews, so every check is evaluated in every city; high-scoring hotels are false-positive controls | Results are measured on four European cities only; other cities run but are unmeasured |
-| 21 | Transit constants fitted globally from annotated real times | Per-city tuning; a transit router now | Per-city constants wouldn't carry over to unseen cities; the baseline shows whether a router is worth it | Transit stays an estimate in Tier 1 |
-| 22 | Vienna held out of dev entirely (2026-10-24); dev 15, test 25 | Random split across all four cities | Measures how the checker does on a city it was never tuned on; variants stay with their parent so nothing leaks | Vienna's numbers rest on 10 itineraries, so they're reported as counts too; seeing them while building spoils them |
-| 23 | One YAML file per itinerary, in gitignored `data/dataset/` | JSON; a spreadsheet; the database; committed to the repo | Hand-written: comments and multi-line text; a file per itinerary keeps edits small | YAML's `10:30` trap needs a custom loader; the dataset needs its own backup |
-| 24 | Travel-time labels derived from recorded real times | Hand-label each tight leg | Labels can't contradict the times; the same times calibrate the transit estimate | Annotator must look up every leg under 60 min; long legs over 60 min are only covered when recorded |
-| 25 | Hotel labels once per hotel, from a seeded review sample | Label per itinerary | 16 decisions instead of 40, reproducible | Ties the label to one sample of reviews |
-| 26 | Labels are judged against reality, not our data sources | Label against OSM / Nager.Date | Measures the whole system, data gaps included | Lower scores where OSM data is poor |
-| 27 | Labels name a stop, a leg, a day or a hotel, like the checks | Free-form spans | On gold stops, matching predictions to labels is a lookup | Parsed stops must first be aligned to gold stops; only warning/blocker counted |
-| 28 | Dataset version = hash of the dataset files | Git tags; manual version numbers | Changes with any edit, no git needed for a gitignored folder | Not human-readable |
-| 29 | Geocode inside the city's bounding box, then within 60 km in the same country | Unbounded search; bias only (`viewbox` without `bounded`) | Stops "Louvre" matching a Louvre elsewhere, while still finding day trips | A place just outside the box but over 60 km away stays unresolved |
-| 30 | Take Nominatim's top result | Ask an LLM to pick; always show candidates | Importance ranking favours the famous place; no LLM touches coordinates | Same-name places can be wrong; the user-review step corrects them |
-| 31 | Gold stops extend the extraction schema | Separate gold format | Parse accuracy compares identical fields; the formats can't drift | Changing the extraction schema changes the dataset format |
-| 32 | Eval mode serves expired cache entries | Separate eval cache; snapshot files | Reruns are free and see identical data, using the cache that already exists | An eval rerun weeks later uses old opening hours (intended: same data) |
-| 33 | Claude for the agent and extraction; Haiku 5.5 at low effort for extraction | OpenAI, Gemini; a bigger model | Strong structured output and tool use; extraction is copying, so the cheapest model first | Judge must come from another provider |
-| 34 | Hand-written JSON schema + Pydantic validation + one retry | `messages.parse` with the Pydantic model | Schema changes only with the prompt version; step 2 stays explicit as the PRD describes | Schema and model must be kept in step by hand |
-| 35 | Local open embedding model (bge-small-en-v1.5, 384 dims) | API embeddings (1536 dims) | No key, no cost, fast on the Mac's GPU; vectors a quarter the size | English-only, smaller model; retrieval quality to be checked on the hotel labels |
-| 36 | Reviews for every hotel in the 4 dataset cities, negative parts only | 16 hotels only; all 515K reviews | Demo can check any hotel in those cities; 295 MB instead of ~2 GB | Hotels outside those cities have no reviews |
-| 37 | `halfvec`, no vector index, exact search per hotel | `vector` + HNSW | Half the storage, no index memory, exact results in ~2 ms | Cross-hotel similarity search would be slow (not needed) |
-| 38 | Embedding libraries in a separate `embed` group; no model on the server | Embed queries at request time | Keeps the API image small and inside 256 MB | Theme queries must be re-embedded here when they change |
-| 39 | A review counts for a theme on keyword **and** embedding similarity | Embedding similarity alone; keywords alone; an LLM classifier | Best F1 on labelled reviews; no API cost per review; explainable | Safety and location are weak (F1 ~0.5 held out); keyword lists need upkeep |
-| 40 | Red flag = count ≥ `min_reviews` and share ≥ the theme's 90th percentile | One fixed share for all themes; count alone (PRD) | Count alone flags every big hotel; one share flags a third of hotels for noise and none for safety | "Red flag" is relative to these cities' hotels; thresholds untuned against labels so far |
-| 41 | Hotel stop → review data by name, coordinates as tie-breaker | Coordinates only; fuzzy search in SQL | Names identify hotels; the Kaggle coordinates and Nominatim's can differ by a block | Unclear names are `unknown`, even when a human could tell |
-| 42 | The check graph runs every enabled check; no LLM chooses tools | A ReAct-style agent picking tools | Deterministic, cheaper, can't skip a check; LangGraph still gives parallel branches and streaming | The "agent" has no LLM until fixes land |
-| 43 | Parsing and checking are separate calls | One graph from text to report | The user confirms stops in between (FR-1 step 5) | Two round trips in the UI |
-| 44 | Routing lookups serialised with a lock | Let parallel checks route independently | Legs are shared through the cache; overlapping requests got a 429 | Routing for two checks can't overlap (it's 1 request/second anyway) |
-| 45 | Hotel labels: red flag at 4+/40 reviews (noise, cleanliness), 3+ (location), 2+ (safety) (2026-10-24) | 4+/40 for every theme | Safety is ~0.3% of a typical hotel's complaints; at 4/40 repeated theft reports would never be labelled | Labels for rare themes rest on 2–3 reviews |
-| 46 | Eval scores checks on gold stops and on parsed stops, separately (2026-10-24) | Gold only; end to end only | Separates check errors from parse errors; gold mode needs no API key | Parsed stops must be aligned to gold stops |
-| 47 | Predictions match labels on check + target, severity scored separately | Require the same severity | A blocker reported as a warning still found the problem; both numbers stay visible | Detection scores look better than severity accuracy alone |
-| 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Alignment by position; by OSM ID | Names are copied verbatim, so they match; positions shift when a stop is added or dropped | Two same-day stops with near-identical names can swap (order breaks the tie) |
-| 49 | Fixes are operations applied by code, not rewritten itineraries | LLM returns a new itinerary | Small, checkable, explainable changes; no invented coordinates or silently changed stops | Only four kinds of change can be expressed |
-| 50 | Every enabled check re-runs on each fix; one retry for unfixed violations | Re-run only the target check; no retry | A fix that moves a stop can break other checks; a retry with reasons recovers many failures cheaply | Re-checks cost routing lookups; at most two LLM calls per run |
-| 51 | Hotel review text kept out of the fix prompt | Send full evidence | Review text is untrusted third-party content (PRD injection goal) | The model can't quote reviews in a fix |
-| 52 | Pasted text cleaned in code before extraction; limits 50,000 raw / 15,000 cleaned (2026-10-24) | One 5,000 limit, users regenerate; let the LLM read the debris; screenshots | Users paste whole replies, and a normal ChatGPT reply is an estimated ~30,000 characters, mostly image links; pattern removal is cheap, testable and keeps the LLM to reading | Rules follow today's chat UIs and need upkeep; unrecognised debris reaches the prompt (extraction mostly ignores it) |
-| 53 | Dataset text in `texts/<id>.md`, not in the YAML; the YAML holds metadata and labels (2026-10-24) | Text in the YAML (it was); optional in the YAML | Whole replies are too long for YAML blocks; one copy can't drift; one self-contained folder; a single way to load | Two files per itinerary, matched by file name |
-| 54 | FastAPI verifies a short-lived HS256 token the Next.js server signs per call (2026-10-25) | Decrypt Auth.js's session cookie (JWE) in Python; sessions in the database | Independent of Auth.js internals; nothing extra to look up per request; testable with any signer | A shared secret on both servers; the browser can't call the API directly (it goes through Next.js anyway) |
-| 55 | Runs as asyncio tasks with in-memory event logs, replayed to each SSE subscriber (2026-10-25) | A queue (Redis/Celery); LangGraph checkpoints; polling only | PRD ADR-7; late or reconnecting subscribers miss nothing; no extra service | One API process: runs and live feeds don't survive a restart (interrupted runs are marked) |
-| 56 | Demo runs in memory only, for an hour; demo checks ready-made samples only (2026-10-25) | A demo table with a TTL; pasted text with a rate limit | "Saves nothing" taken literally; anonymous visitors never spend on extraction; settles the `version_id` gap | A restart forgets demo runs; recruiters can't try their own itinerary without signing in |
-| 57 | Saved runs store violations, all fixes (invalid too) and a report JSON; fixes belong to a run and list their violations (2026-10-25) | One JSON blob per run; a fix per violation | Fix accept/reject needs rows; one fix often solves several violations; invalid fixes feed the validity metric | A schema change to `fixes`; the report JSON isn't enforced by the database |
-| 58 | Accepting a fix builds on the checked version, not the latest (2026-10-25) | Re-apply its operations to the latest version | A fix is only known to be valid against the version it was re-checked on | Two accepted fixes from one run give two versions, not one combined |
-| 59 | Rate limits in memory, per hour: 20 runs and 20 parses per user, 10 demo runs per IP (2026-10-25) | Postgres counters; a proxy's limiter | One process today; no extra writes per request | Limits reset on restart; several processes would need shared counters |
-| 60 | Tracing via wrappers around the LLM and MCP clients; no traveller content in traces by default (2026-10-25) | LangChain/OTel auto-instrumentation; full content | Agent code unchanged; works with or without Langfuse; privacy by default with a third-party host | Debugging a bad answer needs `TRACE_CONTENT=true` and a rerun |
-| 61 | Cost from a local price table, per call (2026-10-25) | Langfuse's model prices; the Admin usage API | Stored with the run, independent of tracing; long-prompt rates apply per call | Prices are copied by hand and must be updated when they change |
-| 62 | Injection suite judged in code on structured output, on the demo sample; OSM free text filtered from fix evidence (`fixes-v2`) (2026-10-25) | An LLM judge; dataset variants first | Deterministic, cheap, no dataset or Vienna exposure; the filter closes a gap the suite's design exposed | Payloads are ours, not collected from the wild; dataset variants still to do |
-| 63 | Frontend calls go through a Next.js route handler that proxies `/api/v1/*` (2026-10-25) | Browser calls FastAPI directly (CORS); `next.config` rewrites | The token is added server-side and the browser never holds it (decision 54); one origin, no CORS; a rewrite can't add headers per user | Every call has an extra hop; the proxy must stream SSE without buffering |
-| 64 | Frontend types generated from a committed `openapi.json`, checked in tests and CI (2026-10-25) | Generate from a running API at build time; hand-written types | Builds need no running backend; a stale schema or type file fails CI | One more step after API changes (export, then `gen:api`) |
-| 65 | The `checks` step event carries the located stops and city (2026-10-25) | A new event type; fetch the stops separately; wait for `done` | The timeline can fill in live (PRD "progress, not spinners") without changing the event set | The event is larger (one copy of the stops) |
-| 66 | Brand colours as CSS variables behind shadcn's semantic tokens; severity shades derived for AA contrast (2026-10-25) | Hardcoded colours; the kit's accents as text | Restyling is a change to one file; meets the PRD's WCAG AA requirement | Severity shades aren't in the kit |
-| 67 | Palette and shapes taken from the hero illustration, replacing the branding kit's (2026-10-26) | Keep the kit's greens and Newsreader | One visual language from the illustration to the results page | Blocker shares the terracotta family with primary buttons (told apart by badge and edge); the site no longer follows the branding kit |
-| 68 | Open choices ("X or Y") and activities with no named place aren't stops, in both the annotation guide and the extraction prompt (`extract-v4`) (2026-10-26) | Count both options; count the activity under its generic name | Neither can be located or checked; guide and prompt agree, so extraction is scored against the rule it was given | Real visits can go unchecked when the text doesn't commit |
-| 69 | Stated durations are their own fields (`duration_min`, `duration_max`, minutes), in the gold stops and the extraction prompt (`extract-v5`); `end_time` stays stated-only. The same prompt version takes only the name from a heading like "Old Harbour photo stop" (2026-10-26) | Leave durations out; compute `end_time` from them | Duration-style itineraries are common, and without durations travel time and daily load mostly report unknown. Keeping them apart from `end_time` keeps gold labels to what the text says; code, not the LLM, can later derive an estimated end | One more field pair to annotate and score; travel time and daily load still need wiring to use it |
-| 71 | Stated journeys are recorded on the stop travelled to (`travel_start`, `travel_min`, `travel_max`), and timed slots that leave the place open are stops named by the activity (`extract-v7`). A stated journey needs a real leg; real time over the claim + 10 min is a derived travel-time warning; a stated departure starts the gap (2026-10-26) | No field (journeys only implicit in the gaps); take leg times from the itinerary | Duration-style itineraries give no gaps, so the stated journey is their only travel information, and "allows 30–40 min, really 55" is the commute problem the product exists to catch. Legs stay reality, the claim is checked against them | The travel-time check doesn't produce claim warnings yet (gold has labels it can't predict until wired, with durations); one more field set to annotate |
-| 73 | `located: false` marks a stop named by the activity ("Lunch"), in gold stops and extraction (`extract-v9`): never geocoded (unresolved with "not a place"), no leg required or allowed to or from it (2026-10-26) | Make annotators look up legs to nowhere; guess a nearby place; let geocoding search "Lunch" | About a third of the dev legs touched such stops and couldn't be looked up; searching an activity name can land on a café of that name, a silent guess | One more field to extract and score; their legs are never checked |
-| 72 | Ten more stop rules, in the guide and the prompt (`extract-v8`): downtime isn't a stop (a named hotel return is); arrivals/departures only when a station, airport or hotel is named; a timed journey line sets the next stop's travel fields; several places in one slot each become a stop (first takes the start, last the end); places inside an area visit too, rooms of one venue not; a favoured option in a choice is the stop; "Morning:" counts as a timed slot; "optional" isn't a stop; time typos kept with a note; a slot that carries on at the place just named takes its name (2026-10-26) | Leave each case to the annotator's judgement | They came up across the dev files; written down, guide and prompt agree and the remaining files get the same treatment | Some real visits (optional ones, downtime) go unchecked; giving only the first place the start leaves the gaps inside a slot unknown |
-| 70 | A timed slot is a stop: a meal or activity with its own stated time or duration counts even with no named place (`place_name` = the most specific area words, not a landmark it's near; else the activity's words). Travel sections are routes, not stops or durations. Both in the guide and the prompt (`extract-v6`); partly reverses 68 for timed slots (2026-10-26) | Keep 68 (no named place → no stop) | Leaving a timed lunch out turns its hour into travel slack, so a tight day looks feasible: the opposite of the product's job. Untimed unnamed meals still add nothing | No opening-hours check for these stops; an area geocodes roughly and a bare activity not at all (its legs unknown); opening hours must stay quiet on area stops, to verify when durations are wired in |
-| 74 | **Violations first** (2026-10-27): gold labels name check + day + place and time as written, with severity, evidence, source and confidence (verified / estimated), plus `unknowns` and `other_issues`; scored by matching place names, not stop ids. travel_time is labelled directly (real time in the evidence), no longer derived from legs; hotel labels still come from hotels.yaml via a new `hotel` field. Drafts from a non-Anthropic model are allowed, recorded in `drafted_by`, and count only with `verified_by_human: true`. Gold stops and legs are frozen and dev only, for parser debugging | Keep stop-id labels derived through gold stops; keep "no LLM drafts" | Stop rules kept growing (decisions 68–73) and every new one changed the dataset; a label in the text's own words doesn't depend on how anyone splits the text into stops, so an LLM-only baseline can be scored on the same labels. A drafter from another provider than the extractor avoids rewarding shared blind spots; the human check keeps truth as reality | Fuzzy place matching (some ambiguous pairs need a human decision); drafts can anchor the annotator; travel-time labels lose the guaranteed consistency with recorded times |
-| 75 | Public-holiday warnings are advisory: shown with the results, never sent to the fixer (`ADVISORY_CHECKS`, `fixes-v3`); a fix that moves a stop onto a holiday still lists the new warning beside it (2026-10-29) | Fix every warning and blocker, holidays included | A holiday is a fact about the date, not a fault a change to the plan solves: moving an open venue off 25 December trades a working visit for an unchecked gain. A real holiday closure is an `opening_hours` violation, which is fixed, so fixing the holiday too would duplicate it. Gold and scoring are unchanged (still a warning) | A closure missing from OSM (no `PH` rule) gets no fix, only the holiday warning telling the traveller to check; the fix-coverage metric now counts fewer violations |
-| 76 | Travel time: a gap short by up to 10 min is a warning, a blocker only when overlapping or more than 10 min short (estimates still counted 25% lower). Area stops (neighbourhoods) are marked at geocoding (`Stop.area`) and their legs aren't timed; annotators count a journey into an area they're in or beside as 0 min, from elsewhere to its nearest edge, and don't label journeys to unnamed or activity slots. Same rule in the checker and ANNOTATION.md (2026-10-29) | Blocker whenever the gap is shorter than the journey; route to an area's centre point | Back-to-back slots a few minutes' walk apart are everywhere in chatbot itineraries and a traveller absorbs them; as blockers they drowned out real ones (barcelona-08: cathedral → Santa Caterina, 0 min gap, 5 min walk). An area's centre point is often farther than where the traveller already is, so its routed journeys mostly don't exist | Journeys from elsewhere into an area are labelled in gold but unknown to the checker; a 10-min shortfall on a tight schedule can still cascade, and is only a warning |
-| 77 | Travel-time overlaps come from the times alone: every pair of consecutive timed stops on a day, located or not, area or not, before routing; source "Your itinerary's times". Gold labels an overlap even when the next slot names no place (2026-10-29) | Overlaps only on routed legs (as before) | An overlap needs no lookup, and the old way missed every overlap next to a "Lunch" or area stop (barcelona-10: a 9:30 AM – 11:30 PM typo into an unnamed lunch) | A time typo still also trips opening hours and daily load, which the gold labels once (as the overlap): those count as false positives. Typo detection is an open idea (section 13) |
-| 78 | Travel time: a gap short by up to 10 min (or that fits) gets no label; more than 10 min short is a warning; a blocker only when overlapping or more than 30 min short (estimates still counted 25% lower). Default buffer 0 (was 10); the buffer is slack on top (10 flags any shortfall, 20 wants 10 min to spare). Same rule in the checker, ANNOTATION.md and the drafter/baseline prompts (`draft-v3`, `baseline-v3`) (2026-10-30) | Keep decision 76 (any shortfall up to 10 min a warning; less than 10 min to spare a warning) | Back-to-back slots made a warning at nearly every changeover in timed itineraries, burying the ones that matter, padding scores with easy matches and costing verification time (london-08: Shoreditch → Spitalfields Market, 0 min gap, ~8 min walk) | A traveller who can't walk fast, or a chain of 10-min shortfalls across a day, gets no travel-time warning (daily load may still catch a packed day); 30 min is untuned. Drafts made before it carry warnings that are now no label |
-| 79 | Four fixes from the gold-mode diagnosis (eval runs `730a021b` → `8ef09a3b`, 2026-10-31): consecutive stops in one morning/afternoon/evening slot share its window in equal parts, in order (normalisation, annotation guide, `draft-v4`/`baseline-v4`); the holiday check gets every ISO 3166-2 code of the city's address (`regions`), so a regional holiday where the trip is becomes a warning; opening hours are evaluated with the stop's coordinates, so sunrise/sunset rules are placed; gold-mode stops are located like parsed ones (`located: false` never looked up, areas marked) | Keep full windows for every stop; one region code; leave the eval runner as it was | Shared windows made consecutive stops overlap by hours and put "late morning" at 09:00; regional holidays came back "may not apply"; without coordinates sunset is a fixed 19:00; the runner geocoded activity words (one landed 45 km away) and timed legs into neighbourhoods, which the app doesn't do | Equal shares are a guess (a 3-hour museum and a 20-minute walk get the same time); marking areas drops gold travel-time labels between far-apart areas (settled by decision 80) |
-| 80 | A leg to or from a neighbourhood is timed when it's at least 2 km on foot (`legs.AREA_BESIDE_KM`); under that the traveller is beside it and the leg is left out, as before for every area leg (2026-10-31) | Never time area legs (decision 76); time all of them; subtract an edge allowance | Decision 79 marked areas in gold mode and two gold travel-time labels between far-apart areas disappeared; on the dev set every labelled area leg was 2.2 km or more on foot and every unlabelled one 1.8 km or less (run `095a4d6d`: travel time back to 5 of 8 found, no new false alarms) | Set on 7 dev legs with a narrow margin: tuned on dev, to be confirmed by the test set; timing to the centre overstates the journey a little |
-| 81 | Daily load: venue count and day length over the pace limits are **info** ("looks busy"), not warnings; walking over the limit stays a warning, 1.5× a blocker. Whether a day is too much is judged by the LLM review (Tier 1 plan, step 3), with these numbers as evidence (2026-10-31) | Keep counts as warnings; raise the limits | On the dev set the counts flagged 15 of 46 days for 2 real ones, and those 2 had the same numbers as days that were fine; OSM tags can't tell a visit from a walk-through; the guide judges load as a traveller, not by formula. Raising the limits would be tuning on 2 labels and drop both | Until the LLM review exists, the system reports no overloaded days except on walking (dev run `146a353c`: daily load 0 of 2 found, no false alarms). Supersedes 19 for the counts |
-| 82 | Geocoding checks names: searches ask for `namedetails`; an exact name (any OSM name, accents/case/article ignored) outside the box within 60 km beats an inexact top result inside it; the nearby fallback needs a matching name; a trailing kind word ("Amusement Park", "Market", "Abbey" ...) is searched without it and accepted only for a result of that kind; `place=locality`, `boundary=tourist_zone` and `historic=district` are areas (2026-10-31) | Keep top-result-wins; let an LLM supply local names | The dev set showed wrong places from loose matches (a Paris exhibition centre for Versailles, a garden in another town for "Montjuïc gardens") and misses on English descriptors that the bare name finds; the LLM never touches locations | A second search for every inexact in-box name (1 s each, cached); names unlike any OSM name stay unresolved; adding `namedetails` changed every search's cache key (one-off re-query) |
-| 83 | The extraction prompt (`extract-v10`) says a named operator or venue is a stop even for an activity ("Evening: dinner cruise with Harbour Line" → `Harbour Line`), as ANNOTATION.md already did; an unnamed untimed activity ("a boat trip on the river") still isn't (2026-11-03) | Leave the prompt as it was; treat cruises and boat trips as activities with `located: false` | The prompt had dropped that clause, and right after the "boat trip" non-example the live smoke test left out the worked example's Bateaux Parisiens cruise (5 of 6 stops); with it, 6 of 6. A named cruise has a pier to travel to and sailing times or seasonal closures to check | Not a new stop rule, so the frozen gold stops stand. OSM hours for an operator usually describe the ticket office, not sailings, so opening hours on cruises are weak evidence. The model typed the dinner cruise `venue` where the example's gold has `meal` (only daily load's info count and the holiday check's "any venue" read the type) |
+Grouped by topic. The numbers are the original decision numbers, which other docs and code
+comments cite; a row carries several when later decisions refined earlier ones. What a
+decision replaced, or what was tried and dropped, is listed under its topic with the reason.
+A new decision takes the next number (86 onwards) and goes under its topic.
+
+### Foundations
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 1 | Backend first, frontend once the API works | Tier 1 is overfull and evals need only the backend (PRD risks) | Nothing visible until later |
+| 2, 3 | Postgres + pgvector; async SQLAlchemy + asyncpg | One database for relational data, vectors and cache, not SQLite plus a vector store; FastAPI, SSE and parallel HTTP calls are async anyway | Heavier to host; slightly more complex code |
+| 4 | Migrations run on container start | No manual deploy step at one instance | A broken migration blocks startup |
+| 13, 14 | Tests on a guarded `_test` database; HTTP mocked against fake hosts | A test drops the schema, so the guard makes data loss impossible; no test can reach a real service, so CI stays deterministic | Two local databases; real API format changes are caught only by the smoke scripts |
+| 84 | Changes that shouldn't alter behaviour pass `e2e/run.sh` before a commit: lint, tests, the behaviour snapshot (dev gold-mode eval + the example, from the cache, must be identical: `scripts/snapshot.py`) and Playwright on the full stack (landing → demo → a live check, desktop and 375 px) (2026-11-03) | Unit tests fake the LLM and HTTP; only the snapshot shows that no score moved, and only the full stack shows the proxy, SSE and real model calls still work. Rather than one-off checks by hand | A browser download; a few Haiku calls per run; the snapshot holds dataset place names, so it lives in gitignored `data/`, and is re-recorded (`--save`) only when a change is meant to alter results |
+| 85 | One helper for every Claude call (`llm.create_json`): structured output, API failures as coded errors, tokens counted even on a refusal. Extraction and fixes keep their own prompts, retries and wording (2026-11-03) | The two callers had copied the same error handling | None in behaviour: snapshot identical, live extraction and demo fixes unchanged |
+
+### Data sources and caching
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 7, 32 | Every lookup cached in Postgres (`api_cache`); failures never cached, "not found" is; eval mode serves expired entries | Already running, persistent and backed up (not Redis or memory); eval reruns are free and see identical data | An eval weeks later uses old hours (intended: same data) |
+| 11, 11b | OSM tags from Nominatim `/lookup`, not Overpass; at most 1 request/second per service and a 60 s pause after 429/403/503, never retries | Public Overpass is at capacity and asks automated clients to self-host; Nominatim answers ID lookups fast and geocoding needs it anyway; OSM services ban clients that retry into limits | Unindexed places come back "not found"; a burst of checks waits, or reports "unavailable" for a minute |
+| 15 | FOSSGIS OSRM table service for routing | Free, no key, every pair in one request per travel mode (not OpenRouteService, nor one request per leg) | 1 request/second; the UI must show OSM attribution and a "fix the map" link |
+| 44 | Routing lookups hold a lock around check-fetch-store | Parallel checks share legs through the cache; overlapping requests got a 429 | Two checks' routing can't overlap (1 request/second anyway) |
+
+Replaced or dropped:
+- **Overpass** (first version, 2026-10-23): every public server tested was down or timing out
+  for hours, and its operators say the public endpoint is at capacity ("Why Nominatim, not
+  Overpass", section 5).
+
+### Checks and the agent
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 5, 6 | Missing data is `unknown`, a failed source `unavailable`; never a pass, a fail or an exception | Honest precision and coverage numbers; one bad API doesn't sink a run | Results can be partial, and the UI must say so |
+| 12 | Checks as MCP tools, connected in-process | A standard protocol and schemas without a network hop (not plain functions, nor a separate process) | A dependency on a fast-moving SDK |
+| 42, 43 | Configuration decides which checks run, never an LLM; parsing and checking are separate calls | Deterministic, cheaper, can't skip a check, and LangGraph still gives parallel branches and streaming; the user confirms the stops in between (FR-1 step 5) | The agent's only LLM is the fixer; two round trips in the UI |
+| 8, 9, 10 | Opening hours parsed by `opening-hours-py`; a holiday is a warning at most (a real closure blocks only through OSM `PH off`); a place missing from OSM is a warning | The format is too complex to parse well quickly; most holidays don't close most venues; a missing element may have been re-mapped, not closed | Its holiday calendar is separate from Nager.Date; a place that really closed is only a warning |
+
+### Travel time and daily load
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 16, 21 | Transit and taxi times estimated from OSRM driving times, with one global set of constants to be fitted on dev | No free transit router (GTFS + OpenTripPlanner is a project of its own); per-city constants wouldn't carry over to unseen cities | Estimates, labelled as such; constants still untuned |
+| 18 | Legs computed once (`legs.py`), shared by travel time and daily load | One routing cost, consistent numbers | The two checks are coupled |
+| 17, 76, 78 | Bands: short by up to 10 min (or fits) → nothing; more than 10 min short → warning; overlapping or more than 30 min short → blocker; estimates counted 25% lower first. Default buffer 0, the buffer being slack on top. The same rule in the checker, ANNOTATION.md and the drafter and baseline prompts (2026-10-30) | A blocker must mean "can't work"; chatbot itineraries put slots a few minutes' walk apart back to back, and a traveller absorbs that | A slow walker, or a chain of 10-min shortfalls, gets no warning; 30 min is untuned |
+| 77 | Overlaps found from the times alone, on every pair of consecutive timed stops, before any routing (2026-10-29) | An overlap needs no lookup; finding them on routed legs only missed every overlap next to a "Lunch" or an area (barcelona-10) | A time typo also trips opening hours and daily load, where the gold labels it once |
+| 76, 80 | Neighbourhood stops (`Stop.area`, marked at geocoding) aren't timed within 2 km on foot (`legs.AREA_BESIDE_KM`); farther, the leg is timed to the area's centre (2026-10-31) | The centre is often farther than where the traveller already is; on dev every labelled area leg was 2.2 km or more on foot and every unlabelled one 1.8 km or less (run `095a4d6d`) | Set on 7 dev legs with a narrow margin; timing to the centre overstates the journey a little |
+| 81 | Daily load: venue count and day length over the pace limits are **info** ("looks busy"); walking over the limit is a warning, 1.5× a blocker; whether a day is too much is for the LLM review (2026-10-31) | The counts flagged 15 of 46 dev days for 2 real ones, with the same numbers as days that were fine; OSM tags can't tell a visit from a walk-through (run `146a353c`) | No overloaded days are reported, except on walking, until the LLM review exists |
+
+Replaced or dropped:
+- **17 on its own** (2026-10-23): any gap shorter than the journey was a blocker (estimates
+  only when more than 25% short). Back-to-back slots made blockers common and meaningless.
+- **76** (2026-10-29): up to 10 min short was a warning, a blocker when overlapping or more
+  than 10 min short; legs into areas never timed. Replaced by 78: a warning at nearly every
+  changeover (london-08: Shoreditch → Spitalfields Market, 0 min gap, ~8 min walk) buried the
+  ones that mattered and padded scores with easy matches. Never timing area legs lost two
+  gold labels between far-apart areas; 80 brought them back.
+- **Default travel buffer of 10 min** (until 78): "less than 10 min to spare" can't be a
+  warning once 10 min short isn't.
+- **19** (2026-10-23): fixed pace limits, with venue count and day length as warnings.
+  Replaced by 81 (above).
+
+### Hotels
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 35, 37, 38 | A local embedding model (bge-small-en-v1.5, 384 dims), stored as `halfvec` with no vector index and an exact search per hotel; embedding libraries only in the Mac's `embed` group | No key or cost, fast on the Mac's GPU, a quarter the size of API vectors; one hotel's reviews search exactly in ~2 ms; the 256 MB API image never loads a model | English only; a cross-hotel search would be slow (not needed); theme phrasings are re-embedded here when they change |
+| 36 | Negative reviews of every hotel in the four dataset cities | The demo can check any hotel there; 295 MB rather than ~2 GB for all 515K | No reviews for hotels elsewhere |
+| 39, 40 | A review counts for a theme on keyword **and** embedding similarity; a red flag needs at least `min_reviews` and at least the theme's 90th-percentile share | Best F1 on labelled reviews, explainable, free per review; a count alone flags every big hotel, and one share for every theme flagged a third of hotels for noise and none for safety | Safety and location are weak (F1 ~0.5 held out); "red flag" is relative to these cities' hotels; thresholds untuned against the labels |
+| 41 | Hotel stop → review data by name, coordinates as the tie-breaker | Names identify hotels; Kaggle's and Nominatim's coordinates can differ by a block | Unclear names are `unknown` |
+| 25, 45 | Hotel labels once per hotel, from a seeded 40-review sample; a red flag at 4+ for noise and cleanliness, 3+ for location, 2+ for safety (2026-10-24) | 16 decisions instead of 40, reproducible; safety is ~0.3% of complaints, so at 4 of 40 repeated thefts would never be labelled | A label rests on one sample; rare themes on 2–3 reviews |
+
+### Parsing: cleaning, extraction, geocoding
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 52 | Pasted text cleaned in code before extraction; limits 50,000 characters raw, 15,000 cleaned (2026-10-24) | Users paste whole replies (a ChatGPT reply ran to ~30,000 characters, mostly image links); removing fixed patterns is cheap and testable | The rules follow today's chat UIs and need upkeep |
+| 33, 34 | Claude Haiku 5.5 at low effort for extraction; a hand-written JSON schema, then Pydantic validation and one retry | Extraction is copying, so the cheapest model first; the schema changes only with the prompt version | The judge must come from another provider; schema and model are kept in step by hand |
+| 31 | Gold stops extend the extraction schema | Parse accuracy compares identical fields | Changing the schema changes the dataset format |
+| 68–73, 83 | Stop rules, the same in ANNOTATION.md and the prompt (versions below): a timed slot is a stop even with no named place; a named operator or venue is a stop; open choices, untimed unnamed activities, downtime, optional items and travel sections aren't; stated durations and journeys have their own fields; activity-named stops are `located: false`. Frozen with 74 | Guide and prompt agree, so extraction is scored against the rules it was given; each rule came from a dev file | Some real visits (optional ones, downtime) go unchecked |
+| 29, 82 | Geocoding searches the city's bounding box, then within 60 km in the same country; outside the box's top result, a result's name must match the text (any OSM name, accents and articles ignored); a trailing kind word ("Market") becomes a type filter; `place=locality`, `boundary=tourist_zone` and `historic=district` are areas (2026-10-31) | Keeps "Louvre" from matching a Louvre elsewhere while still finding day trips; loose matches had sent Versailles to a Paris exhibition centre and "Montjuïc gardens" to another town (run `ed8f90eb`) | Names unlike any OSM name stay unresolved; an inexact name costs a second search |
+
+Extraction prompt versions (the guide changed with each):
+
+| Version | Date | Change | Why |
+| --- | --- | --- | --- |
+| `extract-v1` | 2026-10-24 | First prompt: the PRD's fields, `place_name` verbatim, times only when stated | |
+| `extract-v2` | 2026-10-24 | A checklist repeating scheduled places adds no stops | Whole replies end with booking checklists (52) |
+| `extract-v3` | 2026-10-24 | Places recommended outside the schedule ("where to eat") aren't stops | They aren't visits |
+| `extract-v4` | 2026-10-26 | Open choices ("X or Y") and activities with no named place aren't stops (68) | Neither can be located or checked |
+| `extract-v5` | 2026-10-26 | Stated durations in `duration_min`/`duration_max`, never `end_time`; a heading's extra words ("photo stop") aren't part of the name (69) | Duration-style itineraries otherwise leave travel time and daily load unknown |
+| `extract-v6` | 2026-10-26 | A timed slot is a stop even with no named place; travel sections are routes, not stops (70) | Leaving a timed lunch out turns its hour into travel slack |
+| `extract-v7` | 2026-10-26 | Stated journeys on the stop travelled to (`travel_start`, `travel_min`, `travel_max`); timed open choices named by the activity (71) | In duration-style itineraries the stated journey is the only travel information |
+| `extract-v8` | 2026-10-26 | Ten rules from the dev files: downtime, arrivals and departures, journey lines, several places in one slot, rooms vs areas, favoured options, "Morning:" headings, optional items, time typos, slots that carry on (72) | They came up across the dev files |
+| `extract-v9` | 2026-10-26 | `located: false` for activity-named stops: never geocoded, no legs (73) | A third of dev legs touched them; searching "Lunch" can land on a café of that name |
+| `extract-v10` | 2026-11-03 | A named operator or venue is a stop even for an activity ("dinner cruise with Harbour Line") (83) | The prompt had dropped this clause from the guide; the smoke test missed the example's cruise (5 of 6 stops, then 6 of 6) |
+
+Replaced or dropped:
+- **68's "no named place, no stop"** (`extract-v4`), for timed slots: reversed by 70
+  (`extract-v6`), because a missing timed lunch makes a tight day look feasible.
+- **30, Nominatim's top result whatever its name** (2026-10-24): replaced by 82 once the dev
+  set showed wrong places from loose matches.
+- **One 5,000-character limit**, with users asked to regenerate (before 52): whole replies
+  don't fit.
+- **Rules beyond these**: stop rules froze with 74; new ones would change the dataset again.
+
+### Fixes and prompt injection
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 49, 50 | Fixes are operations (move, remove, replace, add_transport_mode) applied by code; every enabled check re-runs on each fix; one retry for violations still unfixed | Small, checkable changes with no invented coordinates; moving a stop can break another check; a retry with the reasons recovers many failures cheaply | Only four kinds of change; at most two LLM calls per run |
+| 51, 62 | Third-party free text never reaches a prompt (review excerpts, free-text OSM tags, opening-hours comments: `safe_evidence`); the injection suite judges in code, on the demo sample (2026-10-25) | It's untrusted content; judging in code is deterministic and exposes no dataset or Vienna; the suite's design exposed the OSM gap | The model can't quote reviews; the payloads are ours, not collected from the wild |
+| 75 | Public-holiday warnings are advisory: shown, never sent to the fixer (`ADVISORY_CHECKS`) (2026-10-29) | A holiday is a fact about the date; a real closure is an opening-hours violation, which does get fixed | A closure missing from OSM gets only the holiday warning |
+
+Fix prompt versions: `fixes-v1` (2026-10-24); `fixes-v2` (2026-10-25: free-text OSM tags and
+opening-hours comments filtered out, decision 62); `fixes-v3` (2026-10-29: advisory checks
+not sent, decision 75).
+
+### API and runs
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 54, 63 | FastAPI verifies a short-lived HS256 token that the Next.js server signs per call; the browser calls only a Next.js route that proxies `/api/v1/*` (2026-10-25) | Independent of Auth.js internals (not decrypting its JWE cookie); the browser never holds a token; one origin, no CORS | A secret shared by both servers; an extra hop, and the proxy must stream SSE unbuffered |
+| 55, 65 | Runs are asyncio tasks with in-memory event logs, replayed to every SSE subscriber; the `checks` step event carries the located stops (2026-10-25) | No queue service (PRD ADR-7); late or reconnecting subscribers miss nothing; the timeline fills in live | One API process; runs don't survive a restart (they're marked interrupted) |
+| 56 | Demo runs in memory for an hour, on ready-made samples only (2026-10-25) | "Saves nothing" taken literally; anonymous visitors never cause an extraction call | A restart forgets demo runs; recruiters can't try their own text without signing in |
+| 57, 58 | Saved runs store the violations, every fix (invalid ones too) and a report JSON; accepting a fix builds on the version it was checked on | Accept and reject need rows; invalid fixes feed the validity metric; a fix is only known to be valid against that version | The report JSON isn't enforced by the database; two accepted fixes give two versions |
+| 59 | Rate limits in memory, per hour: 20 runs and 20 parses per user, 10 demo runs per IP | One process; no database write per request | They reset on restart |
+| 60, 61 | Tracing through wrappers on the LLM and MCP clients, with no traveller content by default; cost per call from a local price table | Agent code unchanged, works without Langfuse, private by default; cost is stored with the run | Debugging needs `TRACE_CONTENT=true`; prices are copied by hand |
+| 64 | Frontend types generated from a committed `openapi.json`, checked in tests and CI | Builds need no running backend; drift fails CI | An export and `gen:api` after every API change |
+
+### Frontend
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 66, 67 | Colours as CSS variables behind shadcn's semantic tokens, sampled from the hero illustration, with severity shades darkened for WCAG AA (2026-10-26) | Restyling is one file; one visual language from the illustration to the results page | Blocker shares the terracotta family with primary buttons (told apart by badge and edge) |
+
+Replaced or dropped:
+- **The branding kit's greens and Newsreader** (66, 2026-10-25): replaced by the
+  illustration's palette and shapes (67).
+
+### Dataset and evaluation
+
+| # | Decision | Why | Cost |
+| --- | --- | --- | --- |
+| 20, 22 | Cities Paris, London, Barcelona and Vienna, with 2 high- and 2 low-scoring hotels each; Vienna held out of dev entirely (dev 15, test 25) (2026-10-24) | All four have hotel reviews; high-scoring hotels are false-positive controls; Vienna measures a city the checker was never tuned on | Four European cities only; Vienna rests on 10 itineraries, and seeing it while building spoils it |
+| 23, 28, 53 | One YAML per itinerary (metadata and labels) and the reply in `texts/<id>.md`, in gitignored `data/dataset/`; the dataset version is a hash of the files | Hand-written (comments, multi-line text); whole replies are too long for YAML blocks; one copy can't drift; no git needed | YAML's `10:30` trap needs a custom loader; two files per itinerary; the folder needs its own backup |
+| 26 | Labels are judged against reality, not against our data sources | Measures the whole system, data gaps included | Lower scores where OSM is poor |
+| 74 | **Violations first** (2026-10-27): the gold is violations in the text's own words (check, day, place and time as written, severity, evidence, source, confidence), plus `unknowns` and `other_issues`, matched by place name; travel time labelled directly; drafts from a non-Anthropic model count only once verified (`drafted_by`, `verified_by_human`); gold stops and legs frozen, dev only | Stop rules kept growing (68–73) and each changed the dataset; labels in the text's words don't depend on how anyone splits it into stops, so a plain LLM can be scored on the same labels; a drafter from another provider avoids rewarding shared blind spots | Fuzzy name matching needs some human decisions; drafts can anchor the annotator |
+| 46, 47 | Two modes, reported apart: gold stops and parsed; a prediction matches a label on check + day + place, with severity scored separately | Separates check errors from parse errors, and gold mode needs no key; a blocker reported as a warning still found the problem | Detection scores look better than severity accuracy |
+| 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Names are copied verbatim, while positions shift | Near-identical names on one day can swap |
+| 79 | Four fixes from the gold-mode diagnosis (2026-10-31, run `730a021b` → `8ef09a3b`): stops sharing a morning/afternoon/evening slot split it in order; regional holidays by the city's ISO 3166-2 codes; sunrise/sunset hours placed by the stop's coordinates; gold stops located like parsed ones | Shared windows made stops overlap by hours; regional holidays came back "may not apply"; sunset was a fixed 19:00; the runner geocoded activity words (one landed 45 km away) | Equal shares are a guess (a museum and a walk get the same time) |
+
+Drafter and baseline prompt versions (the same steps for both): `draft-v1`/`baseline-v1`
+(2026-10-27); `-v2` (2026-10-29: travel-time rules of 76 and 77); `-v3` (2026-10-30: the
+bands of 78); `-v4` (2026-10-31: shared slots split in order, decision 79).
+
+Replaced or dropped:
+- **24, travel-time labels derived from recorded leg times, and 27, labels naming a stop id**
+  (2026-10-24): replaced by 74. Every new stop rule changed the labels, and a plain LLM
+  couldn't be scored on stop ids.
+- **No LLM drafts at all** (until 74): replaced by drafts from another provider than the
+  extractor, which avoids rewarding shared blind spots, checked label by label so the truth
+  stays reality.
 
 ## 13. Known gaps and next steps
 
+- **Parsing is the weak link.** End to end, the pipeline is level with a plain LLM with web
+  search (dev run `afd18efa`: 16 of 24 / 16 of 30, the baseline 18 of 23 / 18 of 30), while
+  on gold stops it's ahead (19 of 22 / 19 of 30); extraction finds 73% of the gold stops.
+  Both systems agree on 14 problems, all real (EVALS.md).
+- A Nominatim timeout fails a whole itinerary's parse (it isn't retried, by the usage
+  policy); eval runs are rerun until none fails.
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).
 - Nominatim's 1 request/second limit is per process; fine for one API container, but several
   processes calling it would need a shared limiter (e.g. in Postgres).
 - Transit times are estimates; the travel-mode constants are untuned guesses. The pace
   limits only produce info hints (decision 81); whether a day is too much waits for the
   LLM review.
-- The frontend must show OSM attribution with a "fix the map" link (FOSSGIS policy).
 - The dataset exists only on one Mac until it's backed up (gitignored by design).
-- Parsed-mode evals need the API key; neither mode has run on real annotations yet.
-- Extraction and fixes have only run against fake models; both need the API key for a live run.
 - Time typos ("9:30 AM – 11:30 PM" for a morning visit) are reported as an overlap, plus
   opening-hours and daily-load violations for the same slip, where the gold has one label.
   Idea, not planned: code that spots a probable AM/PM slip and reports "check this time"
   instead (beyond the PRD's five checks; decision 77).
-- Travel time doesn't time journeys into an area from elsewhere, which the gold labels
-  (decision 76).
+- Travel time doesn't time journeys into an area from elsewhere under 2 km, which the gold
+  labels (decisions 76, 80).
 - Hotel red flags: safety and location matching is weak (F1 ~0.5 on held-out reviews), and
   `min_share` / `min_reviews` are untuned against the hotel labels.
 - API runs, live feeds, rate-limit counters and demo runs live in one process's memory; more
   than one API container would need them in Postgres (section 6c).
 - Parse cost isn't tied to the check run that follows it (section 6c).
-- The injection suite hasn't run against the real model yet (needs the key).
+- Not yet measured: fix validity on the dataset, the injection suite against the real model,
+  fix quality (needs the judge).
 - Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; no Dockerfile for it
   until the hosting shape is settled (section 11).
-- Next: annotate the dataset (Vincent), the first baseline eval, and the frontend's signed-in
-  half. Order and status are in `PLAN.md`.
+- Next: the Tier 1 plan in `PLAN.md` (closures check, LLM review), then the frontend's
+  signed-in half.
 
 ## Glossary
 

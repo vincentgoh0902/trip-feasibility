@@ -17,9 +17,16 @@ plan against real opening hours, holidays and travel times before you book aroun
 **Status:** in development, not yet hosted. Built: all five checks, the parse pipeline, the
 agent with re-checked fixes, the API (live progress over SSE, a demo mode), a prompt-injection
 suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
-dataset (40 chatbot itineraries across four cities, hand-verified labels) is being annotated;
-no evaluation results yet. They will be reported here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works and why:
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+dataset is 40 chatbot itineraries across four cities; the 15 development ones are labelled and
+verified by hand, and the 25 test ones (including a held-out city) are untouched.
+
+**First results (development set, 30 labelled problems):** given correctly parsed stops, the
+checks find 19 of 30 problems with 19 of 22 flags correct. End to end from the raw text they
+find 16 of 30 (16 of 24 correct), against 18 of 30 (18 of 23) for a plain LLM with web
+search: parsing the itinerary is the weak link. Every run, with what changed, is in
+[`docs/EVALS.md`](docs/EVALS.md). Final numbers come from the test set and will be reported
+here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works
+and why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Run locally
 
@@ -44,6 +51,11 @@ uv run uvicorn trip_feasibility.main:app --reload --port 8020
 uv run pytest                    # uses its own trip_test database
 uv run ruff check . && uv run ruff format --check .
 ```
+
+Before committing, `e2e/run.sh` (from the repo root) runs everything: lint, migrations and
+tests, a behaviour snapshot of the evaluation (record it once with
+`uv run python scripts/snapshot.py --save`), the frontend checks, then the full stack in
+Docker with Playwright clicking through a live demo check at desktop and phone width.
 
 Run the check tools once against the real APIs: `uv run python scripts/smoke_checks.py`.
 
