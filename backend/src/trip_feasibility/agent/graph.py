@@ -29,8 +29,8 @@ from trip_feasibility.agent.models import CheckInput, CheckReport
 from trip_feasibility.checks.config import CHECK_NAMES, CheckName
 from trip_feasibility.checks.deps import CheckDeps
 from trip_feasibility.checks.models import CheckResult
+from trip_feasibility.llm import MessagesClient
 from trip_feasibility.mcp_server import create_server
-from trip_feasibility.parse.extract import MessagesClient
 from trip_feasibility.parse.geocode import City
 
 __all__ = ["CheckInput", "CheckReport", "run_checks", "run_agent", "stream_agent"]

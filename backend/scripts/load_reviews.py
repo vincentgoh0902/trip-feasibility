@@ -29,12 +29,12 @@ import numpy as np
 from pgvector.asyncpg import register_vector
 from sqlalchemy.engine import make_url
 
+from trip_feasibility import paths
 from trip_feasibility.config import get_settings
 from trip_feasibility.models import REVIEW_EMBEDDING_DIM, REVIEW_EMBEDDING_MODEL
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CSV = ROOT / "data" / "raw" / "hotel-reviews" / "Hotel_Reviews.csv"
-CACHE_DIR = ROOT / "data" / "embeddings"
+DEFAULT_CSV = paths.REVIEWS_CSV
+CACHE_DIR = paths.EMBEDDINGS
 CITIES = {
     "United Kingdom": "london",
     "Paris France": "paris",

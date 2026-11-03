@@ -27,6 +27,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
 from trip_feasibility.checks.config import CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
@@ -35,14 +36,15 @@ from trip_feasibility.dataset.validate import validate_dataset
 from trip_feasibility.db import make_engine
 from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.runner import Outcome, evaluate, summarise
+from trip_feasibility.llm import make_client
 from trip_feasibility.models import EvalRun
 from trip_feasibility.parse.clean import CLEAN_VERSION
-from trip_feasibility.parse.extract import PROMPT_VERSION, make_client
+from trip_feasibility.parse.extract import PROMPT_VERSION
 
-ROOT = Path(__file__).resolve().parents[2]
-DATASET = ROOT / "data" / "dataset"
-OUT = ROOT / "data" / "evals" / "runs"
-DECISIONS = ROOT / "data" / "evals" / "match_decisions.yaml"
+ROOT = paths.REPO
+DATASET = paths.DATASET
+OUT = paths.EVAL_RUNS
+DECISIONS = paths.MATCH_DECISIONS
 
 
 def _of(n: int, total: int) -> str:

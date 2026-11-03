@@ -14,7 +14,7 @@ from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
 from trip_feasibility.db import make_engine
 from trip_feasibility.errors import install_error_handlers
-from trip_feasibility.parse.extract import make_client
+from trip_feasibility.llm import make_client
 from trip_feasibility.ratelimit import SlidingWindowLimiter
 from trip_feasibility.runs import RunService
 from trip_feasibility.tracing import make_tracer

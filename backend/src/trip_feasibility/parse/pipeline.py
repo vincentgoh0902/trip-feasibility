@@ -10,13 +10,9 @@ from datetime import date
 from trip_feasibility.checks.deps import CheckDeps
 from trip_feasibility.config import Settings
 from trip_feasibility.itinerary import Stop
+from trip_feasibility.llm import MessagesClient
 from trip_feasibility.parse.clean import MAX_CLEAN_CHARS, MAX_RAW_CHARS, clean_text
-from trip_feasibility.parse.extract import (
-    ExtractionError,
-    ExtractionResult,
-    MessagesClient,
-    extract_stops,
-)
+from trip_feasibility.parse.extract import ExtractionError, ExtractionResult, extract_stops
 from trip_feasibility.parse.geocode import City, Geocode, geocode_stops, locate_city
 from trip_feasibility.parse.normalise import normalise
 

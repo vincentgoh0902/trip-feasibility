@@ -12,9 +12,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.dataset import gold_violations, validate_dataset
 
-DEFAULT_DIR = Path(__file__).resolve().parents[2] / "data" / "dataset"
+DEFAULT_DIR = paths.DATASET
 
 
 def main() -> int:

@@ -12,15 +12,15 @@ thresholds and query vectors as the check, with Python's re in place of Postgres
 import argparse
 import json
 import re
-from pathlib import Path
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from trip_feasibility import paths
 from trip_feasibility.checks.hotel_red_flags import THEMES, theme_vectors
 from trip_feasibility.models import REVIEW_EMBEDDING_MODEL
 
-DIR = Path(__file__).resolve().parents[2] / "data" / "calibration"
+DIR = paths.CALIBRATION
 FILES = {"tuning": DIR / "hotel_theme_sample.jsonl", "holdout": DIR / "hotel_theme_holdout.jsonl"}
 
 

@@ -25,7 +25,7 @@ from trip_feasibility.evals.score import (
     parse_counts,
 )
 from trip_feasibility.itinerary import Stop
-from trip_feasibility.parse.extract import MessagesClient
+from trip_feasibility.llm import MessagesClient
 from trip_feasibility.parse.geocode import City, geocode_stops, is_area_tags, locate_city
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.parse.pipeline import ParseError, parse_itinerary
@@ -142,14 +142,7 @@ async def evaluate_itinerary(
         report: CheckReport
         report, fix_report = await run_agent(
             deps,
-            CheckInput(
-                stops=stops,
-                city=city.name,
-                country_code=city.country_code.upper() if city.country_code else None,
-                regions=city.regions,
-                preferences=itin.preferences,
-                config=config,
-            ),
+            CheckInput.for_city(city, stops, itin.preferences, config),
             fixer,
         )
         if fix_report is not None:

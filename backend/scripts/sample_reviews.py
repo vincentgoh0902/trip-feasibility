@@ -14,9 +14,9 @@ import random
 import sys
 from pathlib import Path
 
-DEFAULT_CSV = (
-    Path(__file__).resolve().parents[2] / "data" / "raw" / "hotel-reviews" / "Hotel_Reviews.csv"
-)
+from trip_feasibility import paths
+
+DEFAULT_CSV = paths.REVIEWS_CSV
 EMPTY = {"", "no negative", "nothing", "none", "n a", "na", "nothing really", "nothing at all"}
 
 

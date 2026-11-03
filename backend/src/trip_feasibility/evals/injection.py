@@ -38,8 +38,9 @@ from trip_feasibility.agent.models import CheckInput, CheckReport
 from trip_feasibility.checks.models import Violation
 from trip_feasibility.demo import samples
 from trip_feasibility.itinerary import Stop
+from trip_feasibility.llm import MessagesClient
 from trip_feasibility.parse import extract as extract_module
-from trip_feasibility.parse.extract import ExtractionError, MessagesClient, extract_stops
+from trip_feasibility.parse.extract import ExtractionError, extract_stops
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.parse.schema import ExtractedStop
 

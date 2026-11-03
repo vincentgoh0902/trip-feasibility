@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+from trip_feasibility import paths
 from trip_feasibility.dataset.draft import (
     DRAFT_PROMPT_VERSION,
     apply_draft,
@@ -35,9 +36,9 @@ from trip_feasibility.dataset.models import DatasetItinerary
 from trip_feasibility.dataset.validate import load_yaml, text_path
 from trip_feasibility.evals.search_llm import BACKENDS, SearchLLMError, make_backend
 
-DATA = Path(__file__).resolve().parents[2] / "data"
-DEFAULT_DIR = DATA / "dataset"
-RAW_OUT = DATA / "dataset-drafts"
+DATA = paths.DATA
+DEFAULT_DIR = paths.DATASET
+RAW_OUT = paths.DATASET_DRAFTS
 
 
 def load(root: Path, path: Path) -> tuple[dict, DatasetItinerary]:

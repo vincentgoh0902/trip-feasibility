@@ -28,16 +28,13 @@ from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, run_age
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
-from trip_feasibility.dataset.validate import load_yaml
+from trip_feasibility.dataset.example import load_example
 from trip_feasibility.db import make_engine
 from trip_feasibility.itinerary import Stop, TravelPreferences
-from trip_feasibility.parse.extract import make_client
+from trip_feasibility.llm import make_client
 from trip_feasibility.parse.geocode import Geocode, geocode_stops, locate_city
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.parse.pipeline import ParseError, parse_itinerary
-from trip_feasibility.parse.schema import ExtractedStop
-
-EXAMPLE = Path(__file__).resolve().parents[2] / "docs" / "annotation" / "example.yaml"
 
 
 def print_stops(stops: list[Stop], geocodes: dict[str, Geocode]) -> None:
@@ -130,17 +127,12 @@ async def main() -> int:
                     # its hotel is one of the 16 dataset hotels: no peeking before labelling
                     config.enabled.remove("hotel_red_flags")
                     print("hotel_red_flags skipped: the example's hotel is a dataset hotel.")
-                raw = load_yaml(EXAMPLE)
-                city_name, trip_start = raw["city"].title(), raw["trip_start"]
-                preferences = TravelPreferences(**raw["preferences"])
-                city = await locate_city(deps, city_name)
+                example = load_example()
+                preferences = example.preferences
+                city = await locate_city(deps, example.city)
                 assert city is not None
-                fields = ExtractedStop.model_fields
-                extracted = [
-                    ExtractedStop(**{k: v for k, v in s.items() if k in fields})
-                    for s in raw["stops"]
-                ]
-                stops, geocodes = await geocode_stops(deps, normalise(extracted, trip_start), city)
+                located = normalise(example.stops, example.trip_start)
+                stops, geocodes = await geocode_stops(deps, located, city)
             else:
                 if settings.anthropic_api_key is None:
                     print("ANTHROPIC_API_KEY is not set (repo-root .env).", file=sys.stderr)
@@ -164,14 +156,7 @@ async def main() -> int:
                     f"{x.attempts} attempt(s), {x.input_tokens} in / {x.output_tokens} out tokens"
                 )
             print_stops(stops, geocodes)
-            inp = CheckInput(
-                stops=stops,
-                city=city.name,
-                country_code=city.country_code.upper() if city.country_code else None,
-                regions=city.regions,
-                preferences=preferences,
-                config=config,
-            )
+            inp = CheckInput.for_city(city, stops, preferences, config)
             fixer = None
             if settings.anthropic_api_key is not None and not args.no_fixes:
                 fixer = Fixer(

@@ -12,11 +12,9 @@ it alongside the model ID.
 import json
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Protocol
+from typing import Any
 
-import anthropic
-
-from trip_feasibility.config import Settings
+from trip_feasibility.llm import LLMError, MessagesClient, create_json
 from trip_feasibility.parse.schema import Extraction, validate_extraction
 
 PROMPT_VERSION = "extract-v10"
@@ -147,20 +145,9 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
 }
 
 
-class MessagesClient(Protocol):
-    """The part of anthropic.AsyncAnthropic used here (tests pass a fake)."""
-
-    @property
-    def messages(self) -> Any: ...
-
-
-class ExtractionError(Exception):
+class ExtractionError(LLMError):
     """Extraction failed: the model's output didn't validate twice, it refused, or the API
     failed. `code` is one of parse_failed, refused, truncated, unavailable."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 @dataclass
@@ -174,25 +161,11 @@ class ExtractionResult:
     raw_outputs: list[str] = field(default_factory=list)
 
 
-def make_client(settings: Settings) -> anthropic.AsyncAnthropic:
-    if settings.anthropic_api_key is None:
-        raise ExtractionError("unavailable", "ANTHROPIC_API_KEY is not set")
-    return anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-
-
 def _user_message(text: str, city: str, trip_start: date) -> str:
     return (
         f"City: {city}\nTrip start date (day 1): {trip_start:%A %d %B %Y}\n\n"
         f"<itinerary>\n{text}\n</itinerary>"
     )
-
-
-def _text_of(message: Any) -> str:
-    if message.stop_reason == "refusal":
-        raise ExtractionError("refused", "the model declined to read this itinerary")
-    if message.stop_reason == "max_tokens":
-        raise ExtractionError("truncated", "the itinerary was too long to extract in one go")
-    return "".join(b.text for b in message.content if b.type == "text")
 
 
 async def extract_stops(
@@ -212,26 +185,23 @@ async def extract_stops(
     )
     for _ in range(2):
         result.attempts += 1
-        try:
-            message = await client.messages.create(
-                model=model,
-                max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
-                messages=messages,
-                output_config={
-                    "effort": effort,
-                    "format": {"type": "json_schema", "schema": EXTRACTION_SCHEMA},
-                },
-            )
-        except anthropic.APIConnectionError as e:
-            raise ExtractionError("unavailable", f"couldn't reach the model API: {e}") from e
-        except anthropic.RateLimitError as e:
-            raise ExtractionError("unavailable", "the model API is rate-limiting us") from e
-        except anthropic.APIStatusError as e:
-            raise ExtractionError("unavailable", f"the model API returned {e.status_code}") from e
-        result.input_tokens += message.usage.input_tokens
-        result.output_tokens += message.usage.output_tokens
-        raw = _text_of(message)
+        reply = await create_json(
+            client,
+            ExtractionError,
+            model=model,
+            max_tokens=MAX_TOKENS,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+            effort=effort,
+            schema=EXTRACTION_SCHEMA,
+        )
+        result.input_tokens += reply.input_tokens
+        result.output_tokens += reply.output_tokens
+        raw = reply.usable_text(
+            ExtractionError,
+            refused="the model declined to read this itinerary",
+            truncated="the itinerary was too long to extract in one go",
+        )
         result.raw_outputs.append(raw)
         try:
             parsed = validate_extraction(json.loads(raw))

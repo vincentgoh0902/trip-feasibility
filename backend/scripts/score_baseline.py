@@ -10,17 +10,16 @@ numbers provisional. Prints only; record kept runs in docs/EVALS.md.
 """
 
 import sys
-from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.dataset.validate import gold_violations, validate_dataset
 from trip_feasibility.evals.baseline import BASELINE_PROMPT_VERSION, load_cached
 from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.score import Counts, Where, compare
 
-ROOT = Path(__file__).resolve().parents[2]
-DATASET = ROOT / "data" / "dataset"
-BASELINE = ROOT / "data" / "evals" / "baseline"
-DECISIONS = ROOT / "data" / "evals" / "match_decisions.yaml"
+DATASET = paths.DATASET
+BASELINE = paths.BASELINE
+DECISIONS = paths.MATCH_DECISIONS
 
 
 def _of(n: int, total: int) -> str:

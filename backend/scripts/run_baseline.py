@@ -17,12 +17,13 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.dataset import validate_dataset
 from trip_feasibility.evals.baseline import cache_path, run_baseline
 from trip_feasibility.evals.search_llm import BACKENDS, SearchLLMError, make_backend
 
-DATA = Path(__file__).resolve().parents[2] / "data"
-CACHE = DATA / "evals" / "baseline"
+DATA = paths.DATA
+CACHE = paths.BASELINE
 
 
 def main() -> int:

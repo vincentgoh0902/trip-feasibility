@@ -31,7 +31,6 @@ from dataclasses import dataclass, field
 from datetime import time, timedelta
 from typing import Annotated, Any, Literal
 
-import anthropic
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from trip_feasibility.agent.models import CheckInput, CheckReport
@@ -39,7 +38,7 @@ from trip_feasibility.checks.config import ADVISORY_CHECKS
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.checks.models import Violation
 from trip_feasibility.itinerary import Stop, StopType, TransportMode
-from trip_feasibility.parse.extract import MessagesClient
+from trip_feasibility.llm import LLMError, MessagesClient, create_json
 from trip_feasibility.parse.geocode import City, geocode_place
 
 # v2: free-text OSM tags and opening-hours comments filtered out of the evidence
@@ -187,12 +186,8 @@ class FixReport(BaseModel):
     error: str | None = None  # the model call failed; checks still stand
 
 
-class FixError(Exception):
+class FixError(LLMError):
     """code: refused, truncated, invalid_output, unavailable."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 # --- prompting ---
@@ -279,31 +274,24 @@ def _retry_message(failed: list[Fix], unfixed: list[str]) -> str:
 async def _call(
     client: MessagesClient, messages: list[dict], model: str, effort: str, report: FixReport
 ) -> tuple[FixProposals, str]:
-    try:
-        message = await client.messages.create(
-            model=model,
-            max_tokens=MAX_TOKENS,
-            system=FIX_SYSTEM_PROMPT,
-            messages=messages,
-            output_config={
-                "effort": effort,
-                "format": {"type": "json_schema", "schema": FIX_SCHEMA},
-            },
-        )
-    except anthropic.APIConnectionError as e:
-        raise FixError("unavailable", f"couldn't reach the model API: {e}") from e
-    except anthropic.RateLimitError as e:
-        raise FixError("unavailable", "the model API is rate-limiting us") from e
-    except anthropic.APIStatusError as e:
-        raise FixError("unavailable", f"the model API returned {e.status_code}") from e
+    reply = await create_json(
+        client,
+        FixError,
+        model=model,
+        max_tokens=MAX_TOKENS,
+        system=FIX_SYSTEM_PROMPT,
+        messages=messages,
+        effort=effort,
+        schema=FIX_SCHEMA,
+    )
     report.calls += 1
-    report.input_tokens += message.usage.input_tokens
-    report.output_tokens += message.usage.output_tokens
-    if message.stop_reason == "refusal":
-        raise FixError("refused", "the model declined to propose fixes")
-    if message.stop_reason == "max_tokens":
-        raise FixError("truncated", "the fixes didn't fit in the output limit")
-    raw = "".join(b.text for b in message.content if b.type == "text")
+    report.input_tokens += reply.input_tokens
+    report.output_tokens += reply.output_tokens
+    raw = reply.usable_text(
+        FixError,
+        refused="the model declined to propose fixes",
+        truncated="the fixes didn't fit in the output limit",
+    )
     try:
         return FixProposals.model_validate_json(raw), raw
     except ValidationError as e:

@@ -7,12 +7,12 @@ Gold place_names are copied from this text. Character counts go to stderr.
 
 import argparse
 import sys
-from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.dataset.validate import text_path
 from trip_feasibility.parse.clean import MAX_CLEAN_CHARS, clean_text
 
-DATASET_DIR = Path(__file__).resolve().parents[2] / "data" / "dataset"
+DATASET_DIR = paths.DATASET
 
 
 def main() -> int:

@@ -14,18 +14,17 @@ test predictions.
 
 import argparse
 import sys
-from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.dataset.models import DatasetItinerary
 from trip_feasibility.dataset.validate import Report, gold_violations, validate_dataset
 from trip_feasibility.evals.baseline import BASELINE_PROMPT_VERSION, load_cached
 from trip_feasibility.evals.decisions import MatchDecisions, Pair
 from trip_feasibility.evals.score import Where, compare
 
-ROOT = Path(__file__).resolve().parents[2]
-DATASET = ROOT / "data" / "dataset"
-DECISIONS = ROOT / "data" / "evals" / "match_decisions.yaml"
-BASELINE = ROOT / "data" / "evals" / "baseline"
+DATASET = paths.DATASET
+DECISIONS = paths.MATCH_DECISIONS
+BASELINE = paths.BASELINE
 
 
 def collect_baseline(report: Report, decisions: MatchDecisions, split: str) -> int:

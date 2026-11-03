@@ -17,10 +17,10 @@ import sys
 import uuid
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
 from trip_feasibility.config import get_settings
 from trip_feasibility.db import make_engine
@@ -32,11 +32,12 @@ from trip_feasibility.evals.injection import (
     suite_version,
     summarise,
 )
+from trip_feasibility.llm import make_client
 from trip_feasibility.models import EvalRun
-from trip_feasibility.parse.extract import PROMPT_VERSION, make_client
+from trip_feasibility.parse.extract import PROMPT_VERSION
 from trip_feasibility.tracing import NoTracer, TracedClient, Usage
 
-OUT = Path(__file__).resolve().parents[2] / "data" / "evals" / "runs"
+OUT = paths.EVAL_RUNS
 CONCURRENCY = 4
 
 

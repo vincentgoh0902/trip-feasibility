@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.models import SEVERITY_RANK, CheckResult, Violation
 from trip_feasibility.itinerary import Stop, TravelPreferences
+from trip_feasibility.parse.geocode import City
 
 
 class CheckInput(BaseModel):
@@ -14,6 +15,24 @@ class CheckInput(BaseModel):
     regions: list[str] = []  # ISO 3166-2, any level; decides whether regional holidays apply
     preferences: TravelPreferences = TravelPreferences()
     config: CheckConfig = CheckConfig()
+
+    @classmethod
+    def for_city(
+        cls,
+        city: City,
+        stops: list[Stop],
+        preferences: TravelPreferences,
+        config: CheckConfig,
+    ) -> "CheckInput":
+        """The input for stops located in `city` (its name, country and regions)."""
+        return cls(
+            stops=stops,
+            city=city.name,
+            country_code=city.country_code.upper() if city.country_code else None,
+            regions=city.regions,
+            preferences=preferences,
+            config=config,
+        )
 
 
 class CheckReport(BaseModel):

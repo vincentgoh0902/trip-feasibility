@@ -8,11 +8,11 @@ when the committed file is out of date.
 """
 
 import json
-from pathlib import Path
 
+from trip_feasibility import paths
 from trip_feasibility.main import create_app
 
-OUT = Path(__file__).resolve().parents[2] / "frontend" / "openapi.json"
+OUT = paths.OPENAPI
 
 
 def render() -> str:

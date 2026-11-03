@@ -11,11 +11,11 @@ a red flag means more complaints than 90% of comparable hotels.
 import asyncio
 import statistics
 import time
-from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility import paths
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.checks.hotel_red_flags import THEMES, count_themes
 from trip_feasibility.config import get_settings
@@ -23,7 +23,7 @@ from trip_feasibility.dataset.validate import load_yaml
 from trip_feasibility.db import make_engine
 from trip_feasibility.models import Hotel, HotelReview
 
-HOTELS_YAML = Path(__file__).resolve().parents[2] / "docs" / "annotation" / "hotels.yaml"
+HOTELS_YAML = paths.HOTELS_TEMPLATE
 MIN_NEGATIVE_REVIEWS = 50
 
 

@@ -251,14 +251,7 @@ class RunService:
         if city is None:
             raise RunFailed("city_not_found", f"Couldn't find the city {req.city!r}")
         stops = await self._locate(req.stops, city, run)
-        inp = CheckInput(
-            stops=stops,
-            city=city.name,
-            country_code=city.country_code.upper() if city.country_code else None,
-            regions=city.regions,
-            preferences=req.preferences,
-            config=req.config,
-        )
+        inp = CheckInput.for_city(city, stops, req.preferences, req.config)
         enabled = [n for n in CHECK_NAMES if n in req.config.enabled]
         # The located stops go out with the first checks event, so the live feed can lay out
         # the itinerary before the first result arrives.
@@ -389,16 +382,16 @@ class RunService:
 
     # --- saving ---
 
-    async def _set_status(self, req: RunRequest, status: str) -> None:
-        if req.demo:
-            return
+    async def _update_run(self, run_id: uuid.UUID, **values: Any) -> None:
         async with self.sessionmaker() as session:
             await session.execute(
-                update(models.CheckRun)
-                .where(models.CheckRun.id == req.run_id)
-                .values(status=status)
+                update(models.CheckRun).where(models.CheckRun.id == run_id).values(**values)
             )
             await session.commit()
+
+    async def _set_status(self, req: RunRequest, status: str) -> None:
+        if not req.demo:
+            await self._update_run(req.run_id, status=status)
 
     async def _save(self, req: RunRequest, result: dict[str, Any], usage: Usage) -> None:
         all_fixes = result["_all_fixes"]
@@ -472,15 +465,12 @@ class RunService:
         if req.demo:
             return
         try:
-            async with self.sessionmaker() as session:
-                await session.execute(
-                    update(models.CheckRun)
-                    .where(models.CheckRun.id == req.run_id)
-                    .values(
-                        status="error", error=f"{code}: {message}", finished_at=datetime.now(UTC)
-                    )
-                )
-                await session.commit()
+            await self._update_run(
+                req.run_id,
+                status="error",
+                error=f"{code}: {message}",
+                finished_at=datetime.now(UTC),
+            )
         except Exception:
             log.exception("couldn't record the failure of run %s", req.run_id)
 

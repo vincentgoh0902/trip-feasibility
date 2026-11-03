@@ -9,19 +9,18 @@ itinerary (docs/annotation/example.yaml), never the dataset.
 """
 
 import asyncio
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
-from trip_feasibility.dataset.validate import load_yaml
-from trip_feasibility.parse.extract import extract_stops, make_client
+from trip_feasibility.dataset.example import Example, load_example
+from trip_feasibility.llm import make_client
+from trip_feasibility.parse.extract import extract_stops
 from trip_feasibility.parse.geocode import geocode_stops, locate_city
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.parse.schema import ExtractedStop
 
-EXAMPLE = Path(__file__).resolve().parents[2] / "docs" / "annotation" / "example.yaml"
 CITIES = ["Paris", "London", "Barcelona", "Vienna"]
 
 
@@ -37,13 +36,12 @@ async def main() -> None:
                 continue
             print(f"{name}: {city.place.osm.url} {city.country_code} bbox={city.place.bbox}")
 
-        raw = load_yaml(EXAMPLE)
-        extracted = [ExtractedStop(**{k: s[k] for k in s if k in ExtractedStop.model_fields})
-                     for s in raw["stops"]]  # fmt: skip
+        example = load_example()
+        extracted = [*example.stops]
         extracted.append(ExtractedStop(day=2, place_name="Château de Versailles", type="venue"))
         paris = await locate_city(deps, "Paris")
         assert paris is not None
-        stops = normalise(extracted, raw["trip_start"])
+        stops = normalise(extracted, example.trip_start)
         _, geocodes = await geocode_stops(deps, stops, paris)
         print()
         for s in stops:
@@ -56,16 +54,17 @@ async def main() -> None:
         if settings.anthropic_api_key is None:
             print("\nANTHROPIC_API_KEY not set: skipping extraction (step 1).")
         else:
-            await smoke_extraction(settings, raw, extracted[: len(raw["stops"])])
+            await smoke_extraction(settings, example)
     await engine.dispose()
 
 
-async def smoke_extraction(settings, raw: dict, gold: list[ExtractedStop]) -> None:
+async def smoke_extraction(settings, example: Example) -> None:
+    gold = example.stops
     result = await extract_stops(
         make_client(settings),
-        EXAMPLE.with_suffix(".md").read_text(encoding="utf-8"),
-        city=raw["city"].title(),
-        trip_start=raw["trip_start"],
+        example.text,
+        city=example.city,
+        trip_start=example.trip_start,
         model=settings.extraction_model,
         effort=settings.extraction_effort,
     )
