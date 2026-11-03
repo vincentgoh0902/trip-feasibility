@@ -65,8 +65,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
         --ask`), saved in `data/evals/match_decisions.yaml` and reused by every run and
         system; undecided pairs make a score provisional (2026-10-29). The 6 verified dev
         files' baseline outputs raised no uncertain pairs
-  - [ ] 7. Baseline vs our system (parsed mode) on the first 5 dev files Vincent verifies:
-        precision and recall per check
+  - [x] 7. Baseline vs our system (parsed mode), on all 15 verified dev files (2026-11-03,
+        run `afd18efa`, EVALS.md): ours 16 of 24 / 16 of 30, baseline 18 of 23 / 18 of 30;
+        extraction (stop recall 73%) is the gap from gold mode. Nominatim timeouts can fail
+        a whole itinerary; rerun until none, or retry once through the limiter (open)
 - [ ] First baseline eval on the dev set (needs the annotated dev set; parsed mode needs the key)
 - [x] Langfuse tracing (optional, no traveller content by default), cost per run and per
       parse, `check_runs` rows with violations and fixes (`tracing.py`, `pricing.py`, `runs.py`)

@@ -229,3 +229,52 @@ false alarms for 1 hit. Without the baseline's daily load, the union is 22 of 27
 22 of 30 (73%), but that choice is made on this same dev set. The differences are 4–5 labels:
 a direction for the hybrid design (agreement = confirmed, one side only = worth checking),
 not a result. Redo in parsed mode once extraction runs.
+
+### 2026-11-03 · parsed mode · `afd18efa` · first end-to-end run
+
+What changed: the API key is in, so this is the first run from the raw text (extraction
+`extract-v10`, Claude Haiku 5.5, effort low; then geocoding and the checks). Same config and
+dataset as `ed8f90eb`. A gold-mode rerun on the same code (`a2c3ac70`) reproduced `ed8f90eb`
+exactly. An earlier parsed run (`4f11581f`) is discarded: Nominatim timed out on barcelona-02
+and paris-08 and on opening hours for london-04, so 3 of 15 were missing or partial.
+Extraction: 62K input / 42K output tokens, about $0.03 at `pricing.py`'s rates.
+
+| Check | Precision | Recall | Severity | vs gold mode `a2c3ac70` |
+|---|---|---|---|---|
+| Opening hours | 9 of 13 | 9 of 17 | 67% | 10 of 12 / 10 of 17 |
+| Public holidays | 4 of 4 | 4 of 4 | 100% | unchanged |
+| Travel time | 3 of 7 | 3 of 7 | 67% | 5 of 6 / 5 of 7 |
+| Daily load | none reported | 0 of 2 | | unchanged |
+| **All four** | **16 of 24 (67%)** | **16 of 30 (53%)** | | 19 of 22 (86%) / 19 of 30 (63%) |
+| Hotel red flags | 1 of 1 | 1 of 2 | 100% | unchanged |
+
+Parse accuracy: stop recall 73%, stop precision 82%, field accuracy 95% (aligned stops).
+The discarded run had 77% / 84% on the same text: extraction varies from run to run.
+
+The fair comparison with the LLM-only baseline (both from the raw text):
+
+| | Precision | Recall |
+|---|---|---|
+| Ours, parsed `afd18efa` | 16 of 24 (67%) | 16 of 30 (53%) |
+| Baseline `baseline-v4` | 18 of 23 (78%) | 18 of 30 (60%) |
+| Union (either flags it) | 20 of 33 (61%) | 20 of 30 (67%) |
+| Intersection (both flag it) | 14 of 14 (100%) | 14 of 30 (47%) |
+
+Reading: end to end, the baseline is ahead on both, by 2 labels found and 4 false alarms.
+Every flag both raise is still real (14 of 14). Travel time, our one clear lead in gold mode,
+drops to 3 of 7, level with the baseline's 2 of 7 within noise.
+
+Where parsed mode lost against gold mode:
+- Travel time: london-08 loses two legs (Old Compton Street → Covent Garden, Notting Hill →
+  Kensington Gardens) to extraction differences. barcelona-10's leg is found but its
+  destination is extracted as "Lunch", where the label says "leisurely farewell lunch", so
+  it scores as a miss plus a false alarm. New false alarms come from stops gold doesn't have
+  or names that geocode loosely: Tibidabo → "city center", Soho → The Salisbury, V&A → "Morris
+  Room" (a room inside the V&A, geocoded elsewhere), Tower of London → South Bank.
+- Opening hours: Musée Rodin (paris-02) and Luxembourg Garden (paris-05) are lost with their
+  stops; "Seine" (paris-07) is extracted as a stop and flagged. Borough Market (london-08), a
+  baseline-only find in gold mode, is now found.
+
+Next: the parser, not the checks, is what separates gold mode from the baseline. Look at the
+stops extraction drops or renames on the dev files, and at activity words and rooms inside
+venues reaching the geocoder.
