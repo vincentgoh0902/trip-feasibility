@@ -33,7 +33,9 @@ samples, settling the hosting shape.
 Waiting on Vincent:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies and the labels;
    the `dataset-backup-*` folders beside it don't count). Also `data/evals/match_decisions.yaml`.
-2. **Label the 25 test files**, before the final test run.
+2. **Set the cause** on the 17 verified dev opening_hours labels: `scripts/set_cause.py --ask`.
+3. **Draft and verify the 25 test files**, in his own terminal: `scripts/draft_gold.py --test`,
+   then check each label (cause included) and set `verified_by_human: true`.
 
 Optional: Langfuse Cloud keys; before slice 2 can be tried, OAuth apps + `API_JWT_SECRET`.
 
@@ -121,6 +123,8 @@ Planned: `train/` (Tier 2, Mac only).
   while building**; only the final test run touches them. If anything changes after Vienna
   results were seen, record it in the README (Vienna is then no longer unseen). Variants stay
   in their parent's split; `dataset.split_errors` checks this. Cached Vienna lookups are fine.
+  Test labels stay unseen too: test files are drafted only by Vincent (`draft_gold.py
+  --test`, decision 89); never run `--show-test` or open a test YAML yourself.
 - **Don't look at the hotel check's output on the 16 dataset hotels** before I've labelled
   them (`check_itinerary.py --example` skips it, as the example's hotel is one of them), and
   never run it on Vienna hotels. Calibration uses hotels outside the dataset.
@@ -132,7 +136,8 @@ Planned: `train/` (Tier 2, Mac only).
   `parse.schema.ExtractedStop`, so changing that schema changes the dataset format.
   Gold stops and legs are **dev only, for parser debugging, and frozen** (no new stop rules). The gold is `violations` (opening_hours, public_holidays, travel_time, daily_load):
   check, day, place/time copied from the cleaned text, severity, evidence, source,
-  confidence (verified | estimated); plus `unknowns` (not scored) and `other_issues`.
+  confidence (verified | estimated), and on opening_hours a `cause` (regular | special,
+  decision 88); plus `unknowns` (not scored) and `other_issues`.
   hotel_red_flags labels come from hotels.yaml for the file's `hotel` (red flag at about
   4+/40 sampled reviews for noise and cleanliness, 3+ location, 2+ safety). warning/blocker
   only. Drafts only from a non-Anthropic model (`drafted_by`); a file counts only with
@@ -210,6 +215,9 @@ scripts/save_reply.sh paris-03                        # clipboard → data/datas
 uv run python scripts/validate_dataset.py --partial   # drop --partial once all 40 are done
 uv run python scripts/format_dataset.py [--write]     # standard YAML layout (layout only, backs up)
 uv run python scripts/draft_gold.py [--ids ...]       # draft dev gold with GPT via Codex CLI (backs up)
+uv run python scripts/draft_gold.py --test            # test files: Vincent's terminal only, prints no labels
+uv run python scripts/set_cause.py [--ask]            # Vincent sets cause on verified opening_hours labels
+uv run python scripts/validate_dataset.py --partial --show-test   # test problems: Vincent's terminal only
 uv run python scripts/run_baseline.py [--ids ...]     # LLM-only baseline, Haiku via claude -p (cached)
 uv run python scripts/score_baseline.py               # baseline vs verified gold (dev)
 uv run python scripts/show_clean.py paris-03          # the reply as extraction sees it

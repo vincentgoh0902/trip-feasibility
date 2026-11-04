@@ -19,8 +19,10 @@ from trip_feasibility.evals.score import (
     Counts,
     ParseCounts,
     Where,
+    add_by_cause,
     compare,
     findings,
+    found_by_cause,
     gold_label,
     parse_counts,
 )
@@ -57,6 +59,8 @@ class Outcome:
     fixed: int = 0  # of those, how many got a valid fix
     fix_tokens: tuple[int, int] = (0, 0)
     predicted: dict[str, str] = field(default_factory=dict)  # Finding.label() -> severity
+    # opening_hours labels found by cause: {"regular": [found, labelled], ...} (decision 88)
+    opening_hours_by_cause: dict[str, list[int]] = field(default_factory=dict)
     gold: dict[str, str] = field(default_factory=dict)
     undecided: int = 0  # uncertain name pairs still waiting for a human (evals/decisions.py)
 
@@ -156,6 +160,7 @@ async def evaluate_itinerary(
         if isinstance(e, ParseError) and itin.stops is not None:
             out.parse = ParseCounts(gold_stops=len(itin.stops))
         out.counts = compare([], gold)  # everything missed
+        out.opening_hours_by_cause = found_by_cause([], gold)
         out.seconds = time.monotonic() - started
         return out
 
@@ -165,6 +170,7 @@ async def evaluate_itinerary(
     out.predicted = {f.label(): f.severity for f in predicted}
     where = Where(itin.id, itin.split, decisions) if decisions is not None else None
     out.counts = compare(predicted, gold, itin.unknowns, where)
+    out.opening_hours_by_cause = found_by_cause(predicted, gold, where)
     if decisions is not None:
         out.undecided = sum(p.itinerary == itin.id for p in decisions.pending.values())
     out.statuses = {n: r.status for n, r in report.results.items()}
@@ -245,6 +251,10 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
     summary["errors"] = {o.id: o.error for o in outcomes if o.error}
     summary["hotel_unlabelled"] = [o.id for o in outcomes if o.hotel_unlabelled]
     summary["undecided_pairs"] = sum(o.undecided for o in outcomes)
+    by_cause: dict[str, list[int]] = {}
+    for o in outcomes:
+        add_by_cause(by_cause, o.opening_hours_by_cause)
+    summary["opening_hours_by_cause"] = by_cause
 
     parses = [o.parse for o in outcomes if o.parse is not None]
     if parses:

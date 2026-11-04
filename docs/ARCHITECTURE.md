@@ -1068,7 +1068,10 @@ git.
   a plain LLM) can be scored against them, whatever stops it extracted.
 - **Drafts come from another provider than the extractor** (GPT or Gemini, never
   Anthropic), and count only once a human has checked every label (`verified_by_human:
-  true`). `drafted_by` records the model, or `human`.
+  true`). `drafted_by` records the model, or `human`. Test files are drafted with `--test`
+  in Vincent's terminal and never shown while building (decision 89).
+- **Opening-hours labels have a `cause`**, `regular` or `special` (decision 88), so the
+  scores show which part of the system catches which kind.
 - **`unknowns`** are things the annotator couldn't establish: a prediction matching one is
   neither right nor wrong. **`other_issues`** are problems outside the checks; not scored.
 - **Hotel labels are per hotel**, not per itinerary: 16 decisions instead of 40, from a
@@ -1275,7 +1278,7 @@ Postgres. What to settle before the first deploy:
 Grouped by topic. The numbers are the original decision numbers, which other docs and code
 comments cite; a row carries several when later decisions refined earlier ones. What a
 decision replaced, or what was tried and dropped, is listed under its topic with the reason.
-A new decision takes the next number (88 onwards) and goes under its topic.
+A new decision takes the next number (90 onwards) and goes under its topic.
 
 ### Foundations
 
@@ -1427,13 +1430,17 @@ Replaced or dropped:
 | 26 | Labels are judged against reality, not against our data sources | Measures the whole system, data gaps included | Lower scores where OSM is poor |
 | 74 | **Violations first** (2026-10-27): the gold is violations in the text's own words (check, day, place and time as written, severity, evidence, source, confidence), plus `unknowns` and `other_issues`, matched by place name; travel time labelled directly; drafts from a non-Anthropic model count only once verified (`drafted_by`, `verified_by_human`); gold stops and legs frozen, dev only | Stop rules kept growing (68–73) and each changed the dataset; labels in the text's words don't depend on how anyone splits it into stops, so a plain LLM can be scored on the same labels; a drafter from another provider avoids rewarding shared blind spots | Fuzzy name matching needs some human decisions; drafts can anchor the annotator |
 | 87 | Eval runs can replay model replies (`run_eval.py --replay`, `evals/replay.py`): each request's reply is saved under a hash of the whole request and served again for the same request (2026-11-03) | The model varies from run to run (stop recall 77% and 73% on the same text), which hides the effect of a geocoder or check change; replay makes those A/B tests exact and free, extending eval mode's "reruns make no external calls" to the LLM | A prompt, text or model change is a new request (paid once); the replies live in gitignored `data/evals/llm-replay/` |
+| 88 | Opening-hours labels carry a `cause`: `regular` (the venue's standing published hours, its yearly holiday closures included) or `special` (tied to particular dates: a maintenance shutdown, renovation, this year's hours, an event, a strike); results report opening-hours recall per cause. Drafted with each label (`draft-v5`), set by Vincent on labels verified before it (`scripts/set_cause.py --ask`); the baseline's prompt is unchanged (2026-11-04) | One opening-hours number would hide what the closures check adds: OSM covers regular hours, the closures check is for special ones, and that's where the plain LLM has the edge. A separate closures check type was the alternative; one check with a cause keeps the labels and matching as they are | One more choice per label; precision can't split by cause (predictions carry none); "this year's holiday hours" vs "always closes on 25 December" needs care |
+| 89 | Test files are drafted only with `draft_gold.py --test`, run by Vincent in his own terminal: it prints which files were drafted, never their labels, counts or errors (those go to `data/dataset-drafts/`); the validator counts test-file problems without showing them unless `--show-test`, and YAML errors give the line, not its text (2026-11-04) | The test labels (Vienna's above all) must stay unseen while building, or tuning leaks into the reported results; validator messages quote labels, and `run_eval.py` prints them | Fixing a problem in a test file needs `--show-test`, in Vincent's terminal only |
 | 46, 47 | Two modes, reported apart: gold stops and parsed; a prediction matches a label on check + day + place, with severity scored separately | Separates check errors from parse errors, and gold mode needs no key; a blocker reported as a warning still found the problem | Detection scores look better than severity accuracy |
 | 48 | Parsed stops aligned to gold by day and name, greedily, one to one | Names are copied verbatim, while positions shift | Near-identical names on one day can swap |
 | 79 | Four fixes from the gold-mode diagnosis (2026-10-31, run `730a021b` → `8ef09a3b`): stops sharing a morning/afternoon/evening slot split it in order; regional holidays by the city's ISO 3166-2 codes; sunrise/sunset hours placed by the stop's coordinates; gold stops located like parsed ones | Shared windows made stops overlap by hours; regional holidays came back "may not apply"; sunset was a fixed 19:00; the runner geocoded activity words (one landed 45 km away) | Equal shares are a guess (a museum and a walk get the same time) |
 
 Drafter and baseline prompt versions (the same steps for both): `draft-v1`/`baseline-v1`
 (2026-10-27); `-v2` (2026-10-29: travel-time rules of 76 and 77); `-v3` (2026-10-30: the
-bands of 78); `-v4` (2026-10-31: shared slots split in order, decision 79).
+bands of 78); `-v4` (2026-10-31: shared slots split in order, decision 79). Then `draft-v5`
+alone (2026-11-04: a cause on each opening-hours label, decision 88); the baseline stays at
+`baseline-v4`.
 
 Replaced or dropped:
 - **24, travel-time labels derived from recorded leg times, and 27, labels naming a stop id**

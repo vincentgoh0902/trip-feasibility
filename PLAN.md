@@ -17,7 +17,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       paris 02 05 07 08 09; london 04 05 08 09 10; barcelona 02 06 07 08 10.
 - [x] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3). Done 2026-10-25.
 - [ ] **Vincent: annotate** the itineraries (step 4): the 15 dev files are verified
-      (by 2026-10-30); the 25 test files are still to label, before the final test run
+      (by 2026-10-30); the 25 test files are still to label, before the final test run:
+      `draft_gold.py --test` in your own terminal (decision 89), then verify each
+- [ ] **Vincent: set the cause** on the 17 verified dev opening_hours labels
+      (`scripts/set_cause.py --ask`, decision 88)
 - [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
@@ -145,7 +148,9 @@ the design changes), then 1 → 2 → 4 → 3 → 5.
    it relies on and is "estimated"; it may call the read-only MCP tools (a few calls at
    most); findings citing nothing are rejected in code; not sent to the fixer at first.
 5. **Evaluation:** `cause: regular | special` on opening_hours labels (no separate closures
-   type), in the format, validator, drafter and baseline prompts; sweep of the dev drafts'
+   type): done 2026-11-04 in the format, validator, scoring and drafter (`draft-v5`); the
+   baseline prompt deliberately unchanged, since predictions are matched without a cause
+   (decision 88); sweep of the dev drafts'
    `other_issues` (listed for Vincent to confirm before anything moves); results per check
    side by side with the LLM-only baseline, opening_hours also split by cause and by which
    component found it; optional/X-or-Y findings as counts plus Vincent's ratings, unscored.

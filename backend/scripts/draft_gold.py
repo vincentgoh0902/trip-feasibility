@@ -1,12 +1,17 @@
-"""Draft gold violations for dev itineraries with a search-enabled LLM (dataset/draft.py).
+"""Draft gold violations with a search-enabled LLM (dataset/draft.py).
 
     uv run python scripts/draft_gold.py                       # every dev file with no gold yet
+    uv run python scripts/draft_gold.py --test                # every test file with no gold yet
     uv run python scripts/draft_gold.py --ids paris-08,london-04
     uv run python scripts/draft_gold.py --replace-unverified  # also redo unverified gold
     uv run python scripts/draft_gold.py --prompt paris-08     # print the prompt, run nothing
     uv run python scripts/draft_gold.py --backend codex --model gpt-6-sol --effort high
 
-Dev only; Vienna files are never opened. Files with verified gold are never touched. Each
+Dev files by default, and then Vienna files are never opened. `--test` drafts the test split
+instead (Vienna included), with Vincent's go-ahead (decision 89): run it in your own
+terminal. For test files nothing about a draft is printed (no counts, no error text: those go
+to data/dataset-drafts/), and --prompt refuses them. Files with verified gold are never
+touched. Each
 draft is written as soon as it's done (`drafted_by` = model, tool and prompt version;
 `verified_by_human: false`), after one backup of itineraries/. The raw outputs, with usage
 and search counts, go to data/dataset-drafts/ (outside the dataset, so they don't change
@@ -57,26 +62,31 @@ def main() -> int:
     parser.add_argument("--model", default="gpt-6-sol")
     parser.add_argument("--effort", default="high")
     parser.add_argument("--parallel", type=int, default=3)
+    parser.add_argument("--test", action="store_true", help="draft the test split instead")
     args = parser.parse_args()
 
     ids = set(filter(None, args.ids.split(",")))
     if args.prompt:
+        if args.test:
+            parser.error("--prompt shows a file's text: dev files only")
         ids = {args.prompt}
-    if any(i.startswith("vienna-") for i in ids):
-        parser.error("Vienna is held out: never drafted here")
+    if not args.test and any(i.startswith("vienna-") for i in ids):
+        parser.error("Vienna is in the test split: add --test (run it in your own terminal)")
+    split = "test" if args.test else "dev"
 
     chosen: list[tuple[Path, dict, DatasetItinerary]] = []
     for path in sorted((args.dir / "itineraries").glob("*.yaml")):
-        if path.stem.startswith("vienna-") or (ids and path.stem not in ids):
+        if (not args.test and path.stem.startswith("vienna-")) or (ids and path.stem not in ids):
             continue  # held out: not even opened
         try:
             raw, itin = load(args.dir, path)
         except (yaml.YAMLError, ValueError, OSError) as e:
             print(f"skipped  {path.name}: doesn't load ({type(e).__name__}); fix it first")
             continue
-        if itin.split != "dev":
+        if itin.split != split:
             if ids:
-                print(f"skipped  {path.name}: test split (needs Vincent's go-ahead)")
+                hint = "drafted without --test" if itin.split == "dev" else "needs --test"
+                print(f"skipped  {path.name}: {itin.split} split ({hint})")
             continue
         if itin.violations is not None and (itin.verified_by_human or not args.replace_unverified):
             if ids:
@@ -103,10 +113,11 @@ def main() -> int:
     RAW_OUT.mkdir(exist_ok=True)
     print(f"drafting {len(chosen)} file(s) with {args.backend}/{args.model}, "
           f"{args.parallel} at a time")  # fmt: skip
-    return asyncio.run(run_all(llm, chosen, args.parallel))
+    return asyncio.run(run_all(llm, chosen, args.parallel, hidden=args.test))
 
 
-async def run_all(llm, chosen, parallel: int) -> int:
+async def run_all(llm, chosen, parallel: int, *, hidden: bool = False) -> int:
+    """`hidden` (test files): print that each file was drafted, nothing about the draft."""
     gate = asyncio.Semaphore(parallel)
     failed = 0
 
@@ -114,9 +125,14 @@ async def run_all(llm, chosen, parallel: int) -> int:
         nonlocal failed
         async with gate:
             try:
-                draft = await draft_itinerary(llm, itin)
+                draft = await draft_itinerary(llm, itin, allow_test=hidden)
             except SearchLLMError as e:
-                print(f"failed   {itin.id}: {e}")
+                if hidden:  # the error can quote the model's output: to the file only
+                    out = RAW_OUT / f"{itin.id}-{datetime.now():%Y%m%d-%H%M%S}-error.txt"
+                    out.write_text(str(e), encoding="utf-8")
+                    print(f"failed   {itin.id}: {type(e).__name__} (details in {out.name})")
+                else:
+                    print(f"failed   {itin.id}: {e}")
                 failed += 1
                 return
         drafted_by = f"{llm.label}, {DRAFT_PROMPT_VERSION}"
@@ -140,12 +156,16 @@ async def run_all(llm, chosen, parallel: int) -> int:
                 )  # fmt: skip
             )
         except LayoutError as e:
-            print(f"failed   {itin.id}: can't write the file ({e}); raw output saved")
+            why = "" if hidden else f" ({e})"
+            print(f"failed   {itin.id}: can't write the file{why}; raw output saved")
             failed += 1
             return
         await asyncio.to_thread(path.write_text, text, encoding="utf-8")
         searches = sum(r.searches for r in draft.runs)
         minutes = sum(r.seconds for r in draft.runs) / 60
+        if hidden:
+            print(f"drafted  {itin.id} ({len(draft.runs)} run(s), {minutes:.1f} min)")
+            return
         print(f"drafted  {itin.id}: {len(draft.violations)} violations, "
               f"{len(draft.unknowns)} unknowns, {len(draft.other_issues)} other issues"
               f"{f', {len(draft.dropped)} dropped' if draft.dropped else ''} "

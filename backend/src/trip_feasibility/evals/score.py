@@ -131,6 +131,28 @@ def match(
     return pairs
 
 
+def found_by_cause(
+    predicted: list[Finding], gold: list[GoldViolation], where: Where | None = None
+) -> dict[str, list[int]]:
+    """opening_hours labels by cause (decision 88): {"regular": [found, labelled], ...};
+    "unset" for labels without a cause yet. Predictions carry no cause, so only recall splits."""
+    found = set(match(predicted, gold, where).values())
+    out: dict[str, list[int]] = {}
+    for j, g in enumerate(gold):
+        if g.check == "opening_hours":
+            row = out.setdefault(g.cause or "unset", [0, 0])
+            row[0] += j in found
+            row[1] += 1
+    return out
+
+
+def add_by_cause(total: dict[str, list[int]], part: dict[str, list[int]]) -> None:
+    for cause, (found, labelled) in part.items():
+        row = total.setdefault(cause, [0, 0])
+        row[0] += found
+        row[1] += labelled
+
+
 def _is_unknown(p: Finding, unknowns: list[Unknown]) -> bool:
     return any(
         u.check == p.check

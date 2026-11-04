@@ -33,6 +33,10 @@ Check = LabelledCheck | Literal["hotel_red_flags"]
 LabelSeverity = Literal["warning", "blocker"]
 # verified: looked up (official site, Google Maps); estimated: a judgement from the text
 Confidence = Literal["verified", "estimated"]
+# why an opening_hours label fires (decision 88): regular = the venue's standing published
+# hours, its yearly holiday closures included; special = tied to particular dates outside
+# them (a maintenance shutdown, renovation, this year's hours, an event, a strike)
+Cause = Literal["regular", "special"]
 # the checks that name a place; the others name only a day
 PLACE_CHECKS = ("opening_hours", "travel_time")
 
@@ -94,12 +98,15 @@ class LabelledViolation(_Strict):
     from_place: str | None = Field(default=None, min_length=1, max_length=300)
     time: str | None = Field(default=None, min_length=1, max_length=100)  # as written
     severity: LabelSeverity
+    cause: Cause | None = None  # opening_hours only; required once the file is verified
     evidence: str = Field(min_length=1)
     source: str = Field(min_length=1)
     confidence: Confidence
 
     @model_validator(mode="after")
     def _target_matches_check(self):
+        if self.cause is not None and self.check != "opening_hours":
+            raise ValueError("only opening_hours labels have a cause")
         if self.check in PLACE_CHECKS and self.place is None:
             raise ValueError(f"{self.check} labels name a place")
         if self.check not in PLACE_CHECKS and self.place is not None:
@@ -148,6 +155,13 @@ class DatasetItinerary(DatasetEntry, _Strict):
     def annotated(self) -> bool:
         """The gold is there and a human has verified it (evals use only these)."""
         return self.violations is not None and self.verified_by_human
+
+    @property
+    def causes_missing(self) -> int:
+        """Verified opening_hours labels with no cause yet (labelled before decision 88)."""
+        if not self.verified_by_human:
+            return 0
+        return sum(v.check == "opening_hours" and v.cause is None for v in self.violations or [])
 
     @property
     def still_to_do(self) -> list[str]:

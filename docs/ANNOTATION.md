@@ -167,9 +167,13 @@ you've checked: it means "checked, none found". See `docs/annotation/example.yam
   and set `verified_by_human: true`; fix, add or delete labels freely before that.
 - **Drafting:** `uv run python scripts/draft_gold.py` (from `backend/`) drafts every dev
   file with no gold yet, using GPT through the Codex CLI with web search. Check each label
-  against the official source (fix, add or delete freely), then set
+  against the official source (fix, add or delete freely), its `cause` included, then set
   `verified_by_human: true`. Entries the drafter couldn't quote exactly are named in
   `notes`.
+- **Test files** (decision 89): `uv run python scripts/draft_gold.py --test`, in your own
+  terminal, not in a Claude session. It prints only which files were drafted, never their
+  labels; problems in test files are shown only by `scripts/validate_dataset.py --partial
+  --show-test`. Verify them the same way. Claude never reads test labels while building.
 - **`hotel`:** the hotel the prompt names, as its key in hotels.yaml (leave it out if none).
   Its red flags become the hotel labels, so you don't write those.
 - `notes` is text, not a list: leave it out when there's nothing to say, never `[]`.
@@ -329,6 +333,7 @@ One entry per problem, with:
 | `from_place` | travel_time only, optional: the place left, copied the same way |
 | `time` | Optional: the time as written ("9:30 AM – 11:00 AM"), copied exactly |
 | `severity` | `blocker`: doesn't work as written. `warning`: works, but risky or partly wrong |
+| `cause` | opening_hours only: `regular` or `special` (below, decision 88) |
 | `evidence` | One sentence: what's wrong and the fact that shows it |
 | `source` | Where the fact comes from: the official page (URL), "Google Maps", or "judgement" |
 | `confidence` | `verified`: you looked it up for that date. `estimated`: a judgement (pace, a time you couldn't pin down) |
@@ -358,6 +363,16 @@ holiday closures and last admission.
   (decision 79).
 - Only venues and named meals. No labels for hotels, stations, parks and squares that are
   always open; places you can't establish hours for go in `unknowns`.
+- **`cause`** (decision 88), on every opening_hours label:
+  - `regular`: the venue's standing published hours, as its hours page states them every
+    year: weekly closing days, opening times, last admission, and the holidays it always
+    closes on ("closed 25 December, 1 January and 1 May").
+  - `special`: something tied to particular dates outside those hours: a maintenance
+    shutdown (the London Eye's annual one), a renovation, this year's seasonal or holiday
+    hours, a private event, a strike, a temporary closure. Say in `evidence` what was
+    announced and for which dates.
+  It splits the opening-hours scores: OSM data covers regular hours, the planned closures
+  check special ones. Labels verified before causes existed: `scripts/set_cause.py --ask`.
 
 #### `public_holidays` (names a day)
 

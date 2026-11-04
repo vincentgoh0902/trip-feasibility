@@ -2,8 +2,9 @@ import json
 
 import pytest
 
-from tests.test_dataset_draft import FakeLLM, label, output, undrafted
-from trip_feasibility.dataset.draft import RULES
+from tests.test_dataset_draft import FakeLLM as DraftLLM
+from tests.test_dataset_draft import label, output, undrafted
+from trip_feasibility.dataset.draft import RULES, SCHEMA
 from trip_feasibility.evals.baseline import BASELINE_PROMPT_VERSION, build_prompt, run_baseline
 from trip_feasibility.evals.score import Finding
 from trip_feasibility.evals.search_llm import (
@@ -12,6 +13,10 @@ from trip_feasibility.evals.search_llm import (
     SearchResult,
     parse_claude_events,
 )
+
+
+class FakeLLM(DraftLLM):
+    schema = SCHEMA  # the baseline answers without causes (decision 88)
 
 
 def test_prompt_shares_the_rules_and_inputs_but_not_the_framing():

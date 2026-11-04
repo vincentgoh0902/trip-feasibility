@@ -4,6 +4,9 @@ import pytest
 
 from tests.test_dataset_validate import example, hotels
 from trip_feasibility.dataset.draft import (
+    CAUSE_RULES,
+    DRAFT_SCHEMA,
+    RULES,
     SCHEMA,
     apply_draft,
     build_prompt,
@@ -20,20 +23,25 @@ class FakeLLM:
     model = "fake-1"
     label = "fake-1 via test"
 
+    schema = DRAFT_SCHEMA  # the baseline's tests expect the shared SCHEMA
+
     def __init__(self, *outputs):
         self.outputs = list(outputs)
         self.prompts: list[str] = []
 
     async def run(self, prompt, schema):
-        assert schema is SCHEMA
+        assert schema is self.schema
         self.prompts.append(prompt)
         return SearchResult(output=self.outputs.pop(0), provider=self.provider, model=self.model)
 
 
 def label(**fields):
-    return {"check": "opening_hours", "day": 1, "place": "Louvre Museum", "from_place": None,
-            "time": "9:00 – 12:00", "severity": "blocker", "evidence": "Closed Tuesdays",
-            "source": "https://www.louvre.fr", "confidence": "verified", **fields}  # fmt: skip
+    out = {"check": "opening_hours", "day": 1, "place": "Louvre Museum", "from_place": None,
+           "time": "9:00 – 12:00", "severity": "blocker", "evidence": "Closed Tuesdays",
+           "source": "https://www.louvre.fr", "confidence": "verified", **fields}  # fmt: skip
+    # only opening_hours labels carry a cause
+    out.setdefault("cause", "regular" if out["check"] == "opening_hours" else None)
+    return out
 
 
 def output(*violations, unknowns=(), other_issues=()):
@@ -94,8 +102,19 @@ async def test_never_anthropic_and_dev_only():
     llm.provider = "anthropic"
     with pytest.raises(ValueError, match="never come from Anthropic"):
         await draft_itinerary(llm, undrafted())
-    with pytest.raises(ValueError, match="dev only"):
-        await draft_itinerary(FakeLLM(), undrafted().model_copy(update={"split": "test"}))
+    test_file = undrafted().model_copy(update={"split": "test"})
+    with pytest.raises(ValueError, match="need --test"):
+        await draft_itinerary(FakeLLM(), test_file)
+    draft = await draft_itinerary(FakeLLM(output(label())), test_file, allow_test=True)
+    assert len(draft.violations) == 1
+
+
+def test_only_the_drafter_asks_for_a_cause():
+    # the baseline shares RULES and SCHEMA, so its prompt and cached outputs don't change
+    assert CAUSE_RULES not in RULES and "cause" not in str(SCHEMA)
+    item = DRAFT_SCHEMA["properties"]["violations"]["items"]
+    assert "cause" in item["required"] and None in item["properties"]["cause"]["enum"]
+    assert CAUSE_RULES in build_prompt(undrafted())
 
 
 async def test_applied_draft_is_a_valid_unverified_file():

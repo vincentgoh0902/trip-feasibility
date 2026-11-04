@@ -26,6 +26,7 @@ hotel: # the hotel the prompt names, as its key in hotels.yaml (leave out if non
 #     place: ... # as written; opening_hours and travel_time only
 #     time: ... # as written, if the text gives one
 #     severity: blocker # warning | blocker
+#     cause: regular # opening_hours only: regular (standing hours) | special (dated closure)
 #     evidence: ...
 #     source: ...
 #     confidence: verified # verified (looked up) | estimated (judged)

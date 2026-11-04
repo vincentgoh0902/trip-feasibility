@@ -177,6 +177,21 @@ def test_hotel_stops():
     ]
 
 
+def test_a_cause_is_for_opening_hours_labels_only():
+    louvre = example().violations[0].model_dump()
+    assert example(violations=[louvre | {"cause": "special"}]).violations[0].cause == "special"
+    walk = example().violations[1].model_dump()
+    with pytest.raises(ValidationError, match="only opening_hours labels have a cause"):
+        example(violations=[walk | {"cause": "regular"}])
+
+
+def test_verified_labels_without_a_cause_are_counted():
+    louvre = example().violations[0].model_dump() | {"cause": None}
+    assert example(violations=[louvre]).causes_missing == 1
+    assert example(violations=[louvre], verified_by_human=False).causes_missing == 0
+    assert gold_violations(example(), hotels())[0].cause == "regular"
+
+
 def test_a_draft_counts_once_verified():
     itin = example(drafted_by="gemini-x", verified_by_human=False)
     assert not itin.annotated and gold_violations(itin, hotels()) == []
@@ -292,6 +307,40 @@ def test_schema_errors_name_the_file(dataset):
     write(dataset, "paris-01", city="rome")
     errors = validate_dataset(dataset, partial=True).errors
     assert len(errors) == 1 and errors[0].startswith("itineraries/paris-01.yaml: city: Input")
+
+
+def test_test_file_problems_are_counted_not_shown(dataset):
+    # a misquoted label in a test file: the message would quote it
+    labels = load_yaml(EXAMPLE)["violations"]
+    labels[0]["place"] = "The Louvre"
+    test_file = {"split": "test", "stops": None, "legs": None, "violations": labels}
+    write(dataset, "paris-01", **test_file)
+    write(dataset, "paris-02", **test_file | {"city": "rome"})  # doesn't even load
+    hidden = validate_dataset(dataset, partial=True).errors
+    assert not any("Louvre" in e or "rome" in e for e in hidden)
+    assert sorted(e.split(", not shown")[0] for e in hidden) == [
+        "itineraries/paris-01.yaml: 1 problem(s) in a test file",
+        "itineraries/paris-02.yaml: 1 problem(s) in a test file",
+    ]
+    shown = validate_dataset(dataset, partial=True, show_test=True).errors
+    assert any("'The Louvre' isn't copied" in e for e in shown)
+
+
+def test_yaml_errors_give_the_line_not_the_text(dataset):
+    (dataset / "itineraries" / "paris-01.yaml").write_text("id: paris-01\nsecret: [unclosed\n")
+    (dataset / "texts" / "paris-01.md").write_text("x\n")
+    errors = validate_dataset(dataset, partial=True).errors
+    assert errors[0].startswith("itineraries/paris-01.yaml: not valid YAML at line")
+    assert "secret" not in errors[0]
+
+
+def test_complete_dataset_needs_causes(dataset):
+    labels = load_yaml(EXAMPLE)["violations"]
+    del labels[0]["cause"]
+    write(dataset, "paris-01", violations=labels)
+    assert validate_dataset(dataset, partial=True).errors == []
+    complete = validate_dataset(dataset).errors
+    assert any("1 opening_hours label(s) without a cause" in e for e in complete)
 
 
 def test_version_changes_with_content(dataset):

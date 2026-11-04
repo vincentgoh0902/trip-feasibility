@@ -6,10 +6,12 @@ Layout (under data/dataset/, gitignored):
     texts/<id>.md             its text, the reply exactly as copied (scripts/save_reply.sh)
 
 `validate_dataset` returns every problem as a readable message. With `partial=True` (while
-collecting and annotating) it skips the split counts and annotation completeness; every
-other rule still applies. A drafted file is checked as soon as it's there, with "verify the
-draft" listed as a problem until a human has. Stops and legs (dev only, for parser
-debugging) are checked when present.
+collecting and annotating) it skips the split counts and annotation completeness (causes
+missing on verified labels included); every other rule still applies. Problems in test-split
+files are counted, never shown, unless `show_test=True`: their messages quote the labels, and
+the test labels (Vienna's above all) must stay unseen while building. A drafted file is
+checked as soon as it's there, with "verify the draft" listed as a problem until a human has.
+Stops and legs (dev only, for parser debugging) are checked when present.
 """
 
 import hashlib
@@ -58,6 +60,7 @@ class GoldViolation(BaseModel):
     day: int | None  # None for hotel_red_flags (the whole stay)
     place: str | None  # None for public_holidays and daily_load
     from_place: str | None = None
+    cause: str | None = None  # opening_hours: regular | special (None if not set yet)
     confidence: str
     derived: bool  # from hotels.yaml rather than the file
 
@@ -188,6 +191,7 @@ def gold_violations(itin: DatasetItinerary, hotels: dict[str, Hotel]) -> list[Go
             day=v.day,
             place=v.place,
             from_place=v.from_place,
+            cause=v.cause,
             confidence=v.confidence,
             derived=False,
         )
@@ -214,7 +218,12 @@ def text_path(root: Path, itin_id: str) -> Path:
     return root / TEXTS / f"{itin_id}.md"
 
 
-def load_dataset(root: Path) -> Report:
+def _hidden(where: str, n: int) -> str:
+    return (f"{where}: {n} problem(s) in a test file, not shown here "
+            "(scripts/validate_dataset.py --show-test, in your own terminal)")  # fmt: skip
+
+
+def load_dataset(root: Path, *, show_test: bool = False) -> Report:
     report = Report(version=dataset_version(root))
     hotels_path = root / "hotels.yaml"
     if not hotels_path.exists():
@@ -230,7 +239,10 @@ def load_dataset(root: Path) -> Report:
         try:
             raw = load_yaml(path)
         except yaml.YAMLError as e:
-            report.errors.append(f"{where}: not valid YAML: {e}")
+            # the line and column only: the message would quote the file (test files too)
+            mark = getattr(e, "problem_mark", None)
+            at = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+            report.errors.append(f"{where}: not valid YAML{at}")
             continue
         if not isinstance(raw, dict):
             report.errors.append(f"{where}: expected a mapping of fields")
@@ -249,7 +261,10 @@ def load_dataset(root: Path) -> Report:
                 raw | {"text": text.read_text(encoding="utf-8").rstrip()}
             )
         except ValidationError as e:
-            report.errors += _messages(where, e)
+            if raw.get("split") == "test" and not show_test:
+                report.errors.append(_hidden(where, e.error_count()))
+            else:
+                report.errors += _messages(where, e)
             continue
         if itin.id != path.stem:
             report.errors.append(f"{where}: id {itin.id!r} doesn't match the file name")
@@ -257,8 +272,8 @@ def load_dataset(root: Path) -> Report:
     return report
 
 
-def validate_dataset(root: Path, *, partial: bool = False) -> Report:
-    report = load_dataset(root)
+def validate_dataset(root: Path, *, partial: bool = False, show_test: bool = False) -> Report:
+    report = load_dataset(root, show_test=show_test)
     hotels: dict[str, Hotel] = {}
     for h in report.hotels:
         if h.key in hotels:
@@ -266,7 +281,11 @@ def validate_dataset(root: Path, *, partial: bool = False) -> Report:
         hotels[h.key] = h
     for itin in report.itineraries:
         where = f"itineraries/{itin.id}.yaml"
-        report.errors += [f"{where}: {e}" for e in itinerary_errors(itin, hotels)]
+        errors = itinerary_errors(itin, hotels)
+        if errors and itin.split == "test" and not show_test:
+            report.errors.append(_hidden(where, len(errors)))
+        else:
+            report.errors += [f"{where}: {e}" for e in errors]
 
     report.errors += split_errors(report.itineraries, complete=not partial)
     if not partial:
@@ -274,6 +293,12 @@ def validate_dataset(root: Path, *, partial: bool = False) -> Report:
             f"itineraries/{i.id}.yaml: not annotated yet"
             for i in report.itineraries
             if not i.annotated
+        ]
+        report.errors += [
+            f"itineraries/{i.id}.yaml: {i.causes_missing} opening_hours label(s) without a "
+            "cause (scripts/set_cause.py --ask)"
+            for i in report.itineraries
+            if i.causes_missing
         ]
         report.errors += [
             f"hotels.yaml: {h.key} has no red_flags label yet"

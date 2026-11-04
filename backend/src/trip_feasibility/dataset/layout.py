@@ -32,7 +32,7 @@ STOP_KEYS = [
 ]  # fmt: skip
 LEG_KEYS = ["from", "to", "mode", "minutes", "source"]
 VIOLATION_KEYS = [
-    "check", "day", "place", "from_place", "time", "severity", "evidence", "source",
+    "check", "day", "place", "from_place", "time", "severity", "cause", "evidence", "source",
     "confidence",
 ]  # fmt: skip
 UNKNOWN_KEYS = ["check", "day", "place", "reason"]
@@ -50,6 +50,7 @@ SKELETON = """\
 #     place: ...
 #     time: ...
 #     severity: blocker
+#     cause: regular
 #     evidence: ...
 #     source: ...
 #     confidence: verified

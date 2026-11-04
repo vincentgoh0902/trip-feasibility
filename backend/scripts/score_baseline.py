@@ -15,7 +15,7 @@ from trip_feasibility import paths
 from trip_feasibility.dataset.validate import gold_violations, validate_dataset
 from trip_feasibility.evals.baseline import BASELINE_PROMPT_VERSION, load_cached
 from trip_feasibility.evals.decisions import MatchDecisions
-from trip_feasibility.evals.score import Counts, Where, compare
+from trip_feasibility.evals.score import Counts, Where, add_by_cause, compare, found_by_cause
 
 DATASET = paths.DATASET
 BASELINE = paths.BASELINE
@@ -34,6 +34,7 @@ def main() -> int:
     hotels = {h.key: h for h in report.hotels}
     decisions = MatchDecisions.load(DECISIONS)
     per_check: dict[str, Counts] = {}
+    by_cause: dict[str, list[int]] = {}
     scored, stale, missing = [], [], []
     for itin in report.itineraries:
         if itin.split != "dev" or not itin.annotated:
@@ -50,6 +51,7 @@ def main() -> int:
         where = Where(itin.id, itin.split, decisions)
         for check, c in compare(result.findings, gold, itin.unknowns, where).items():
             per_check.setdefault(check, Counts()).add(c)
+        add_by_cause(by_cause, found_by_cause(result.findings, gold, where))
         scored.append(itin.id)
     decisions.save()
 
@@ -62,6 +64,9 @@ def main() -> int:
         agree = f"{c.severity_agree / c.tp:.0%}" if c.tp else "-"
         print(f"  {check:16} {_of(c.tp, c.tp + c.fp):>18} {_of(c.tp, c.tp + c.fn):>18} "
               f"{agree:>9}")  # fmt: skip
+    if by_cause:
+        parts = [f"{c} {_of(f, n)}" for c, (f, n) in sorted(by_cause.items())]
+        print(f"  opening hours found, by cause: {', '.join(parts)}")
     if missing or stale:
         print(f"  not scored: no output {missing or '-'}, stale {stale or '-'}")
     if pending := sum(p.itinerary in scored for p in decisions.pending.values()):

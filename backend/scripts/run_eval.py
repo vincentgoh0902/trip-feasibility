@@ -228,6 +228,9 @@ async def main() -> int:
                     valid = _of(fx["valid"], fx["proposed"])
                     fixed = _of(fx["violations_fixed"], fx["violations"])
                     print(f"  fixes: {valid} valid; {fixed} violations got one")
+                if by_cause := summary["opening_hours_by_cause"]:
+                    parts = [f"{c} {_of(f, n)}" for c, (f, n) in sorted(by_cause.items())]
+                    print(f"  opening hours found, by cause: {', '.join(parts)}")
                 cov = summary["coverage"]
                 print(f"  unavailable runs {cov['unavailable_runs']}")
                 print(f"  unknown stops {cov['unknown_stops']}")

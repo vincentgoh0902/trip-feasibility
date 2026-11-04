@@ -26,6 +26,7 @@ violations:
     place: Louvre Museum
     time: 9:00 – 12:00
     severity: blocker
+    cause: regular # its standing hours: closed every Tuesday
     evidence: The Louvre is closed every Tuesday.
     source: louvre.fr visitor information
     confidence: verified
