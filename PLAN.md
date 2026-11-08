@@ -257,7 +257,9 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Third-party free text never reaches a prompt; the injection suite judges in code on the
   demo sample (51, 62). Public-holiday warnings are advisory, never sent to the fixer (75).
 - Pasted text is cleaned in code (step 0), limits 50,000 raw and 15,000 cleaned (52); the
-  dataset keeps the raw reply, only in `texts/<id>.md` (53).
+  dataset keeps the raw reply, only in `texts/<id>.md` (53). A reply with no day-by-day
+  plan (a list of attractions) parses to no stops and fails as `no_schedule`, telling the
+  user to put the places into days (90).
 - Travel time: no label up to 10 min short, warning past 10, blocker past 30 or on an
   overlap; overlaps from the times alone; neighbourhoods within 2 km on foot untimed
   (77, 78, 80). Daily load: counts are info, walking a warning (81). Geocoding checks

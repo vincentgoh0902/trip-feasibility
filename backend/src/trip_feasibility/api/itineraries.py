@@ -48,6 +48,7 @@ _PARSE_STATUS = {
     "parse_failed": 422,
     "refused": 422,
     "truncated": 422,
+    "no_schedule": 422,
 }
 
 

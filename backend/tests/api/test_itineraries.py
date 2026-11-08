@@ -136,6 +136,11 @@ async def test_parse_errors_keep_their_code(api, services, respx_mock):
     assert r.json()["error"]["code"] == "city_not_found"
     r = await api.post(f"{V1}/parse", json=PARSE | {"text": "x" * 50_001}, headers=ANA)
     assert r.json()["error"]["code"] == "too_long"
+    search_route(respx_mock, q="Paris", featureType="settlement").respond(json=[PARIS])
+    services.llm = FakeClient(reply({"stops": []}))
+    r = await api.post(f"{V1}/parse", json=PARSE, headers=ANA)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "no_schedule"
 
 
 async def test_parse_is_rate_limited(api, services, respx_mock):

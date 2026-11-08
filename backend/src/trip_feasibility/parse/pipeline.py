@@ -18,7 +18,7 @@ from trip_feasibility.parse.normalise import normalise
 
 
 class ParseError(Exception):
-    """code: too_long, city_not_found, or an ExtractionError code."""
+    """code: too_long, city_not_found, no_schedule, or an ExtractionError code."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -71,6 +71,13 @@ async def parse_itinerary(
         )
     except ExtractionError as e:
         raise ParseError(e.code, str(e)) from e
+    if not extraction.extraction.stops:
+        # a list of places with no days (or no itinerary at all): every check needs a day
+        raise ParseError(
+            "no_schedule",
+            "This reads as a list of places, not a day-by-day plan. Put the places into days "
+            "(with times if you have them) and check again.",
+        )
     stops = normalise(extraction.extraction.stops, trip_start)
     not_places = frozenset(
         s.id for s, e in zip(stops, extraction.extraction.stops, strict=True) if not e.located

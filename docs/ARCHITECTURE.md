@@ -711,7 +711,8 @@ so re-running an eval makes no new external calls and sees the same data as the 
 ### End to end (`pipeline.py`)
 
 `parse_itinerary` runs steps 0–4: clean and check the length (`too_long`), locate the city (unknown city → `ParseError
-city_not_found`, before any LLM call), extract, normalise, geocode. It returns the stops,
+city_not_found`, before any LLM call), extract (no stops at all → `no_schedule`, before
+any geocoding: decision 90), normalise, geocode. It returns the stops,
 every stop's geocode (unresolved ones listed), and the extraction's model, prompt version
 and token counts. Step 5 (the user confirms the stops) sits between this and the checks, which
 is why parsing and checking are separate calls, as in the PRD's API (`/itineraries/parse`,
@@ -1357,6 +1358,7 @@ Replaced or dropped:
 | 31 | Gold stops extend the extraction schema | Parse accuracy compares identical fields | Changing the schema changes the dataset format |
 | 68–73, 83 | Stop rules, the same in ANNOTATION.md and the prompt (versions below): a timed slot is a stop even with no named place; a named operator or venue is a stop; open choices, untimed unnamed activities, downtime, optional items and travel sections aren't; stated durations and journeys have their own fields; activity-named stops are `located: false`. Frozen with 74 | Guide and prompt agree, so extraction is scored against the rules it was given; each rule came from a dev file | Some real visits (optional ones, downtime) go unchecked |
 | 86 | A name whose match in the city is somewhere you can't visit (a river or canal, a former boundary: `geocode.NOT_VISITABLE`) stays unresolved, with that reason (2026-11-03) | "A walk along the Seine" matched the Seine département abolished in 1968, whose `disused:` tags read as "closed down": an opening-hours blocker on a river. Skipping it instead would take the next result, a town sharing the word (Neuilly-sur-Seine) | Such a stop is unknown to every check |
+| 90 | An extraction with no stops is a `ParseError("no_schedule")` (422) telling the user to put the places into days, raised before geocoding (2026-11-08) | A list of attractions with no day-by-day plan yields no stops (every stop needs a day; places outside the schedule aren't stops), and `/parse` returned 200 with nothing in it, so the user only met a generic validation error on saving. Every check but hotels needs a day | A list-only reply gets no checks at all; checking a list's opening hours across every trip date would be a new feature |
 | 29, 82 | Geocoding searches the city's bounding box, then within 60 km in the same country; outside the box's top result, a result's name must match the text (any OSM name, accents and articles ignored); a trailing kind word ("Market") becomes a type filter; `place=locality`, `boundary=tourist_zone` and `historic=district` are areas (2026-10-31) | Keeps "Louvre" from matching a Louvre elsewhere while still finding day trips; loose matches had sent Versailles to a Paris exhibition centre and "Montjuïc gardens" to another town (run `ed8f90eb`) | Names unlike any OSM name stay unresolved; an inexact name costs a second search |
 
 Extraction prompt versions (the guide changed with each):

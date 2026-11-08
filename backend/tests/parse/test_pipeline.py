@@ -48,6 +48,14 @@ async def test_extraction_failure_keeps_its_code(check_deps, respx_mock):
     assert e.value.code == "parse_failed"
 
 
+async def test_no_stops_is_a_parse_error_before_geocoding(check_deps, respx_mock):
+    search_route(respx_mock, q="Paris", featureType="settlement").respond(json=[PARIS])
+    with pytest.raises(ParseError) as e:
+        await parse(check_deps, FakeClient(reply({"stops": []})), text="Must-sees: the Louvre")
+    assert e.value.code == "no_schedule"
+    assert respx_mock.calls.call_count == 1  # the city only, no stop lookups
+
+
 async def test_extraction_sees_the_cleaned_text(check_deps, respx_mock):
     search_route(respx_mock, q="Paris", featureType="settlement").respond(json=[PARIS])
     search_route(respx_mock, q="Louvre Museum").respond(json=[LOUVRE])
