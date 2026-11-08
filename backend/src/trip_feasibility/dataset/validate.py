@@ -11,6 +11,8 @@ missing on verified labels included); every other rule still applies. Problems i
 files are counted, never shown, unless `show_test=True`: their messages quote the labels, and
 the test labels (Vienna's above all) must stay unseen while building. A drafted file is
 checked as soon as it's there, with "verify the draft" listed as a problem until a human has.
+Test-file problems are also kept apart (`Report.test_errors`), so dev-only runs (the
+snapshot, dev evals, baseline scoring) refuse only on the rest (`Report.outside_test`).
 Stops and legs (dev only, for parser debugging) are checked when present.
 """
 
@@ -71,6 +73,17 @@ class Report:
     hotels: list[Hotel] = field(default_factory=list)
     itineraries: list[DatasetItinerary] = field(default_factory=list)
     version: str = ""
+    test_errors: list[str] = field(default_factory=list)  # the ones (in errors) from test files
+
+    @property
+    def outside_test(self) -> list[str]:
+        """The errors a dev-only run refuses on: test files are drafted and verified on their
+        own schedule, and a dev run never reads them."""
+        return [e for e in self.errors if e not in self.test_errors]
+
+    def add_test_errors(self, messages: list[str]) -> None:
+        self.errors += messages
+        self.test_errors += messages
 
 
 def _messages(where: str, e: ValidationError) -> list[str]:
@@ -261,10 +274,12 @@ def load_dataset(root: Path, *, show_test: bool = False) -> Report:
                 raw | {"text": text.read_text(encoding="utf-8").rstrip()}
             )
         except ValidationError as e:
-            if raw.get("split") == "test" and not show_test:
-                report.errors.append(_hidden(where, e.error_count()))
-            else:
+            if raw.get("split") != "test":
                 report.errors += _messages(where, e)
+            elif show_test:
+                report.add_test_errors(_messages(where, e))
+            else:
+                report.add_test_errors([_hidden(where, e.error_count())])
             continue
         if itin.id != path.stem:
             report.errors.append(f"{where}: id {itin.id!r} doesn't match the file name")
@@ -282,10 +297,12 @@ def validate_dataset(root: Path, *, partial: bool = False, show_test: bool = Fal
     for itin in report.itineraries:
         where = f"itineraries/{itin.id}.yaml"
         errors = itinerary_errors(itin, hotels)
-        if errors and itin.split == "test" and not show_test:
-            report.errors.append(_hidden(where, len(errors)))
-        else:
+        if itin.split != "test":
             report.errors += [f"{where}: {e}" for e in errors]
+        elif show_test:
+            report.add_test_errors([f"{where}: {e}" for e in errors])
+        elif errors:
+            report.add_test_errors([_hidden(where, len(errors))])
 
     report.errors += split_errors(report.itineraries, complete=not partial)
     if not partial:

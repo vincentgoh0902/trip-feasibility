@@ -322,8 +322,17 @@ def test_test_file_problems_are_counted_not_shown(dataset):
         "itineraries/paris-01.yaml: 1 problem(s) in a test file",
         "itineraries/paris-02.yaml: 1 problem(s) in a test file",
     ]
-    shown = validate_dataset(dataset, partial=True, show_test=True).errors
-    assert any("'The Louvre' isn't copied" in e for e in shown)
+    shown = validate_dataset(dataset, partial=True, show_test=True)
+    assert any("'The Louvre' isn't copied" in e for e in shown.errors)
+    assert shown.outside_test == []
+
+
+def test_dev_runs_ignore_test_file_problems(dataset):
+    write(dataset, "paris-01", split="test", stops=None, legs=None, verified_by_human=False)
+    write(dataset, "paris-02", city="rome")
+    report = validate_dataset(dataset, partial=True)
+    assert len(report.errors) == 2 and len(report.test_errors) == 1
+    assert [e.split(":")[0] for e in report.outside_test] == ["itineraries/paris-02.yaml"]
 
 
 def test_yaml_errors_give_the_line_not_the_text(dataset):

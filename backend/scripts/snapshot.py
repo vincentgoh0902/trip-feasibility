@@ -41,8 +41,10 @@ VOLATILE = {"seconds", "input_tokens", "output_tokens", "fix_tokens"}
 
 async def take(deps) -> dict:
     report = validate_dataset(DATASET, partial=True)
-    if report.errors:
+    if report.outside_test:
         raise SystemExit("Fix the dataset first (scripts/validate_dataset.py).")
+    if report.test_errors:
+        print(f"{len(report.test_errors)} test-file problem(s), not blocking (dev only)")
     dev = [i for i in report.itineraries if i.split == "dev" and i.annotated and i.stops]
     outcomes = await evaluate(
         deps,

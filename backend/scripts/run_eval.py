@@ -105,9 +105,11 @@ async def main() -> int:
         parser.error("--ids is for the dev split only")
 
     report = validate_dataset(args.dir, partial=True)
-    if report.errors:
+    # a dev run never reads test files, so their drafts in progress don't block it
+    errors = report.errors if args.split == "test" else report.outside_test
+    if errors:
         print("Fix the dataset first (scripts/validate_dataset.py):", file=sys.stderr)
-        for e in report.errors:
+        for e in errors:
             print(f"  {e}", file=sys.stderr)
         return 1
     ids = set(filter(None, args.ids.split(",")))
