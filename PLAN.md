@@ -22,7 +22,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       passes on all 40. Test labels still unseen by Claude
 - [x] **Vincent: set the cause** on the 17 verified dev opening_hours labels
       (`scripts/set_cause.py --ask`, decision 88). Done 2026-11-08
-- [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
+- [x] **Vincent: back up** `data/dataset/` (gitignored): dated zip with `match_decisions.yaml`
+      in Vincent's OneDrive, 2026-11-11. Redo after any label change
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
 - [x] Opening hours tool (OSM tags via Nominatim `/lookup`, `opening-hours-py`)

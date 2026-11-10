@@ -30,9 +30,8 @@ LLM review, eval). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
-Waiting on Vincent:
-1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies and the labels;
-   the `dataset-backup-*` folders beside it don't count). Also `data/evals/match_decisions.yaml`.
+Waiting on Vincent: nothing blocking. `data/dataset/` + `data/evals/match_decisions.yaml` are
+backed up as a dated zip in his OneDrive (2026-11-11); remind him to redo it after label changes.
 
 Optional: Langfuse Cloud keys; before slice 2 can be tried, OAuth apps + `API_JWT_SECRET`.
 
@@ -332,7 +331,7 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 - Hotel theme keywords must mean the same in Python's `re` and Postgres `~*`: no `\b`, use
   `(^|[^a-z])`; a test compares both. Changing THEMES' phrasings needs
   `embed_hotel_themes.py`, or the check refuses the stale JSON.
-- `data/dataset/` (texts included) exists only on this Mac until backed up.
+- `data/dataset/` (texts included) is backed up only as dated zips in OneDrive: re-zip after changes.
 
 ## Open decisions
 
