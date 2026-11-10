@@ -17,8 +17,8 @@ Built: all five checks, parse pipeline (`extract-v11`, medium effort), LangGraph
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
 results), restyled to the hero illustration; the pre-commit gate `e2e/run.sh` (decision 84).
 Collected: 40 itineraries, splits drawn, 16 hotels labelled; the 15 dev files annotated and
-verified violations-first (decision 74); the 25 test files not labelled yet. Live with the
-key since 2026-11-03.
+verified violations-first (decision 74); the 25 test files drafted and verified by Vincent
+(2026-11-11; full validation passes, labels unseen). Live with the key since 2026-11-03.
 
 Measured on dev (`docs/EVALS.md`): on gold stops 19 of 22 / 19 of 30; end to end, after the
 parser work, 16–17 of 30 at 71–80% precision over three runs (stop recall 89%), against an
@@ -33,9 +33,6 @@ samples, settling the hosting shape.
 Waiting on Vincent:
 1. **Back up `data/dataset/`** off this disk (the only copy of the 40 replies and the labels;
    the `dataset-backup-*` folders beside it don't count). Also `data/evals/match_decisions.yaml`.
-2. **Set the cause** on the 17 verified dev opening_hours labels: `scripts/set_cause.py --ask`.
-3. **Draft and verify the 25 test files**, in his own terminal: `scripts/draft_gold.py --test`,
-   then check each label (cause included) and set `verified_by_human: true`.
 
 Optional: Langfuse Cloud keys; before slice 2 can be tried, OAuth apps + `API_JWT_SECRET`.
 

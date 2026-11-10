@@ -18,7 +18,8 @@ plan against real opening hours, holidays and travel times before you book aroun
 agent with re-checked fixes, the API (live progress over SSE, a demo mode), a prompt-injection
 suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
 dataset is 40 chatbot itineraries across four cities; the 15 development ones are labelled and
-verified by hand, and the 25 test ones (including a held-out city) are untouched.
+verified by hand; the 25 test ones (including a held-out city) are labelled and verified too,
+but no system has been run on them yet.
 
 **First results (development set, 30 labelled problems):** given correctly parsed stops, the
 checks find 19 of 30 problems with 19 of 22 flags correct. End to end from the raw text they

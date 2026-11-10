@@ -16,11 +16,12 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       skeletons written (all default preferences), splits drawn with seed 39991414. Dev:
       paris 02 05 07 08 09; london 04 05 08 09 10; barcelona 02 06 07 08 10.
 - [x] **Vincent: label the 16 hotels** in `data/dataset/hotels.yaml` (step 3). Done 2026-10-25.
-- [ ] **Vincent: annotate** the itineraries (step 4): the 15 dev files are verified
-      (by 2026-10-30); the 25 test files are still to label, before the final test run:
-      `draft_gold.py --test` in your own terminal (decision 89), then verify each
-- [ ] **Vincent: set the cause** on the 17 verified dev opening_hours labels
-      (`scripts/set_cause.py --ask`, decision 88)
+- [x] **Vincent: annotate** the itineraries (step 4): the 15 dev files verified by
+      2026-10-30; the 25 test files drafted with `draft_gold.py --test` in Vincent's terminal
+      (decision 89) and verified by 2026-11-11. `validate_dataset.py` (full, not `--partial`)
+      passes on all 40. Test labels still unseen by Claude
+- [x] **Vincent: set the cause** on the 17 verified dev opening_hours labels
+      (`scripts/set_cause.py --ask`, decision 88). Done 2026-11-08
 - [ ] **Vincent: back up** `data/dataset/` (gitignored; private repo or other copy)
 - [x] Check contract (`CheckResult`), Postgres response cache, MCP server (SDK 2.x)
 - [x] Public holidays tool (Nager.Date)
