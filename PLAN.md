@@ -126,7 +126,8 @@ the design changes), then 1 → 2 → 4 → 3 → 5.
    data doesn't have, but every claim carries a source URL and a confidence, and it never
    states hours, holidays or travel times from memory. Web page text reaches only the
    tool-less extractor, never the agent, review or fix prompt. In CLAUDE.md, ARCHITECTURE
-   (decision with the London Eye example) and the PRD.
+   (decision with the London Eye example) and the PRD. **Done 2026-11-11** (decision 92;
+   ARCHITECTURE section 1, PRD FR-2 and ADR-8).
 2. **Closures check** (temporary closures, special or seasonal hours, events), on located
    venues and named meals, trip dates only, at most 12 places per run (the rest "not
    checked"), on by default:

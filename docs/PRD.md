@@ -84,6 +84,8 @@ Each check is an MCP tool that returns violations as structured JSON, never free
 
 Every violation MUST include: check name, severity (info, warning, blocker), affected stops, evidence (the data that triggered it) and source.
 
+Every fact behind a violation MUST have a cited source. Structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and always run. An LLM MAY judge fuzzy questions structured data can't settle (an overloaded day, an "optional" or "X or Y" slot), citing the check results it relies on, and MAY search the web for facts structured data lacks (temporary closures, special or seasonal hours, events), but every claim MUST carry a source URL and a confidence, and the LLM MUST NOT state hours, holidays or travel times from memory: with no source, the stop is reported as unknown. Code validates every claim and sets confidence and severity. Fetched web page text MUST reach only a tool-less extractor, never the agent, review or fix prompt.
+
 ### FR-3 Fixes
 
 - MUST propose at least one fix per warning or blocker: reorder stops, move a stop to another day, swap a transfer mode, or replace a venue.
@@ -118,7 +120,7 @@ These are the targets the system is held to. Each is measured from Langfuse trac
 | Area | Requirement | Target |
 | --- | --- | --- |
 | Latency | Full check of a 3-day itinerary, p95 | Under 60 s, first progress event under 2 s |
-| Cost | LLM spend per itinerary check | Under $0.01, logged per run |
+| Cost | LLM and search spend per itinerary check | About $0.15–0.30 with the closures check (web search is $10 per 1,000 searches, ~11–12 places per itinerary), logged per run; the public demo serves cached runs only, and eval reruns replay cached replies and findings |
 | Cost | Monthly LLM spend | Hard cap set at the provider before the first call |
 | Reliability | External API down or rate-limited | Check reports "unavailable" for that tool; the run still finishes |
 | Reliability | Repeated lookups | Cached in Postgres with a time-to-live; eval reruns make no new external calls |
@@ -151,6 +153,7 @@ The browser never talks to an LLM or a data API directly. Every check flows thro
 | ADR-5 | Auth.js in Next.js; FastAPI verifies the session JWT | Clerk, Supabase Auth; auth built in FastAPI | Free, no vendor lock-in, and you learn how sessions work; cost: more security code to test |
 | ADR-6 | LLM access through one provider-agnostic layer | Calling one vendor SDK directly | Switching from a free tier to a paid model is a config change |
 | ADR-7 | FastAPI background tasks for check runs | Celery; a Redis queue | Simplest option that works at this scale; revisit only if runs pile up |
+| ADR-8 | Every fact has a cited source; an LLM may judge fuzzy questions and search the web, never answer from memory | Structured data only (the original rule); an LLM answering from its own knowledge | Some real problems exist only as web text (the London Eye's annual maintenance shutdown) or need judgement (an overloaded day); sources keep every result checkable |
 
 ## Data model
 

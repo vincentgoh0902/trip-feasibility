@@ -30,11 +30,31 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
                                                 └──► every external lookup is cached in Postgres
 ```
 
-The design rule that shapes everything: **the LLM interprets and proposes; code decides.**
-The LLM extracts stops from messy text and drafts fixes. Facts (coordinates, opening
-hours, holidays, travel times) always come from real data sources through code. That makes
-the results checkable, and makes the evals meaningful: when a check is wrong, you can see
-whether the data or the logic was at fault.
+The design rule that shapes everything: **every fact has a cited source** (decision 92,
+2026-11-11). Structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and
+always run, through code. An LLM may do three things beyond extracting stops and drafting
+fixes:
+
+- **judge fuzzy questions** structured data can't settle (is this day too full, what does an
+  "optional" or "X or Y" slot mean), citing the check results the judgement relies on;
+- **search the web** for facts structured data doesn't have (temporary closures, special or
+  seasonal hours, events), where every claim carries a source URL and a confidence;
+- **never state a fact from memory:** no hours, holidays or travel times without a source.
+  No source means no claim; the stop goes in `unknown`.
+
+Code still decides what's shown: it validates every claim (a source is present, dates
+parse, the URL is one the search returned) and rejects what fails, and code, not the model,
+sets confidence and severity. Fetched web page text goes only to a tool-less extractor (no
+tools, structured output); the agent, the review and the fixer see its validated findings,
+never the page. That keeps results checkable and the evals meaningful: when a result is
+wrong, its source shows whether the data, the logic or the model was at fault.
+
+This replaced "the LLM interprets and proposes; code decides", under which every fact came
+from structured data. Annotating the dev set showed that much of what breaks a real
+itinerary isn't in structured data: the London Eye's annual maintenance shutdown exists only
+as text on its website, and OSM's hours say it's open. The closures check (PLAN.md Tier 1
+step 2) and the review node (step 3) are the first parts built under the new rule; until
+they land, every fact still comes from structured sources.
 
 ## 2. Repository map
 
@@ -731,7 +751,8 @@ START ─► run_check(opening_hours) ─┐
 
 - **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
   would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
-  the agent are extraction (before) and fixes (the `fix` node, below).
+  the agent are extraction (before) and fixes (the `fix` node, below); the closures check and
+  the review node will add two more, under decision 92 (section 1).
 - **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
   server, so an eval run's cache-only mode reaches the tools.
 - **A failed tool never sinks the run:** a tool error, a broken call or a missing country
@@ -1279,7 +1300,7 @@ Postgres. What to settle before the first deploy:
 Grouped by topic. The numbers are the original decision numbers, which other docs and code
 comments cite; a row carries several when later decisions refined earlier ones. What a
 decision replaced, or what was tried and dropped, is listed under its topic with the reason.
-A new decision takes the next number (90 onwards) and goes under its topic.
+A new decision takes the next number (93 onwards) and goes under its topic.
 
 ### Foundations
 
@@ -1314,6 +1335,10 @@ Replaced or dropped:
 | 12 | Checks as MCP tools, connected in-process | A standard protocol and schemas without a network hop (not plain functions, nor a separate process) | A dependency on a fast-moving SDK |
 | 42, 43 | Configuration decides which checks run, never an LLM; parsing and checking are separate calls | Deterministic, cheaper, can't skip a check, and LangGraph still gives parallel branches and streaming; the user confirms the stops in between (FR-1 step 5) | The agent's only LLM is the fixer; two round trips in the UI |
 | 8, 9, 10 | Opening hours parsed by `opening-hours-py`; a holiday is a warning at most (a real closure blocks only through OSM `PH off`); a place missing from OSM is a warning | The format is too complex to parse well quickly; most holidays don't close most venues; a missing element may have been re-mapped, not closed | Its holiday calendar is separate from Nager.Date; a place that really closed is only a warning |
+| 92 | **Every fact has a cited source** (replaces "the LLM interprets and proposes; code decides"): structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and always run; an LLM may judge fuzzy questions, citing the check results it relies on, and search the web for facts structured data lacks, with a source URL and a confidence on every claim, never a fact from memory; code validates each claim and sets confidence and severity; fetched page text reaches only a tool-less extractor, never the agent, review or fix prompt (2026-11-11; section 1) | Annotation showed that much of what breaks a real itinerary is fuzzy (overloaded days, vague, optional and "X or Y" slots) or exists only as text on the web: the London Eye's annual maintenance shutdown isn't in OSM, whose hours say it's open. Structured data alone leaves those as misses, and that's where the LLM-only baseline is ahead (18 of 30 against 16–17). Rather than letting a model answer from memory (unsourced, unauditable) or staying structured-only | Web search costs money per place and per run (about $0.15–0.30 per itinerary with closures); web-only findings can't be verified like OSM, so they're never blockers; fetched pages widen the injection surface (the suite gains web-page attacks, Tier 1 step 4); results depend on what a search returns, so eval runs freeze cached findings |
+
+Replaced or dropped:
+- **"The LLM interprets and proposes; code decides"** (from the start until 2026-11-11): every fact from structured data, LLMs only for extraction and fixes. Kept everything it got right (no coordinates from a model, fixes as operations, code deciding what's shown) but left web-only facts and fuzzy judgements as misses (decision 92).
 
 ### Travel time and daily load
 

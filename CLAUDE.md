@@ -25,8 +25,8 @@ parser work, 16–17 of 30 at 71–80% precision over three runs (stop recall 89
 LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks can't see
 (closures, missing OSM hours, overloaded days); flags both systems raise were all real.
 
-Next (Claude): the Tier 1 plan in PLAN.md (new core rule, closures check, injection pages,
-LLM review, eval). Not blocked on Vincent: travel
+Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; next the closures
+check, then injection pages, LLM review, eval). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
@@ -101,12 +101,18 @@ Planned: `train/` (Tier 2, Mac only).
 
 ## Rules
 
-- **The LLM proposes, code decides.** Only parse step 1 (extraction) and fixes use an LLM.
-  The LLM never produces coordinates (geocoding is code, and never guesses: no match in the
-  city box or within 60 km → unresolved). Fixes are operations
-  (move/remove/replace/add_transport_mode), never a new itinerary; code applies them and
-  re-runs every check, and only valid fixes (targets gone, no new blocker) are shown. Hotel
-  review text never goes into a prompt.
+- **Every fact has a cited source** (decision 92; replaced "the LLM proposes, code decides").
+  Structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and always run.
+  An LLM may judge fuzzy questions (an overloaded day, an "optional" or "X or Y" slot),
+  citing the check results it relies on, and may search the web for facts structured data
+  lacks (closures, special hours); every claim carries a source URL and a confidence, and it
+  never states hours, holidays or travel times from memory: no source, no claim (→ `unknown`).
+  Code validates every claim (source present, dates parse, URL one the search returned) and
+  rejects what fails; code sets confidence and severity. Unchanged: the LLM never produces
+  coordinates (geocoding is code, and never guesses: no match in the city box or within
+  60 km → unresolved). Fixes are operations (move/remove/replace/add_transport_mode), never
+  a new itinerary; code applies them and re-runs every check, and only valid fixes (targets
+  gone, no new blocker) are shown. Hotel review text never goes into a prompt.
 - **Checks:** each is a plain async function `(CheckDeps, stops, ...) -> CheckResult`, wrapped
   as an MCP tool. Never free text. Missing data goes in `unknown`, not violations; a failed
   data source raises `Unavailable` → `status="unavailable"`, never an exception out of the
@@ -145,7 +151,9 @@ Planned: `train/` (Tier 2, Mac only).
   the request: tests swap `services.runs.stream` for `tests/api/conftest.fake_stream`.
 - **Third-party text never reaches a prompt:** review excerpts, free-text OSM tags and
   opening-hours comments are filtered by `agent.fixes.safe_evidence`. Changing what the fix
-  prompt sees bumps `FIX_PROMPT_VERSION`; the injection suite measures it.
+  prompt sees bumps `FIX_PROMPT_VERSION`; the injection suite measures it. Fetched web page
+  text goes only to a tool-less extractor (no tools, structured output); only its validated
+  findings, never page text, reach the agent, review or fix prompt (decision 92).
 - **Evals:** eval mode (`make_check_deps(..., eval_mode=True)`) serves expired cache entries,
   so reruns make no external calls. Every run writes model ID, prompt version, config and
   dataset version to `eval_runs`; every run worth keeping also goes in `docs/EVALS.md` with
