@@ -17,8 +17,12 @@ function statusText(state: RunState): string {
       return "Starting the check";
     case "geocode":
       return "Finding the places on the map";
-    case "checks":
+    case "checks": {
+      const left = state.checks.filter((name) => !state.results[name]);
+      // closures searches the web, so it's usually the last one by a while
+      if (left.length === 1 && left[0] === "closures") return "Still checking closures…";
       return `Checking: ${Object.keys(state.results).length} of ${state.checks.length} checks done`;
+    }
     case "fixes":
       return "Proposing fixes and re-checking them";
     case "done":

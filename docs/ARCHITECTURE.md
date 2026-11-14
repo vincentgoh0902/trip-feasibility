@@ -11,7 +11,7 @@ rate limits, tracing and cost per run), the injection suite and the first fronte
 (landing, demo, live results) are built and tested, and have run live against the real data
 sources and Claude. The dev split is annotated and verified; the eval runner has scored it in
 both modes against an LLM-only baseline (results in [`EVALS.md`](EVALS.md)). Next: the Tier 1
-plan in `PLAN.md` (closures check, LLM review), then sign-in and the signed-in pages.
+plan in `PLAN.md` (closures eval and injection pages, LLM review), then sign-in and the signed-in pages.
 
 ---
 
@@ -26,7 +26,8 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
                                                 │        ├─ opening_hours     ✅ built
                                                 │        ├─ travel_time       ✅ built
                                                 │        ├─ daily_load        ✅ built
-                                                │        └─ hotel_red_flags   ✅ built
+                                                │        ├─ hotel_red_flags   ✅ built
+                                                │        └─ closures          ✅ built (web search; not yet evaluated)
                                                 └──► every external lookup is cached in Postgres
 ```
 
@@ -53,8 +54,8 @@ This replaced "the LLM interprets and proposes; code decides", under which every
 from structured data. Annotating the dev set showed that much of what breaks a real
 itinerary isn't in structured data: the London Eye's annual maintenance shutdown exists only
 as text on its website, and OSM's hours say it's open. The closures check (PLAN.md Tier 1
-step 2) and the review node (step 3) are the first parts built under the new rule; until
-they land, every fact still comes from structured sources.
+step 2, built 2026-11-13, section 5) is the first part built under the new rule; the review
+node (step 3) is next.
 
 ## 2. Repository map
 
@@ -121,10 +122,12 @@ trip-feasibility/
     │       ├── legs.py       legs between consecutive stops + travel options (shared)
     │       ├── travel_time.py    travel time check
     │       ├── daily_load.py     daily load check
-    │       └── hotel_red_flags.py    hotel red-flags check (+ hotel_themes.json query vectors)
+    │       ├── hotel_red_flags.py    hotel red-flags check (+ hotel_themes.json query vectors)
+    │       └── closures.py   closures check (web search → guarded fetch → tool-less extraction)
     ├── sources/
     │   ├── nominatim.py  OSM place tags and search via Nominatim (rate-limited, cached)
-    │   └── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
+    │   ├── routing.py    walk/bike/car times from the FOSSGIS OSRM servers (rate-limited)
+    │   └── web.py        guarded fetch of public web pages and their text (closures)
     └── tests/                pytest; real Postgres, mocked HTTP
 e2e/run.sh                    everything that must pass before a commit (section 8)
 frontend/e2e/                 Playwright: landing → demo → a live check, desktop and 375 px
@@ -259,7 +262,8 @@ Times are local to the city: "10:00 in Paris" is what matters for a museum, not 
 
 ### Caching and dependencies (`checks/deps.py`)
 
-`CheckDeps` bundles what every check needs: an HTTP client, the cache, settings. Checks take
+`CheckDeps` bundles what every check needs: an HTTP client, the cache, settings, and the
+model client for the closures check (`llm`, None without a key). Checks take
 it as an argument instead of creating their own, so tests can hand in a mocked HTTP client
 and a test database.
 
@@ -271,7 +275,10 @@ The cache is the `api_cache` table: `key → response, expires_at`.
   remembering the failure for a week.
 - **"Not found" *is* cached** (OSM elements that don't exist), because that's a real answer.
 - **Lifetimes:** holidays 30 days (they're fixed a year ahead), OSM tags 7 days (hours change
-  occasionally). Both configurable.
+  occasionally), closures findings 7 days. All configurable.
+- **Shared lookups hold a lock:** routing (`routing_lock`) and OSM tags (`osm_lock`, which
+  opening_hours and closures both read) check the cache and fetch under a lock, so parallel
+  checks don't send the same request twice.
 - **Eval mode** serves expired entries too, so eval reruns make no new external calls and
   numbers don't drift as OSM changes (section 6, "Eval mode").
 
@@ -573,6 +580,70 @@ evidence is third-party data: the agent must treat it as data, never as instruct
 injection suite tests this later). Every result carries a note that the reviews are from
 2015–2017.
 
+### Closures check (`checks/closures.py`, `sources/web.py`)
+
+Temporary closures and special hours that exist only as text on the web (the London Eye's
+maintenance shutdown, renovation works, this year's holiday hours), which OSM's regular
+hours don't show. The first part built under decision 92; decision 93 has the choices.
+
+Per **target** (a located venue or meal in one month of the trip; the same place on two days
+of one month is one target), at most `CLOSURES_MAX_PLACES` (12) per run, in itinerary
+order; the rest are `unknown` ("not checked"). Areas (a stop geocoded to a neighbourhood,
+`Stop.area`) aren't looked up: they have no doors to close, and a search for "Soho" finds
+namesakes (decision 94).
+
+1. **Search.** One Claude call (`CLOSURES_MODEL`, Haiku 5.5, low effort) with Anthropic's
+   web search tool, `max_uses: 1`, given the query `<OSM name> <city> closed OR closure OR
+   "opening hours" <Month YYYY>`. Only the result URLs are used; the model's text is
+   thrown away (`llm.search_web`). The basic `web_search_20250305` tool: the dynamic
+   filtering versions need Sonnet or Opus.
+2. **Fetch.** Our own guarded fetch (`sources/web.py`), not Anthropic's web fetch: https on
+   443 only, the host must resolve to public addresses only (re-checked on every redirect,
+   at most 3), our User-Agent, a 10 s and 2 MB limit, HTML only. The top 3 results are
+   read, the place's own website first (its OSM `website`, `contact:website` or `url` tag,
+   host or subdomain). Page text is the visible text, scripts and styles dropped, cut to
+   12,000 characters. Known gap: httpx resolves the name again after our check, so DNS
+   rebinding isn't caught.
+3. **Extract.** One Claude call, **no tools**, structured output (`EXTRACT_SCHEMA`): per page,
+   whether it's about this place, and its dated periods (`closed` | `altered_hours`, start,
+   end, hours). The pages go in as `<page>` blocks declared untrusted data. No free text in
+   the output: messages are written by code, so nothing a page says can reach a later prompt
+   except dates, hours and the page's URL.
+4. **Validate (code).** The page index is one we fetched (so every URL came from the
+   search), dates parse, start ≤ end, at most 400 days, the period touches the month, hours
+   are `HH:MM-HH:MM`. Anything failing is dropped and counted (`rejected`).
+
+**Severity and confidence, set by code:** a finding from the place's own website is
+`official`, any other `web`. Closed on the stop's date: blocker if official, warning if web
+("worth checking: this isn't the place's own website"). Special hours: a warning, unless the
+visit fits inside the given hours; special hours a page doesn't give count for nothing
+(decision 94: there's nothing to hold the visit against). One violation per stop (the worst; official before web),
+evidence `{status, from, to, hours, confidence, source_url}`, source the page URL.
+
+**Caching:** the validated findings, never page text, are cached per target for every user
+(`closures:<PROMPT_VERSION>:<osm>:<YYYY-MM>`, `CACHE_TTL_CLOSURES_DAYS`, 7). A search with no
+results is cached (an answer); pages that couldn't be read aren't (maybe temporary), and the
+stop is `unknown`. Eval mode serves expired entries, so a reported run's findings are frozen
+once looked up. **Fix re-checks** and **demo runs** call the tool with `search=false`
+(`CheckInput.web_search` is off for the demo; decision 94): cached findings only, so a
+place not looked up before is `unknown` ("not verified"). The public demo makes no web
+searches; its closures show only what earlier lookups (within the 7-day TTL) found.
+
+**Wiring:** the model client is `CheckDeps.llm` (None without a key: the check is
+`unavailable`); `RunService` gives each run a copy of the deps with a traced client, so the
+searches and tokens land in the run's `Usage` (web searches at $0.01 each, `pricing.py`).
+It's last in `CHECK_NAMES` and is the slow one, so its result streams last; the results
+page says "Still checking closures…" meanwhile. In the eval it's scored as `opening_hours`
+(decision 88), so `opening_hours_by_cause` shows what it adds on `special` labels.
+`run_eval.py --closures` turns it on (off by default: it spends money on a cache miss); the
+behaviour snapshot leaves it out, so the pre-commit gate needs no key.
+
+Measured on dev (EVALS.md, 2026-11-14): no false alarms and no hits on the two `special`
+labels (one closure not yet published, one stop gold mode never sees); about 8 lookups per
+itinerary, $0.01 each in searches; 40% of page fetches are refused (403, bot protection),
+so official findings are rare. Not measured yet: parsed mode, and the web-page attacks of
+the injection suite (Tier 1 step 4).
+
 ### Why MCP (`mcp_server.py`)
 
 Each check is exposed as an MCP tool (PRD ADR-4). MCP is a standard protocol for giving
@@ -751,8 +822,9 @@ START ─► run_check(opening_hours) ─┐
 
 - **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
   would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
-  the agent are extraction (before) and fixes (the `fix` node, below); the closures check and
-  the review node will add two more, under decision 92 (section 1).
+  the agent are extraction (before), fixes (the `fix` node, below) and the closures check's
+  search and extraction (inside its tool, section 5); the review node will add another,
+  under decision 92 (section 1).
 - **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
   server, so an eval run's cache-only mode reaches the tools.
 - **A failed tool never sinks the run:** a tool error, a broken call or a missing country
@@ -914,7 +986,8 @@ Every LLM call goes through `TracedClient` (a wrapper around the Anthropic clien
 tool call through `TracedMcp`, so the agent code itself knows nothing about tracing:
 
 - **Cost per run:** tokens × list price per model (`pricing.py`, Haiku 5.5 at $0.10 / $0.50
-  per million tokens, more past 100K-token prompts), summed in `Usage`, stored as
+  per million tokens, more past 100K-token prompts), plus $0.01 per web search (closures),
+  summed in `Usage`, stored as
   `check_runs.cost_usd` and returned with the run (and with each parse). A model missing from
   the price table gives an unknown cost, never a guess.
 - **Langfuse** (Langfuse Cloud, hosting decision): a trace per run (`check_run`, with a span
@@ -1336,6 +1409,8 @@ Replaced or dropped:
 | 42, 43 | Configuration decides which checks run, never an LLM; parsing and checking are separate calls | Deterministic, cheaper, can't skip a check, and LangGraph still gives parallel branches and streaming; the user confirms the stops in between (FR-1 step 5) | The agent's only LLM is the fixer; two round trips in the UI |
 | 8, 9, 10 | Opening hours parsed by `opening-hours-py`; a holiday is a warning at most (a real closure blocks only through OSM `PH off`); a place missing from OSM is a warning | The format is too complex to parse well quickly; most holidays don't close most venues; a missing element may have been re-mapped, not closed | Its holiday calendar is separate from Nager.Date; a place that really closed is only a warning |
 | 92 | **Every fact has a cited source** (replaces "the LLM interprets and proposes; code decides"): structured sources (OSM, Nager.Date, routing, hotel reviews) are preferred and always run; an LLM may judge fuzzy questions, citing the check results it relies on, and search the web for facts structured data lacks, with a source URL and a confidence on every claim, never a fact from memory; code validates each claim and sets confidence and severity; fetched page text reaches only a tool-less extractor, never the agent, review or fix prompt (2026-11-11; section 1) | Annotation showed that much of what breaks a real itinerary is fuzzy (overloaded days, vague, optional and "X or Y" slots) or exists only as text on the web: the London Eye's annual maintenance shutdown isn't in OSM, whose hours say it's open. Structured data alone leaves those as misses, and that's where the LLM-only baseline is ahead (18 of 30 against 16–17). Rather than letting a model answer from memory (unsourced, unauditable) or staying structured-only | Web search costs money per place and per run (about $0.15–0.30 per itinerary with closures); web-only findings can't be verified like OSM, so they're never blockers; fetched pages widen the injection surface (the suite gains web-page attacks, Tier 1 step 4); results depend on what a search returns, so eval runs freeze cached findings |
+| 93 | Closures check (Tier 1 step 2): per place and month, one Haiku search (`max_uses: 1`, only result URLs kept), our own guarded fetch of the top 3 pages (own website first), one tool-less structured extraction of dated `closed` / `altered_hours` periods per page, validated in code; official (OSM `website` domain) closed → blocker, web-only → warning, special hours → warning unless the visit fits; findings cached per place and month, re-checks cache-only; at most 12 places; scored as opening_hours (2026-11-13; section 5) | The London Eye case: the facts exist only as page text. Keeping the search model's text out entirely and giving the extractor no tools and no free-text fields means page text can only ever become dates, hours and a URL from the search; our fetch sets the limits Anthropic's web fetch wouldn't (private addresses, size, HTML only) and keeps page text out of any prompt with tools | One search per place and month (~$0.01 each, plus tokens); the extractor can still be fooled by a page's content (a fake notice on another site is only a warning, but a vandalised OSM `website` tag makes it official); DNS rebinding isn't caught; partial closures (one gallery) aren't reported |
+| 94 | Closures after its first dev run: areas (`Stop.area`) aren't looked up; `altered_hours` findings without hours aren't held against a visit; demo runs use cached findings only (`CheckInput.web_search=False`, the same path as fix re-checks) (2026-11-14; section 5, EVALS.md) | All three false alarms on dev were one of these: "Soho" matched a restaurant named after it, and two "special hours" findings had no hours to compare the visit with. Both rules sit after the cache, so no lookup was repeated and `PROMPT_VERSION` stays. The demo is public and unauthenticated: live searches there would spend money per visitor (PLAN's cost decision: no live search calls in the demo) | A real "special hours, see website" notice on the visit's date is now silent; a closed neighbourhood-wide event isn't checked; demo closures show only what the cache holds, so a demo sample needs a live run within the TTL to show any |
 
 Replaced or dropped:
 - **"The LLM interprets and proposes; code decides"** (from the start until 2026-11-11): every fact from structured data, LLMs only for extraction and fixes. Kept everything it got right (no coordinates from a model, fixes as operations, code deciding what's shown) but left web-only facts and fuzzy judgements as misses (decision 92).
@@ -1510,8 +1585,10 @@ Replaced or dropped:
   fix quality (needs the judge).
 - Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; no Dockerfile for it
   until the hosting shape is settled (section 11).
-- Next: the Tier 1 plan in `PLAN.md` (closures check, LLM review), then the frontend's
-  signed-in half.
+- Closures check: built, not yet run on the dataset (no recall, precision or cost numbers);
+  DNS rebinding not caught by the fetch guard; partial closures not reported.
+- Next: the Tier 1 plan in `PLAN.md` (closures eval and web-page injection attacks, then the
+  LLM review), then the frontend's signed-in half.
 
 ## Glossary
 

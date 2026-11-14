@@ -6,6 +6,7 @@ export const CHECK_LABELS: Record<string, string> = {
   travel_time: "Travel time",
   daily_load: "Daily load",
   hotel_red_flags: "Hotel red flags",
+  closures: "Closures",
 };
 
 export const SEVERITY_LABELS: Record<Severity, string> = {

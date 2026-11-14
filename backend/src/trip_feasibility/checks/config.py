@@ -8,14 +8,16 @@ from trip_feasibility.checks.hotel_red_flags import DEFAULT_MIN_REVIEWS, MinRevi
 from trip_feasibility.checks.travel_time import DEFAULT_BUFFER_MIN
 
 CheckName = Literal[
-    "opening_hours", "public_holidays", "travel_time", "daily_load", "hotel_red_flags"
+    "opening_hours", "public_holidays", "travel_time", "daily_load", "hotel_red_flags", "closures"
 ]
+# closures last: it's the slow one (web search), so its results come in last anyway
 CHECK_NAMES: tuple[CheckName, ...] = (
     "opening_hours",
     "public_holidays",
     "travel_time",
     "daily_load",
     "hotel_red_flags",
+    "closures",
 )
 # Shown, but never sent to the fixer: a fact about the date, not a fault a change to the plan
 # solves (decision 75). A real holiday closure is an opening_hours violation, which is fixed.

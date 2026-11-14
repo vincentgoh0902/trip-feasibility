@@ -122,6 +122,10 @@ async def main() -> int:
             deps = make_check_deps(
                 http, async_sessionmaker(engine), settings, eval_mode=args.eval_mode
             )
+            if settings.anthropic_api_key is not None:
+                deps.llm = make_client(settings)  # closures: web searches on a cache miss
+            elif "closures" in config.enabled:
+                print("closures will be unavailable: ANTHROPIC_API_KEY is not set.")
             if args.example:
                 if "hotel_red_flags" in config.enabled:
                     # its hotel is one of the 16 dataset hotels: no peeking before labelling

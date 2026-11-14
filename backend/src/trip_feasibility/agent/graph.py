@@ -64,8 +64,11 @@ class AgentContext:
     fixer: Fixer | None = None
 
 
-def tool_arguments(check: CheckName, inp: CheckInput) -> dict[str, Any] | str:
-    """The MCP tool's arguments, or why the check can't run."""
+def tool_arguments(
+    check: CheckName, inp: CheckInput, *, recheck: bool = False
+) -> dict[str, Any] | str:
+    """The MCP tool's arguments, or why the check can't run. recheck: a fix's re-check, which
+    makes no new web searches (closures)."""
     stops = [s.model_dump(mode="json") for s in inp.stops]
     preferences = inp.preferences.model_dump(mode="json")
     match check:
@@ -85,10 +88,14 @@ def tool_arguments(check: CheckName, inp: CheckInput) -> dict[str, Any] | str:
             return {"stops": stops, "preferences": preferences}
         case "hotel_red_flags":
             return {"stops": stops, "city": inp.city, "min_reviews": inp.config.hotel_min_reviews}
+        case "closures":
+            return {"stops": stops, "city": inp.city, "search": inp.web_search and not recheck}
 
 
-async def call_check(mcp: Client, name: CheckName, inp: CheckInput) -> CheckResult:
-    args = tool_arguments(name, inp)
+async def call_check(
+    mcp: Client, name: CheckName, inp: CheckInput, *, recheck: bool = False
+) -> CheckResult:
+    args = tool_arguments(name, inp, recheck=recheck)
     if isinstance(args, str):
         return CheckResult.unavailable(name, args)
     try:
@@ -104,7 +111,7 @@ async def call_check(mcp: Client, name: CheckName, inp: CheckInput) -> CheckResu
 async def check_all(mcp: Client, inp: CheckInput) -> CheckReport:
     """Every enabled check at once, outside the graph (fix re-checks)."""
     names = [n for n in CHECK_NAMES if n in inp.config.enabled]
-    results = await asyncio.gather(*(call_check(mcp, n, inp) for n in names))
+    results = await asyncio.gather(*(call_check(mcp, n, inp, recheck=True) for n in names))
     return CheckReport.from_results(inp, dict(zip(names, results, strict=True)))
 
 

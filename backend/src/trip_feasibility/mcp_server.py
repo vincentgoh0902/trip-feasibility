@@ -13,6 +13,7 @@ from mcp.server.mcpserver import Context, MCPServer
 from pydantic import Field
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility.checks.closures import check_closures
 from trip_feasibility.checks.daily_load import check_daily_load
 from trip_feasibility.checks.deps import CheckDeps, make_check_deps, make_http_client
 from trip_feasibility.checks.holidays import check_public_holidays
@@ -112,6 +113,21 @@ def create_server(deps: CheckDeps | None = None) -> MCPServer:
         city: the trip's city in English, e.g. "Paris".
         """
         return await check_hotel_red_flags(_deps(ctx), stops, city, min_reviews)
+
+    @server.tool()
+    async def closures(
+        stops: list[Stop], city: str, ctx: Context, search: bool = True
+    ) -> CheckResult:
+        """Flag venue and meal stops on a date their place is closed or has special hours
+        (maintenance, renovation, holidays), found by a web search and read from the pages.
+        A closure stated on the place's own website is a blocker; one from any other site is
+        a warning to check. Each violation cites its page. At most 12 places per call; the
+        rest are listed as unknown.
+
+        city: the trip's city in English, e.g. "Paris". search: false uses earlier lookups
+        only (no new searches); places never looked up are listed as unknown.
+        """
+        return await check_closures(_deps(ctx), stops, city, search)
 
     return server
 

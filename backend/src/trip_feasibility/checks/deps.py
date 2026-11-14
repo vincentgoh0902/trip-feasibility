@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trip_feasibility.config import Settings
+from trip_feasibility.llm import MessagesClient
 from trip_feasibility.models import ApiCache
 
 
@@ -105,6 +106,11 @@ class CheckDeps:
     # around cache-check + fetch lets the second one find the first one's cached result,
     # and keeps one routing request in flight at a time.
     routing_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # opening_hours and closures both read OSM tags; the same, for Nominatim /lookup
+    osm_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # The closures check's model client (web search + extraction); None without a key. A
+    # run swaps in a traced one (dataclasses.replace), sharing everything else.
+    llm: MessagesClient | None = None
 
     async def cached(
         self, source: str, key: str, ttl: timedelta, fetch: Callable[[], Awaitable[Any]]

@@ -13,7 +13,8 @@ made or changed: it's how I follow the project.**
 
 ## Status (2026-11-03; details in PLAN.md)
 
-Built: all five checks, parse pipeline (`extract-v11`, medium effort), LangGraph agent with re-checked fixes,
+Built: all five checks plus the closures check (decision 93; run live and on dev,
+decision 94), parse pipeline (`extract-v11`, medium effort), LangGraph agent with re-checked fixes,
 eval runner, injection suite, API with SSE and demo mode, frontend slice 1 (landing, `/demo`,
 results), restyled to the hero illustration; the pre-commit gate `e2e/run.sh` (decision 84).
 Collected: 40 itineraries, splits drawn, 16 hotels labelled; the 15 dev files annotated and
@@ -25,8 +26,9 @@ parser work, 16–17 of 30 at 71–80% precision over three runs (stop recall 89
 LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks can't see
 (closures, missing OSM hours, overloaded days); flags both systems raise were all real.
 
-Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; next the closures
-check, then injection pages, LLM review, eval). Not blocked on Vincent: travel
+Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
+and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; next
+injection pages, LLM review). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
@@ -63,8 +65,10 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     checks/                     one module per check; models.py (CheckResult), deps.py (HTTP
                                 client, Postgres cache, RateLimiter, Unavailable, locks),
                                 config.py (CheckConfig, FR-5), legs.py (shared by travel_time
-                                and daily_load), hotel_red_flags.py + hotel_themes.json
-    sources/                    nominatim.py (OSM tags, coordinates, search), routing.py (OSRM)
+                                and daily_load), hotel_red_flags.py + hotel_themes.json,
+                                closures.py (web search → fetch → tool-less extraction)
+    sources/                    nominatim.py (OSM tags, coordinates, search), routing.py (OSRM),
+                                web.py (guarded page fetch + page text, closures only)
     parse/                      pipeline.py end to end; clean.py (step 0: chat debris out,
                                 length limits), extract.py (Claude), schema.py,
                                 normalise.py, geocode.py
@@ -191,7 +195,10 @@ Planned: `train/` (Tier 2, Mac only).
   `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`, `CACHE_TTL_OSM_DAYS`,
   `CACHE_TTL_ROUTES_DAYS`, `ANTHROPIC_API_KEY` (secret), `EXTRACTION_MODEL`
   (claude-haiku-5-5), `EXTRACTION_EFFORT` (medium), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
-  (medium), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
+  (medium), `CLOSURES_MODEL` (claude-haiku-5-5), `CLOSURES_SEARCH_EFFORT` (low),
+  `CLOSURES_EFFORT` (medium), `CLOSURES_MAX_PLACES` (12), `CLOSURES_PAGES_PER_PLACE` (3),
+  `CLOSURES_FETCH_TIMEOUT_S` (10), `CLOSURES_FETCH_MAX_BYTES` (2000000),
+  `CACHE_TTL_CLOSURES_DAYS` (7), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
   `API_JWT_AUDIENCE`, `RATE_LIMIT_CHECKS_PER_HOUR` (20), `RATE_LIMIT_PARSES_PER_HOUR` (20),
   `RATE_LIMIT_DEMO_PER_HOUR` (10), `MAX_CONCURRENT_RUNS` (4), `DEMO_RUN_TTL_S` (3600),
   `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (secret; tracing off without both),
@@ -232,6 +239,7 @@ uv run python scripts/check_itinerary.py --example    # checks on the example (n
 uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-24
 uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev split
 uv run python scripts/run_eval.py --mode parsed --replay   # reuse saved model replies (A/B)
+uv run python scripts/run_eval.py --mode gold --closures  # + closures (web searches on a cache miss: costs money)
 uv run python scripts/diagnose_parse.py [--ids ...] [--samples N] [--summary]   # parser misses (dev)
 uv run python scripts/run_eval.py --split test --final  # reported results only
 uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain name matches
@@ -311,6 +319,12 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
   attribution with a "fix the map" link. One table request per travel mode per itinerary.
 - **Parallel checks share lookups:** cache-check-and-fetch must hold a lock
   (`deps.routing_lock`), or both checks fetch and the service sees a burst.
+- **Closures check:** the web search tool for Haiku is `web_search_20250305` (the
+  `_20260209` versions need Sonnet/Opus). Page text goes only to the tool-less extractor,
+  whose schema has no free-text fields; violation messages are written by code. It's off
+  in the snapshot (the gate runs without a key) and in `run_eval.py` unless `--closures`.
+  Tests replace `sources.web.resolve` (fake hosts don't resolve). Changing either prompt,
+  the schema or the validation bumps `closures.PROMPT_VERSION` (it's in the cache key).
 - **Transit and taxi times are estimates** (constants in `checks/legs.py`): label them as
   estimated, and keep the 25% margin before an estimate becomes a blocker and the bands
   (up to 10 min short: nothing; warning; over 30 min short: blocker; same rule in

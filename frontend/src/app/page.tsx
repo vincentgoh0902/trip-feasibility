@@ -12,6 +12,7 @@ const CHECKS = [
   ["travel_time", "Travel time", "The gap between two stops is shorter than the trip there, plus a buffer.", "OSRM routing"],
   ["daily_load", "Daily load", "A day is longer, busier or more walking than your pace allows.", "Your preferences"],
   ["hotel_red_flags", "Hotel red flags", "Reviews repeatedly mention noise, dirt, safety or a poor location.", "Booking.com reviews (Kaggle)"],
+  ["closures", "Closures", "A place is shut for works or keeps special hours on your dates, as its website or the web says.", "Web search, sources linked"],
 ] as const;
 
 const STEPS = [
@@ -55,7 +56,7 @@ export default function Home() {
 
       <section aria-labelledby="checks" className="mt-14 sm:mt-16">
         <h2 id="checks" className="text-3xl font-bold">
-          Five checks, each with its source
+          Six checks, each with its source
         </h2>
         <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {CHECKS.map(([check, name, what, source]) => (

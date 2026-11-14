@@ -66,6 +66,9 @@ def findings(violations: list[Violation], stops: list[Stop]) -> list[Finding]:
             case "opening_hours":
                 for s in named:
                     add(Finding(v.check_name, v.severity, s.day, s.place_name))
+            case "closures":  # scored as opening_hours, like its labels (decision 88)
+                for s in named:
+                    add(Finding("opening_hours", v.severity, s.day, s.place_name))
             case "travel_time":
                 a, b = named[0], named[-1]
                 from_place = a.place_name if a is not b else None

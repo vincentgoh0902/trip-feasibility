@@ -708,7 +708,8 @@
                 "public_holidays",
                 "travel_time",
                 "daily_load",
-                "hotel_red_flags"
+                "hotel_red_flags",
+                "closures"
               ]
             },
             "type": "array",
@@ -718,7 +719,8 @@
               "public_holidays",
               "travel_time",
               "daily_load",
-              "hotel_red_flags"
+              "hotel_red_flags",
+              "closures"
             ]
           },
           "travel_buffer_min": {
@@ -2079,6 +2081,11 @@
           "output_tokens": {
             "type": "integer",
             "title": "Output Tokens"
+          },
+          "web_searches": {
+            "type": "integer",
+            "title": "Web Searches",
+            "default": 0
           },
           "cost_usd": {
             "anyOf": [

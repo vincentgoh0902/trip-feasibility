@@ -72,7 +72,7 @@ async def test_demo_run_streams_and_saves_nothing(api, services, nominatim):
     got = await events(api, run)
     types = [e["type"] for e in got]
     assert types[0] == "step_started" and got[0]["step"] == "geocode"  # samples have no coords
-    assert types.count("tool_result") == 5
+    assert types.count("tool_result") == 6
     [checks_step] = [e for e in got if e["type"] == "step_started" and e["step"] == "checks"]
     assert [s["id"] for s in checks_step["stops"]] == [s["id"] for s in got[-1]["run"]["stops"]]
     assert all(s["lat"] for s in checks_step["stops"])  # located before the checks run
@@ -94,8 +94,9 @@ async def test_demo_uses_the_samples_preferences_and_default_checks(api, service
     await events(api, await start(api, {"sample_id": "paris-one-day"}))
     inp = stream.calls[0]["input"]
     assert inp.country_code == "FR" and inp.city == "Paris"
-    assert len(inp.config.enabled) == 5
+    assert len(inp.config.enabled) == 6
     assert inp.preferences.transport_modes == ["walk", "transit"]
+    assert inp.web_search is False  # closures from earlier lookups only
 
 
 async def test_unknown_sample_and_bad_bodies(api):
@@ -126,6 +127,7 @@ async def test_saved_run_is_recorded(api, services, nominatim):
     run = await start(api, {"version_id": await saved_version(api)}, ANA)
     assert run["demo"] is False
     got = await events(api, run, ANA)
+    assert services.runs.stream.calls[0]["input"].web_search is True
     types = [e["type"] for e in got]
     assert "step_started" in types and {"step": "fixes", "type": "step_started"} in got
     [fix_event] = [e["fix"] for e in got if e["type"] == "fix"]  # the valid one only

@@ -3,15 +3,24 @@
     uv run python scripts/smoke_checks.py
 
 Uses DATABASE_URL for the response cache, so a second run makes no external calls.
+The closures part needs ANTHROPIC_API_KEY (web searches on a cache miss cost money);
+without it, it's skipped.
 """
 
 import asyncio
 from datetime import date, time
 
 from mcp import Client
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from trip_feasibility.checks.closures import check_closures
+from trip_feasibility.checks.deps import make_check_deps, make_http_client
+from trip_feasibility.config import get_settings
+from trip_feasibility.db import make_engine
 from trip_feasibility.itinerary import OsmRef, Stop
+from trip_feasibility.llm import make_client
 from trip_feasibility.mcp_server import server
+from trip_feasibility.sources.nominatim import search
 
 STOPS = [
     Stop(
@@ -74,6 +83,44 @@ PARIS_DAY = [
 ]
 
 
+# Closures: the London Eye was shut 9-18 Jan 2026 for its yearly maintenance; the Eiffel Tower
+# in late November is a control (no closure expected).
+CLOSURE_PLACES = [
+    ("london-eye", "London Eye", "gb", "London", date(2026, 1, 12)),
+    ("eiffel-oct", "Tour Eiffel", "fr", "Paris", date(2026, 11, 24)),
+]
+
+
+async def smoke_closures() -> None:
+    settings = get_settings()
+    if settings.anthropic_api_key is None:
+        print("\n== closures: skipped (no ANTHROPIC_API_KEY)")
+        return
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_http_client(settings) as http:
+            deps = make_check_deps(http, async_sessionmaker(engine), settings)
+            deps.llm = make_client(settings)
+            for stop_id, name, country, city, day in CLOSURE_PLACES:
+                place = (await search(deps, name, country_code=country, limit=1))[0]
+                stop = Stop(
+                    id=stop_id,
+                    day=1,
+                    date=day,
+                    start_time=time(11),
+                    end_time=time(12),
+                    place_name=name,
+                    type="venue",
+                    osm=place.osm,
+                )
+                result = await check_closures(deps, [stop], city)
+                _print(f"closures ({name}, {day})", result.model_dump(mode="json"))
+                for v in result.violations:
+                    print(f"    source: {v.source} ({v.evidence['confidence']})")
+    finally:
+        await engine.dispose()
+
+
 def _print(tool: str, out: dict) -> None:
     print(f"\n== {tool}: {out['status']} {out.get('error') or ''}")
     for v in out["violations"]:
@@ -99,6 +146,7 @@ async def main() -> None:
             _print(tool, (await client.call_tool(tool, args)).structured_content)
         for tool in ("travel_time", "daily_load"):
             _print(tool, (await client.call_tool(tool, day)).structured_content)
+    await smoke_closures()
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -252,6 +252,8 @@ class RunService:
             raise RunFailed("city_not_found", f"Couldn't find the city {req.city!r}")
         stops = await self._locate(req.stops, city, run)
         inp = CheckInput.for_city(city, stops, req.preferences, req.config)
+        # the public demo makes no web searches: closures come from earlier lookups only
+        inp.web_search = not req.demo
         enabled = [n for n in CHECK_NAMES if n in req.config.enabled]
         # The located stops go out with the first checks event, so the live feed can lay out
         # the itinerary before the first result arrives.
@@ -274,12 +276,16 @@ class RunService:
                 effort=self.settings.fix_effort,
                 city=city,
             )
+        # the closures check's model calls count toward this run's usage too
+        deps = self.deps
+        if self.llm is not None:
+            deps = replace(deps, llm=TracedClient(self.llm, self.tracer, usage, "closures"))
         results: dict[str, CheckResult] = {}
         violation_ids: dict[int, uuid.UUID] = {}  # id(Violation) -> its id
         fix_report: FixReport | None = None
-        async with Client(create_server(self.deps)) as mcp:
+        async with Client(create_server(deps)) as mcp:
             traced = TracedMcp(mcp, self.tracer)
-            async for kind, value in self.stream(traced, self.deps, inp, fixer):
+            async for kind, value in self.stream(traced, deps, inp, fixer):
                 if kind == "check":
                     results[value.check_name] = value
                     await run.publish(

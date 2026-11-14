@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # Fix proposals (agent/fixes.py): same provider; untuned until the fix-quality judge exists.
     fix_model: str = "claude-haiku-5-5"
     fix_effort: str = "medium"
+    # Closures check (checks/closures.py): one web search per place and month, then a
+    # tool-less extraction from the fetched pages. Findings are cached per place and month.
+    closures_model: str = "claude-haiku-5-5"
+    closures_search_effort: str = "low"
+    closures_effort: str = "medium"
+    closures_max_places: int = 12
+    closures_pages_per_place: int = 3
+    closures_fetch_timeout_s: float = 10.0
+    closures_fetch_max_bytes: int = 2_000_000
+    cache_ttl_closures_days: int = 7
 
     # Sign-in (auth.py): the Next.js server signs a short-lived HS256 token for each API call
     # with this shared secret. Unset: every route that needs a user answers 503.

@@ -70,6 +70,11 @@ async def _lookup(deps: CheckDeps, refs: list[OsmRef]) -> list[dict[str, Any]]:
 async def _cached_lookup(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any]]:
     """Cached /lookup result per tags_key(ref): {"tags", "lat", "lon"} or {"missing": True}.
     Only uncached places (or entries cached before coordinates were stored) are requested."""
+    async with deps.osm_lock:
+        return await _cached_lookup_unlocked(deps, refs)
+
+
+async def _cached_lookup_unlocked(deps: CheckDeps, refs: list[OsmRef]) -> dict[str, dict[str, Any]]:
     keys = {tags_key(r): r for r in refs}
     found: dict[str, Any] = await deps.cache.get_many(list(keys))
     found = {k: v for k, v in found.items() if v.get("missing") or "lat" in v}

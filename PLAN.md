@@ -109,6 +109,14 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       `paths.py`, the example loader; `convert_gold.py` removed (one-off, done). Gate:
       `e2e/run.sh` (behaviour snapshot + Playwright on the full stack), decision 84
 - [ ] Run the injection suite live (needs the key) and put the numbers in the README
+- [x] Closures check (Tier 1 step 2, decision 93): `checks/closures.py`, guarded fetch
+      `sources/web.py`, MCP tool, re-checks cache-only, web searches in the run's cost,
+      frontend label/icon/evidence and "Still checking closures…"; tests against fakes
+      (2026-11-13)
+- [x] Closures: live smoke run (`smoke_checks.py` now includes it), then the dev eval with
+      `--closures` (EVALS.md, 2026-11-14): no false alarms after decision 94 (areas not
+      looked up, special hours without hours ignored), 0 of 2 `special` labels found;
+      the demo uses cached findings only (decision 94)
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
 
@@ -130,7 +138,9 @@ the design changes), then 1 → 2 → 4 → 3 → 5.
    ARCHITECTURE section 1, PRD FR-2 and ADR-8).
 2. **Closures check** (temporary closures, special or seasonal hours, events), on located
    venues and named meals, trip dates only, at most 12 places per run (the rest "not
-   checked"), on by default:
+   checked"), on by default. **Built 2026-11-13** (decision 93; ARCHITECTURE section 5),
+   Smoke run and dev eval done 2026-11-14 (EVALS.md; decision 94: areas skipped, special
+   hours without hours ignored, demo cache-only). Left: a parsed-mode run with closures:
    - step A: Haiku 5.5 with Anthropic web search, `max_uses: 1` per place, returns candidate
      URLs only;
    - our own guarded fetch (https only, no private addresses, size and time limits, our
@@ -297,6 +307,13 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
   per check" means parse + run, and if so carry the parse usage into the saved version.
 - Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.
+- Closures: 40% of page fetches get 403 (bot protection), official sites included, so
+  official findings (the only blockers) are rare. Options, none chosen: more pages per
+  place, a search domain filter for the OSM website. Not a browser User-Agent: we identify
+  ourselves.
+- Demo closures come from the cache (7-day TTL): a sample shows none unless a live run looked
+  its places up within the week. Decide whether to warm the samples or let the demo serve
+  expired findings.
 - Chatbot replies with interactive widgets (e.g. day tabs) paste incomplete. Planned for the
   paste box: a copyable "rewrite that as plain text" follow-up hint, and a warning when the
   parsed days don't cover the trip. Screenshot upload is a possible later addition.

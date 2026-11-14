@@ -1,4 +1,4 @@
-// Flat icons for the five checks, drawn in the hero illustration's palette: each shape sits on
+// Flat icons for the six checks, drawn in the hero illustration's palette: each shape sits on
 // a darker copy of itself shifted down, the same "side face" as the cards and buttons.
 type IconProps = { className?: string };
 
@@ -84,12 +84,25 @@ function Bed() {
   );
 }
 
+function ClosedSign() {
+  return (
+    <>
+      <path d="M13 15L20 6l7 9" fill="none" stroke="var(--charcoal)" strokeWidth="2.5" strokeLinejoin="round" />
+      <circle cx="20" cy="6" r="2.5" fill="var(--charcoal)" />
+      <rect x="5" y="16" width="30" height="18" rx="4" fill="var(--clay-side)" />
+      <rect x="5" y="14" width="30" height="18" rx="4" fill="var(--terracotta)" />
+      <rect x="10" y="21" width="20" height="4" rx="2" fill="var(--paper)" />
+    </>
+  );
+}
+
 const ICONS: Record<string, () => React.ReactNode> = {
   opening_hours: Clock,
   public_holidays: Calendar,
   travel_time: Route,
   daily_load: Footsteps,
   hotel_red_flags: Bed,
+  closures: ClosedSign,
 };
 
 /** The icon for a check (backend check name); nothing for an unknown check. */

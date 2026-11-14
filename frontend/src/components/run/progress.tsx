@@ -50,7 +50,9 @@ export function Progress({ state }: { state: RunState }) {
             : r.violations === 0
               ? "no problems"
               : `${r.violations} problem${r.violations === 1 ? "" : "s"}`
-          : undefined;
+          : name === "closures" && !finished
+            ? "searching the web, takes a little longer"
+            : undefined;
         return <Item key={name} state={itemState} label={checkLabel(name)} detail={detail} />;
       })}
       {state.fixesStarted && (

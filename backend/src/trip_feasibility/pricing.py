@@ -25,9 +25,14 @@ PRICES: dict[str, Price] = {
     "claude-opus-5-5": Price(Decimal("4.00"), Decimal("20.00")),
 }
 MILLION = Decimal(1_000_000)
+# Anthropic's web search tool: $10 per 1,000 searches, on top of tokens (search results
+# count as input tokens)
+WEB_SEARCH_USD = Decimal("0.01")
 
 
-def call_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal | None:
+def call_cost(
+    model: str, input_tokens: int, output_tokens: int, web_searches: int = 0
+) -> Decimal | None:
     """One call's cost: long-prompt pricing depends on that call's prompt, not a run's total."""
     price = PRICES.get(model)
     if price is None:
@@ -35,4 +40,5 @@ def call_cost(model: str, input_tokens: int, output_tokens: int) -> Decimal | No
     rate_in, rate_out = price.input, price.output
     if price.long_prompt and input_tokens > price.long_prompt[0]:
         _, rate_in, rate_out = price.long_prompt
-    return (input_tokens * rate_in + output_tokens * rate_out) / MILLION
+    tokens = (input_tokens * rate_in + output_tokens * rate_out) / MILLION
+    return tokens + web_searches * WEB_SEARCH_USD

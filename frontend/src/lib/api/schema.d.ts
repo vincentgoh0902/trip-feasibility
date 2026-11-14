@@ -273,10 +273,11 @@ export interface components {
              *       "public_holidays",
              *       "travel_time",
              *       "daily_load",
-             *       "hotel_red_flags"
+             *       "hotel_red_flags",
+             *       "closures"
              *     ]
              */
-            enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags")[];
+            enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags" | "closures")[];
             /**
              * Travel Buffer Min
              * @default 0
@@ -782,6 +783,11 @@ export interface components {
             input_tokens: number;
             /** Output Tokens */
             output_tokens: number;
+            /**
+             * Web Searches
+             * @default 0
+             */
+            web_searches: number;
             /** Cost Usd */
             cost_usd: number | null;
             /** Models */

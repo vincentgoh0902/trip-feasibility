@@ -54,6 +54,7 @@ class UsageOut(BaseModel):
     calls: int
     input_tokens: int
     output_tokens: int
+    web_searches: int = 0
     cost_usd: float | None
     models: list[str]
 

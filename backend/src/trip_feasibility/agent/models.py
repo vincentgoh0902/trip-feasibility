@@ -15,6 +15,8 @@ class CheckInput(BaseModel):
     regions: list[str] = []  # ISO 3166-2, any level; decides whether regional holidays apply
     preferences: TravelPreferences = TravelPreferences()
     config: CheckConfig = CheckConfig()
+    # False: closures use earlier lookups only, no new web searches (demo runs)
+    web_search: bool = True
 
     @classmethod
     def for_city(

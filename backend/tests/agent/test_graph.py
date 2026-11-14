@@ -7,6 +7,7 @@ from trip_feasibility.agent.graph import (
     AgentContext,
     CheckInput,
     CheckReport,
+    check_all,
     run_checks,
 )
 from trip_feasibility.checks.config import CheckConfig
@@ -66,6 +67,7 @@ async def test_every_enabled_check_runs_with_its_settings():
         "travel_time",
         "daily_load",
         "hotel_red_flags",
+        "closures",
     ]
     assert all(r.status == "ok" for r in report.results.values())
     assert mcp.calls["travel_time"]["buffer_min"] == 20
@@ -77,6 +79,20 @@ async def test_every_enabled_check_runs_with_its_settings():
     }
     assert mcp.calls["public_holidays"]["country_code"] == "FR"
     assert mcp.calls["public_holidays"]["regions"] == ["FR-IDF", "FR-75C"]
+    assert mcp.calls["closures"]["city"] == "Paris"
+    assert mcp.calls["closures"]["search"] is True
+
+
+async def test_fix_rechecks_make_no_new_searches():
+    mcp = FakeMcp()
+    await check_all(mcp, CheckInput(stops=STOPS, city="Paris", country_code="FR"))
+    assert mcp.calls["closures"]["search"] is False
+
+
+async def test_demo_runs_make_no_new_searches():
+    mcp = FakeMcp()
+    await run(CheckInput(stops=STOPS, city="Paris", country_code="FR", web_search=False), mcp)
+    assert mcp.calls["closures"]["search"] is False
 
 
 async def test_disabled_checks_dont_run():
@@ -98,6 +114,7 @@ async def test_failures_become_unavailable_and_the_run_finishes():
         "travel_time": "unavailable",
         "daily_load": "ok",
         "hotel_red_flags": "ok",
+        "closures": "ok",
     }
     assert report.results["opening_hours"].error == "bad input"
     assert "country is unknown" in report.results["public_holidays"].error

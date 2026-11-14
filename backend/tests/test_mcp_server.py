@@ -12,6 +12,7 @@ async def test_tools_are_listed_with_output_schemas(check_deps):
         "travel_time",
         "daily_load",
         "hotel_red_flags",
+        "closures",
     }
     assert all(t.output_schema for t in tools.values())
 

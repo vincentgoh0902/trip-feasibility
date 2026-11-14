@@ -330,3 +330,43 @@ Petit Luxembourg's garden).
 
 From here, parsed runs use `--replay` (decision 87) to compare changes on identical
 extractions; `9961761f`'s replies are saved.
+
+### 2026-11-14 · gold mode · `e0082785`, `c927a8a7` · closures check, first dev run
+
+What changed: the closures check (decision 93) is on (`run_eval.py --mode gold --closures`),
+first live run; every lookup is now cached, so reruns are free. Same dataset
+(`sha256:50ab3afeda14`) and checks otherwise; `c541a8a9` is the same run without closures,
+for comparison. Since `a2c3ac70` the dev opening_hours labels carry a cause (decision 88), so
+opening hours is also split by cause: 15 `regular`, 2 `special` (london-05's London Eye,
+paris-05's Pompidou).
+
+| Run | Opening hours | Special found | All (incl. hotels): precision | All: recall |
+|---|---|---|---|---|
+| `c541a8a9` without closures | 10 of 12 / 10 of 17 | 0 of 2 | 20 of 23 (87%) | 20 of 32 (62%) |
+| `e0082785` closures, as built | 10 of 15 / 10 of 17 | 0 of 2 | 20 of 26 (77%) | 20 of 32 (62%) |
+| `c927a8a7` + decision 94 | 10 of 12 / 10 of 17 | 0 of 2 | 20 of 23 (87%) | 20 of 32 (62%) |
+
+Lookups: 114 place-months over the 15 itineraries (about 8 per itinerary), one search each
+($1.14 in searches; the eval runner doesn't log the closures tokens), 230 pages read, 48
+validated findings (28 closed, 20 special hours, 10 from a place's own website), none
+rejected by validation. 160 of the 403 page fetches got 403 Forbidden (bot protection, the
+Eiffel Tower's own site among them), so official findings are rare.
+
+The three false alarms in `e0082785`, all warnings from other sites:
+- Soho (london-08), a neighbourhood: the search found "Yauatcha Soho", a restaurant listed
+  as closed. Areas are no longer looked up (decision 94).
+- Plaça del Rei (barcelona-10) and the Arc de Triomphe (paris-05): "special hours" with no
+  hours given (a museum's page for the square, a ticket site's New Year notice). Special
+  hours without hours are no longer held against a visit (decision 94).
+
+The two misses:
+- London Eye, January 2027 (london-05): the 2027 maintenance dates aren't published yet,
+  so no page states them. Under decision 92 that's a correct "no claim"; the smoke run on
+  January 2026 finds the shutdown (9–18 Jan, southbank.london, a warning).
+- Pompidou (paris-05): the frozen gold stops don't have it ("the Picasso Museum or the
+  Pompidou", an X-or-Y slot), so gold mode can't reach it; that's the LLM review's job.
+
+Reading: on dev, closures adds nothing either way now: no false alarms, no hits. Its two
+targets are a closure announced too late to find and a stop the checks never see. What it
+does find (48 dated findings) falls outside the visit dates. It needs a parsed-mode run and
+more `special` labels than two before its recall means much.

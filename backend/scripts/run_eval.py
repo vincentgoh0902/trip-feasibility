@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
-from trip_feasibility.checks.config import CheckConfig
+from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
 from trip_feasibility.dataset.validate import validate_dataset
@@ -97,6 +97,11 @@ async def main() -> int:
     parser.add_argument("--fixes", action="store_true", help="also propose and re-check fixes")
     parser.add_argument("--no-save", action="store_true", help="don't write eval_runs")
     parser.add_argument("--replay", action="store_true", help="reuse saved model replies")
+    parser.add_argument(
+        "--closures",
+        action="store_true",
+        help="also run the closures check (web searches on a cache miss; costs money)",
+    )
     parser.add_argument("--dir", type=Path, default=DATASET)
     args = parser.parse_args()
     if args.split == "test" and not args.final:
@@ -131,11 +136,15 @@ async def main() -> int:
 
     settings = get_settings()
     modes = ["gold", "parsed"] if args.mode == "both" else [args.mode]
-    if ("parsed" in modes or args.fixes) and settings.anthropic_api_key is None:
-        print("Parsed mode and --fixes need ANTHROPIC_API_KEY (repo-root .env).", file=sys.stderr)
+    needs_key = "parsed" in modes or args.fixes or args.closures
+    if needs_key and settings.anthropic_api_key is None:
+        print(
+            "Parsed mode, --fixes and --closures need ANTHROPIC_API_KEY (repo-root .env).",
+            file=sys.stderr,
+        )
         return 1
     hotels = {h.key: h for h in report.hotels}
-    config = CheckConfig()
+    config = CheckConfig(enabled=[n for n in CHECK_NAMES if args.closures or n != "closures"])
     engine = make_engine(settings.database_url)
     sessionmaker = async_sessionmaker(engine)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -148,6 +157,9 @@ async def main() -> int:
     try:
         async with make_http_client(settings) as http:
             deps = make_check_deps(http, sessionmaker, settings, eval_mode=True)
+            if args.closures:
+                # its findings are cached per place and month: reruns make no calls
+                deps.llm = make_client(settings)
             for mode in modes:
                 print(f"\n{mode} stops")
                 # gold stops are dev only (parser debugging), so not every file has them

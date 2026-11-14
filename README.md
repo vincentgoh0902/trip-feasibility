@@ -14,9 +14,9 @@ wanted to go to would be closed.
 Nothing in the itinerary had told us. This project is so that doesn't happen again: check a
 plan against real opening hours, holidays and travel times before you book around it.
 
-**Status:** in development, not yet hosted. Built: all five checks, the parse pipeline, the
-agent with re-checked fixes, the API (live progress over SSE, a demo mode), a prompt-injection
-suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
+**Status:** in development, not yet hosted. Built: all five checks plus a closures check
+(web search; first dev run in `docs/EVALS.md`), the parse pipeline, the agent with re-checked
+fixes, the API (live progress over SSE, a demo mode), a prompt-injection suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
 dataset is 40 chatbot itineraries across four cities; the 15 development ones are labelled and
 verified by hand; the 25 test ones (including a held-out city) are labelled and verified too,
 but no system has been run on them yet.

@@ -116,6 +116,25 @@ function HotelRedFlags({ e }: { e: Data }) {
   );
 }
 
+const CLOSURE_STATUS: Record<string, string> = { closed: "Closed", altered_hours: "Special hours" };
+
+function Closures({ e }: { e: Data }) {
+  const from = str(e.from);
+  const to = str(e.to);
+  const hours = Array.isArray(e.hours) ? (e.hours as string[]) : [];
+  return (
+    <>
+      <Row label={CLOSURE_STATUS[str(e.status) ?? ""] ?? "Status"}>
+        {from && (from === to || !to ? formatDate(from) : `${formatDate(from)} – ${formatDate(to)}`)}
+      </Row>
+      {hours.length > 0 && <Row label="Open">{hours.join(", ")}</Row>}
+      <Row label="Source">
+        {e.confidence === "official" ? "the place’s own website" : "another website: worth checking"}
+      </Row>
+    </>
+  );
+}
+
 function Raw({ e }: { e: Data }) {
   return (
     <>
@@ -134,6 +153,7 @@ const VIEWS: Record<string, (props: { e: Data }) => React.ReactNode> = {
   daily_load: DailyLoad,
   public_holidays: PublicHolidays,
   hotel_red_flags: HotelRedFlags,
+  closures: Closures,
 };
 
 export function Evidence({ violation }: { violation: Violation }) {

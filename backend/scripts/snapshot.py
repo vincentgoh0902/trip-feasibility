@@ -51,7 +51,8 @@ async def take(deps) -> dict:
         dev,
         {h.key: h for h in report.hotels},
         mode="gold",
-        config=CheckConfig(),
+        # no closures: it needs the model API, and the gate must run without a key
+        config=CheckConfig(enabled=[n for n in CHECK_NAMES if n != "closures"]),
         settings=get_settings(),
         decisions=MatchDecisions.load(DECISIONS),  # read only: never saved here
     )
@@ -65,7 +66,7 @@ async def take(deps) -> dict:
         city,
         stops,
         example.preferences,
-        CheckConfig(enabled=[n for n in CHECK_NAMES if n != "hotel_red_flags"]),
+        CheckConfig(enabled=[n for n in CHECK_NAMES if n not in ("hotel_red_flags", "closures")]),
     )
     example, _ = await run_agent(deps, inp, None)
     return {

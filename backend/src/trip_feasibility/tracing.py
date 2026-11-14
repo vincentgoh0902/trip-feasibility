@@ -95,16 +95,20 @@ class Usage:
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    web_searches: int = 0
     cost_usd: Decimal | None = Decimal(0)
     models: list[str] = field(default_factory=list)
 
-    def add(self, model: str, input_tokens: int, output_tokens: int) -> Decimal | None:
+    def add(
+        self, model: str, input_tokens: int, output_tokens: int, web_searches: int = 0
+    ) -> Decimal | None:
         self.calls += 1
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
+        self.web_searches += web_searches
         if model not in self.models:
             self.models.append(model)
-        cost = call_cost(model, input_tokens, output_tokens)
+        cost = call_cost(model, input_tokens, output_tokens, web_searches)
         self.cost_usd = None if cost is None or self.cost_usd is None else self.cost_usd + cost
         return cost
 
@@ -113,6 +117,7 @@ class Usage:
             "calls": self.calls,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "web_searches": self.web_searches,
             "cost_usd": None if self.cost_usd is None else float(self.cost_usd),
             "models": self.models,
         }
@@ -136,7 +141,9 @@ class _TracedMessages:
         ) as gen:
             message = await self._inner.create(**kwargs)
             usage = message.usage
-            cost = self._usage.add(model, usage.input_tokens, usage.output_tokens)
+            server_tools = getattr(usage, "server_tool_use", None)
+            searches = getattr(server_tools, "web_search_requests", 0) or 0
+            cost = self._usage.add(model, usage.input_tokens, usage.output_tokens, searches)
             gen.update(
                 output="".join(getattr(b, "text", "") for b in message.content)
                 if content
