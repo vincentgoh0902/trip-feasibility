@@ -5,8 +5,9 @@ defences, and log the result to eval_runs.
     uv run python scripts/run_injection_suite.py --defended-only  # cheaper: the shipped code
     uv run python scripts/run_injection_suite.py --no-save        # trying things out
 
-Needs ANTHROPIC_API_KEY. 24 cases per condition, one or two model calls each (a fix retry can
-add one): a few cents with Haiku 5.5. Details per case go to data/evals/runs/ (gitignored).
+Needs ANTHROPIC_API_KEY. 30 cases per condition (24 text attacks, 6 web pages), one or two
+model calls each (a fix retry can add one; web pages make no real search): a few cents with
+Haiku 5.5. Details per case go to data/evals/runs/ (gitignored).
 No dataset itinerary is used: the base is the demo sample.
 """
 
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
+from trip_feasibility.checks.closures import PROMPT_VERSION as CLOSURES_PROMPT_VERSION
 from trip_feasibility.config import get_settings
 from trip_feasibility.db import make_engine
 from trip_feasibility.evals.injection import (
@@ -47,6 +49,8 @@ async def run_condition(name: str, client, settings) -> tuple[dict, list]:
         "extraction_effort": settings.extraction_effort,
         "fix_model": settings.fix_model,
         "fix_effort": settings.fix_effort,
+        "closures_model": settings.closures_model,
+        "closures_effort": settings.closures_effort,
     }
     baseline = await baseline_extraction(
         client, settings.extraction_model, settings.extraction_effort
@@ -102,6 +106,8 @@ async def main() -> int:
         "suite_version": suite_version(),
         "extraction_model": settings.extraction_model,
         "fix_model": settings.fix_model,
+        "closures_model": settings.closures_model,
+        "closures_prompt_version": CLOSURES_PROMPT_VERSION,
         **summaries,
         "usage": usage.as_dict(),
     }
@@ -115,7 +121,8 @@ async def main() -> int:
                         id=run_id,
                         dataset_version=suite_version(),
                         model_id=f"{settings.extraction_model} / {settings.fix_model}",
-                        prompt_version=f"{PROMPT_VERSION} / {FIX_PROMPT_VERSION}",
+                        prompt_version=f"{PROMPT_VERSION} / {FIX_PROMPT_VERSION} / "
+                        f"{CLOSURES_PROMPT_VERSION}",
                         metrics=metrics,
                     )
                 )

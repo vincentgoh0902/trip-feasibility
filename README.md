@@ -16,7 +16,8 @@ plan against real opening hours, holidays and travel times before you book aroun
 
 **Status:** in development, not yet hosted. Built: all five checks plus a closures check
 (web search; first dev run in `docs/EVALS.md`), the parse pipeline, the agent with re-checked
-fixes, the API (live progress over SSE, a demo mode), a prompt-injection suite, the eval runner and the first frontend pages (landing, demo, results). The evaluation
+fixes, the API (live progress over SSE, a demo mode), a prompt-injection suite, the eval
+runner and the first frontend pages (landing, demo, results). The evaluation
 dataset is 40 chatbot itineraries across four cities; the 15 development ones are labelled and
 verified by hand; the 25 test ones (including a held-out city) are labelled and verified too,
 but no system has been run on them yet.
@@ -25,7 +26,13 @@ but no system has been run on them yet.
 checks find 19 of 30 problems with 19 of 22 flags correct. End to end from the raw text they
 find 16–17 of 30 over three runs (71–80% of flags correct), against 18 of 30 (78%) for a
 plain LLM with web search. Parsing now finds 89% of the stops; most of the rest of the gap is
-what the checks can't see yet (temporary closures, missing opening hours). Every run, with what changed, is in
+what the checks can't see yet (temporary closures, missing opening hours).
+
+**Prompt injection (30 attacks of our own, on the demo itinerary):** 29 of 30 resisted, with
+and without the prompt defences: instructions hidden in a pasted reply, OSM tags, opening
+hours comments, hotel reviews and web pages. The one that works is a vandalised OpenStreetMap
+`website` tag pointing at an attacker's lookalike site, whose fake closure notice then counts
+as official. Every run, with what changed, is in
 [`docs/EVALS.md`](docs/EVALS.md). Final numbers come from the test set and will be reported
 here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works
 and why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

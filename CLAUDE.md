@@ -27,8 +27,8 @@ LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks
 (closures, missing OSM hours, overloaded days); flags both systems raise were all real.
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
-and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; next
-injection pages, LLM review). Not blocked on Vincent: travel
+and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; injection
+suite with web pages run live, 29 of 30 resisted; next the LLM review). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
