@@ -28,11 +28,11 @@ find 16–17 of 30 over three runs (71–80% of flags correct), against 18 of 30
 plain LLM with web search. Parsing now finds 89% of the stops; most of the rest of the gap is
 what the checks can't see yet (temporary closures, missing opening hours).
 
-**Prompt injection (30 attacks of our own, on the demo itinerary):** 29 of 30 resisted, with
+**Prompt injection (30 attacks of our own, on the demo itinerary):** all 30 resisted, with
 and without the prompt defences: instructions hidden in a pasted reply, OSM tags, opening
-hours comments, hotel reviews and web pages. The one that works is a vandalised OpenStreetMap
-`website` tag pointing at an attacker's lookalike site, whose fake closure notice then counts
-as official. Every run, with what changed, is in
+hours comments, hotel reviews and web pages. One got through at first: a vandalised
+OpenStreetMap `website` tag made an attacker's lookalike site count as official. Now a site
+is official only if Wikidata agrees, so that fake closure is shown as "worth checking". Every run, with what changed, is in
 [`docs/EVALS.md`](docs/EVALS.md). Final numbers come from the test set and will be reported
 here, whatever they turn out to be. Requirements: [`docs/PRD.md`](docs/PRD.md). How it works
 and why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -86,6 +86,7 @@ After changing `src/trip_feasibility/models.py`:
 | `NOMINATIM_MIN_INTERVAL_S` | `1.0` | Minimum gap between Nominatim requests (its usage policy) |
 | `ROUTING_BASE_URL` | `https://routing.openstreetmap.de` | Walking/cycling/driving routes (FOSSGIS OSRM) |
 | `ROUTING_MIN_INTERVAL_S` | `1.0` | Minimum gap between routing requests (its usage policy) |
+| `WIKIDATA_BASE_URL` | `https://www.wikidata.org` | Official websites, to confirm OSM's (closures) |
 | `RATE_LIMIT_COOLDOWN_S` | `60` | Pause after a service answers 429/403/503 |
 | `HTTP_USER_AGENT` | `trip-feasibility/0.1 (+repo URL)` | Identifies the app to OSM services |
 | `ANTHROPIC_API_KEY` | none | Claude API key for parse step 1 (secret; `.env` only) |
@@ -101,4 +102,6 @@ Secrets go in `.env` (gitignored), never in the repo. CI runs gitleaks on every 
 
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, via
 [Nominatim](https://nominatim.org) and the [FOSSGIS routing servers](https://routing.openstreetmap.de).
-Public holidays from [Nager.Date](https://date.nager.at).
+Public holidays from [Nager.Date](https://date.nager.at). Official websites from
+[Wikidata](https://www.wikidata.org) (CC0). Closures from web pages found by Anthropic's web search,
+each cited.

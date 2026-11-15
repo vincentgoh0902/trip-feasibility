@@ -111,7 +111,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Run the injection suite live and put the numbers in the README (2026-11-14,
       `972cec1e`: 29 of 30 resisted with and without defences; EVALS.md)
 - [x] Injection suite gains web pages (Tier 1 step 4): 6 attacks on the closures extractor,
-      `injection-v2` (2026-11-14); the vandalised OSM `website` tag succeeds (a blocker)
+      `injection-v2` (2026-11-14); the vandalised OSM `website` tag succeeded (a blocker),
+      closed by decision 95 (2026-11-15: official needs Wikidata's P856 to agree)
 - [x] Closures check (Tier 1 step 2, decision 93): `checks/closures.py`, guarded fetch
       `sources/web.py`, MCP tool, re-checks cache-only, web searches in the run's cost,
       frontend label/icon/evidence and "Still checking closures…"; tests against fakes
@@ -159,7 +160,7 @@ the design changes), then 1 → 2 → 4 → 3 → 5.
 4. **Injection suite** gains web pages: hidden instructions, a fake closure notice,
    "ignore previous instructions", a fake booking link, a vandalised OSM `website` tag.
    **Done 2026-11-14** (`injection-v2`, ARCHITECTURE 6d, EVALS.md): 5 of 6 resisted; the
-   vandalised tag works.
+   vandalised tag worked, closed by the Wikidata check (decision 95, `injection-v3`).
 3. **LLM review node** after the checks: judges only (unrealistic days, feeding
    daily_load; what optional and "X or Y" slots mean). Untimed stops are estimated in code
    (time-of-day windows, durations, stated journeys). Every finding cites the check results
@@ -235,7 +236,6 @@ Tier 2 is decided after this is done.
 - LLM-judged fix quality (PRD metric; noted in the README as not measured in Tier 1) and
   judge calibration.
 - The provider-agnostic LLM layer (PRD ADR-6).
-- Wikidata cross-check for "official" closure sources (OSM tags can be vandalised).
 - Typo detection ("check this time") for AM/PM slips.
 
 ## Decisions
@@ -316,11 +316,6 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
   official findings (the only blockers) are rare. Options, none chosen: more pages per
   place, a search domain filter for the OSM website. Not a browser User-Agent: we identify
   ourselves.
-- A vandalised OSM `website` tag makes an attacker's page official, so its fake closure is a
-  blocker (injection suite, 3 of 3 with a lookalike domain). Options, none chosen: official
-  closures stay warnings unless a second source agrees; or only when the domain also
-  matches Wikidata's official website (P856) for the place; or accept it (OSM edits get
-  reverted, and the stop links to its source).
 - Demo closures come from the cache (7-day TTL): a sample shows none unless a live run looked
   its places up within the week. Decide whether to warm the samples or let the demo serve
   expired findings.

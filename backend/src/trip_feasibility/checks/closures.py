@@ -15,7 +15,9 @@ Per located venue or meal and month of the trip, at most `closures_max_places` o
    hours look like hours. What fails is dropped.
 
 Code sets confidence and severity: a finding from the place's own website is "official",
-anything else "web". Closed on the visit's date: blocker if official, warning ("worth
+anything else "web". Its own website is the OSM `website` tag, confirmed by Wikidata's
+official website for the OSM `wikidata` item (decision 95): one vandalised tag can't make an
+attacker's page official. Closed on the visit's date: blocker if official, warning ("worth
 checking") if web. Special hours: a warning unless the visit fits inside them; special
 hours a page doesn't give count for nothing. Areas (neighbourhoods) aren't looked up. The
 validated findings, never page text, are cached per place and month for every user; eval
@@ -37,6 +39,7 @@ from trip_feasibility.itinerary import OsmRef, Stop
 from trip_feasibility.llm import LLMError, create_json, search_web
 from trip_feasibility.sources.nominatim import fetch_osm_tags, tags_key
 from trip_feasibility.sources.web import FetchError, fetch_html, host_of, html_text, same_site
+from trip_feasibility.sources.wikidata import official_websites, qid
 
 CHECK_NAME = "closures"
 # Changing either prompt, the schema or the validation bumps this: it's in the cache key.
@@ -118,8 +121,12 @@ class Target:
     osm: OsmRef
     month: date  # the 1st
     name: str
-    website: str | None
+    website: str | None  # the OSM tag: pages from it are read first
     stops: list[Stop] = field(default_factory=list)
+    wikidata: str | None = None
+    # Wikidata lists `website` as the place's official site: only then is a finding from it
+    # official (decision 95). Not part of the cached findings, which say "from the tagged site".
+    confirmed: bool = False
 
     @property
     def key(self) -> str:
@@ -273,6 +280,27 @@ async def look_up(deps: CheckDeps, target: Target, city: str) -> dict[str, Any] 
     return value
 
 
+async def _confirm_websites(deps: CheckDeps, targets: list[Target], notes: list[str]) -> None:
+    """Sets `confirmed` on targets whose OSM website Wikidata lists as official."""
+    items = [t.wikidata for t in targets if t.website and t.wikidata]
+    if not items:
+        return
+    try:
+        sites = await official_websites(deps, items)
+    except Unavailable:
+        notes.append("Wikidata unavailable: no finding could be marked official")
+        return
+    for t in targets:
+        if t.website and t.wikidata:
+            t.confirmed = is_confirmed(t.website, sites[t.wikidata])
+
+
+def is_confirmed(website: str, official: list[str]) -> bool:
+    """Whether the OSM website is one of Wikidata's official ones (same host, or one a
+    subdomain of the other)."""
+    return any(same_site(website, s) or same_site(s, website) for s in official)
+
+
 def _visit_fits(stop: Stop, hours: list[tuple[time, time]]) -> bool:
     if stop.start_time is None:
         return False
@@ -296,7 +324,11 @@ def judge(stop: Stop, finding: dict[str, Any]) -> tuple[Literal["warning", "bloc
     host = host_of(finding["url"])
     when = f"{stop.date:%a %d %b %Y}"
     period = "that day" if start == end else f"{start:%d %b} to {end:%d %b %Y}"
-    caveat = "" if finding["official"] else " Worth checking: this isn't the place's own website."
+    caveat = (
+        ""
+        if finding["official"]
+        else (" Worth checking: this isn't the place's confirmed website.")
+    )
     if finding["status"] == "closed":
         severity = "blocker" if finding["official"] else "warning"
         return severity, f"{stop.place_name} is closed on {when} ({period}), says {host}.{caveat}"
@@ -343,9 +375,12 @@ async def check_closures(
             t = tags.get(tags_key(s.osm)) or {}
             website = next((t[k] for k in _WEBSITE_TAGS if isinstance(t.get(k), str)), None)
             name = t.get("name:en") or t.get("name") or s.place_name
-            targets[key] = Target(osm=s.osm, month=month, name=name, website=website)
+            targets[key] = Target(osm=s.osm, month=month, name=name, website=website,
+                                  wikidata=qid(t))  # fmt: skip
         targets[key].stops.append(s)
     chosen = list(targets.values())[: deps.settings.closures_max_places]
+    tags_ok = not notes
+    await _confirm_websites(deps, chosen, notes)
     for t in list(targets.values())[deps.settings.closures_max_places :]:
         unknown += [
             UnknownStop(
@@ -375,7 +410,7 @@ async def check_closures(
                     return
             found[t.key] = value
             # without OSM tags nothing could be official: not worth keeping for a week
-            if value is not None and not notes:
+            if value is not None and tags_ok:
                 ttl = timedelta(days=deps.settings.cache_ttl_closures_days)
                 await deps.cache.put("closures", t.key, value, ttl)
 
@@ -400,8 +435,9 @@ async def check_closures(
                 reason = "closures lookup unavailable"
             unknown += [UnknownStop(stop_id=s.id, reason=reason) for s in t.stops]
             continue
+        findings = [f | {"official": f["official"] and t.confirmed} for f in value["findings"]]
         for s in t.stops:
-            hits = [(hit, f) for f in value["findings"] if (hit := judge(s, f))]
+            hits = [(hit, f) for f in findings if (hit := judge(s, f))]
             if not hits:
                 continue
             # the worst finding, an official one before a web one

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     routing_base_url: str = "https://routing.openstreetmap.de"
     routing_min_interval_s: float = 1.0
     routing_timeout_s: float = 15.0
+    # Wikidata's official website (P856) confirms an OSM website tag before a closure from
+    # that site counts as official (decision 95).
+    wikidata_base_url: str = "https://www.wikidata.org"
+    cache_ttl_wikidata_days: int = 30
     # After a rate-limit or overload response, stop calling that service for this long.
     rate_limit_cooldown_s: float = 60.0
     cache_ttl_holidays_days: int = 30

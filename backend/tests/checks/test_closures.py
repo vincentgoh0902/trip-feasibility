@@ -16,6 +16,7 @@ from trip_feasibility.sources import web
 from trip_feasibility.sources.web import FetchError, check_url, html_text, same_site
 
 LOOKUP = "https://nominatim.test/lookup"
+WIKIDATA = "https://wikidata.test/w/api.php"
 OWN = "https://www.eye.test/visit"
 BLOG = "https://blog.test/eye-closed"
 JAN_08, JAN_20 = date(2027, 1, 8), date(2027, 1, 20)
@@ -81,9 +82,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(web, "resolve", resolve)
 
 
-@pytest.fixture
-def eye(respx_mock):
-    """way/1, with its own website on eye.test."""
+def lookup(respx_mock, **extratags):
     return respx_mock.get(LOOKUP).respond(
         json=[
             {
@@ -92,10 +91,22 @@ def eye(respx_mock):
                 "category": "tourism",
                 "type": "attraction",
                 "name": "London Eye",
-                "extratags": {"website": "https://www.eye.test/"},
+                "extratags": extratags,
             }
         ]
     )
+
+
+def wikidata(respx_mock, *sites, status=200):
+    claims = [{"rank": "normal", "mainsnak": {"datavalue": {"value": s}}} for s in sites]
+    return respx_mock.get(WIKIDATA).respond(status, json={"claims": {"P856": claims}})
+
+
+@pytest.fixture
+def eye(respx_mock):
+    """way/1, with its own website on eye.test, confirmed by Wikidata."""
+    wikidata(respx_mock, "https://eye.test")
+    return lookup(respx_mock, website="https://www.eye.test/", wikidata="Q1")
 
 
 def pages(respx_mock, *urls, body=PAGE):
@@ -214,6 +225,35 @@ async def test_official_closure_is_a_blocker_with_its_source(check_deps, respx_m
     assert search["tools"][0]["max_uses"] == 1
     assert "tools" not in extract
     assert "Closed 6-17 January" in extract["messages"][0]["content"]
+
+
+@pytest.mark.parametrize(
+    ("tags", "sites", "note"),
+    [
+        # a vandalised OSM tag: Wikidata lists another site
+        ({"website": "https://www.eye.test/", "wikidata": "Q1"}, ["https://real-eye.test"], None),
+        ({"website": "https://www.eye.test/"}, [], None),  # no Wikidata item to confirm it
+        ({"website": "https://www.eye.test/", "wikidata": "Q1"}, None, "Wikidata unavailable"),
+    ],
+)
+async def test_the_tagged_site_is_official_only_if_wikidata_confirms_it(
+    check_deps, respx_mock, tags, sites, note
+):
+    lookup(respx_mock, **tags)
+    if sites is None:
+        wikidata(respx_mock, status=503)
+    else:
+        wikidata(respx_mock, *sites)
+    pages(respx_mock, OWN)
+    client = FakeClient([search_reply(OWN)], [extract_reply(closed())])
+    result = await run(with_llm(check_deps, client), [stop("a", JAN_08)])
+    [v] = result.violations
+    assert v.severity == "warning" and v.evidence["confidence"] == "web"
+    assert "confirmed website" in v.message
+    assert result.notes == ([note + ": no finding could be marked official"] if note else [])
+    # the findings are cached all the same: confirmation is applied after the cache
+    key = f"closures:{closures.PROMPT_VERSION}:way:1:2027-01"
+    assert key in await check_deps.cache.get_many([key])
 
 
 async def test_web_only_closure_is_a_warning(check_deps, respx_mock, eye):

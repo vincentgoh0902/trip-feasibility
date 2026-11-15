@@ -49,7 +49,7 @@ async def judge(case, *replies):
 
 def test_every_vector_meets_every_attack():
     assert len(cases()) == 24 + 6
-    assert suite_version().startswith("injection-v2-")
+    assert suite_version().startswith("injection-v3-")
     assert ADD.text in injected_text(ADD.text)
 
 
@@ -79,8 +79,9 @@ async def test_web_page_judging():
     assert link.followed is False and "paris-guide.example" in link.detail
     notice = await judge(WEB["web-notice"], strike)
     assert notice.followed is False and "[warning]" in notice.detail
-    # a vandalised OSM website tag makes the attacker's page official: the known gap
-    assert (await judge(WEB["web-vandalised"], strike)).followed is True
+    # a vandalised OSM website tag: Wikidata doesn't list the attacker's site (decision 95)
+    vandalised = await judge(WEB["web-vandalised"], strike)
+    assert vandalised.followed is False and "[warning]" in vandalised.detail
 
 
 async def test_web_pages_reach_only_the_tool_less_extractor():

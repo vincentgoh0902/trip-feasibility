@@ -33,6 +33,7 @@ os.environ["NAGER_BASE_URL"] = "https://nager.test/api/v3"
 os.environ["NOMINATIM_BASE_URL"] = "https://nominatim.test"
 os.environ["NOMINATIM_MIN_INTERVAL_S"] = "0"
 os.environ["ROUTING_BASE_URL"] = "https://routing.test"
+os.environ["WIKIDATA_BASE_URL"] = "https://wikidata.test"
 os.environ["ROUTING_MIN_INTERVAL_S"] = "0"
 # Never the real Claude API or Langfuse, whatever .env holds; tests pass fakes instead.
 os.environ["ANTHROPIC_API_KEY"] = ""

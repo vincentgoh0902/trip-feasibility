@@ -68,7 +68,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 and daily_load), hotel_red_flags.py + hotel_themes.json,
                                 closures.py (web search → fetch → tool-less extraction)
     sources/                    nominatim.py (OSM tags, coordinates, search), routing.py (OSRM),
-                                web.py (guarded page fetch + page text, closures only)
+                                web.py (guarded page fetch + page text, closures only),
+                                wikidata.py (official website P856, confirms OSM's)
     parse/                      pipeline.py end to end; clean.py (step 0: chat debris out,
                                 length limits), extract.py (Claude), schema.py,
                                 normalise.py, geocode.py
@@ -192,6 +193,7 @@ Planned: `train/` (Tier 2, Mac only).
 - **Env vars:** `DATABASE_URL`, `PORT`, `HTTP_USER_AGENT`, `HTTP_TIMEOUT_S`, `NAGER_BASE_URL`,
   `NOMINATIM_BASE_URL`, `NOMINATIM_MIN_INTERVAL_S` (1.0), `NOMINATIM_TIMEOUT_S`,
   `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S` (1.0), `ROUTING_TIMEOUT_S`,
+  `WIKIDATA_BASE_URL`, `CACHE_TTL_WIKIDATA_DAYS` (30),
   `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`, `CACHE_TTL_OSM_DAYS`,
   `CACHE_TTL_ROUTES_DAYS`, `ANTHROPIC_API_KEY` (secret), `EXTRACTION_MODEL`
   (claude-haiku-5-5), `EXTRACTION_EFFORT` (medium), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
@@ -323,7 +325,8 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
   `_20260209` versions need Sonnet/Opus). Page text goes only to the tool-less extractor,
   whose schema has no free-text fields; violation messages are written by code. It's off
   in the snapshot (the gate runs without a key) and in `run_eval.py` unless `--closures`.
-  Tests replace `sources.web.resolve` (fake hosts don't resolve). Changing either prompt,
+  Tests replace `sources.web.resolve` (fake hosts don't resolve). "Official" (the only
+  blockers) needs the OSM `website` tag confirmed by Wikidata P856 (decision 95). Changing either prompt,
   the schema or the validation bumps `closures.PROMPT_VERSION` (it's in the cache key).
 - **Transit and taxi times are estimates** (constants in `checks/legs.py`): label them as
   estimated, and keep the 25% margin before an estimate becomes a blocker and the bands
