@@ -52,7 +52,9 @@ export function Progress({ state }: { state: RunState }) {
               : `${r.violations} problem${r.violations === 1 ? "" : "s"}`
           : name === "closures" && !finished
             ? "searching the web, takes a little longer"
-            : undefined;
+            : name === "review" && !finished
+              ? "judging each day once the checks are in"
+              : undefined;
         return <Item key={name} state={itemState} label={checkLabel(name)} detail={detail} />;
       })}
       {state.fixesStarted && (

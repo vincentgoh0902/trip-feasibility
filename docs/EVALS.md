@@ -424,3 +424,32 @@ confirmed. All 10 official findings stay official. The 10 unconfirmed places hav
 Wikidata website (parks, a council page) or a domain that changed in one database only
 (Parc Güell, Sainte-Chapelle, the Royal Opera House): closures from those sites are
 warnings now.
+
+### 2026-11-15 · gold mode · LLM review, first dev runs (`68f339b6`, `7aade599`, `447fd809`)
+
+What changed: the review node (decision 96), run with `run_eval.py --mode gold --review`.
+Its findings are scored as daily_load (two labels on dev: london-04 day 4, paris-08 day 2).
+Everything else unchanged; closures off. Two runs per version for v1 and v2 were printed
+(not logged) while changing the prompt; the logged ones:
+
+| Run | Prompt, model | daily_load precision | daily_load recall | All: precision | All: recall |
+|---|---|---|---|---|---|
+| `c541a8a9` (no review) | | n/a | 0 of 2 | 20 of 23 (87%) | 20 of 32 (62%) |
+| `68f339b6` | `review-v1`, Haiku 5.5 | 1 of 17 (6%) | 1 of 2 | 21 of 40 (52%) | 21 of 32 (66%) |
+| `7aade599` | `review-v3`, Haiku 5.5 | 1 of 4 (25%) | 1 of 2 | 21 of 27 (78%) | 21 of 32 (66%) |
+| `447fd809` | `review-v3`, Sonnet 5.5 | 0 of 3 (0%) | 0 of 2 | 20 of 26 (77%) | 20 of 32 (62%) |
+
+Unlogged runs on the same stops: `review-v2` (Haiku) 1 of 6; `review-v3` Haiku 1 of 7,
+Sonnet 1 of 5 (it found london-04 day 4 and missed Versailles). Cost: about $0.002 per
+itinerary with Haiku, $0.015 with Sonnet.
+
+What v1 → v3 changed: v1 saw every check's findings and the pace limits; most of its 16
+wrong flags restated a closed place or a tight transfer. v2 sees only daily_load's findings
+and has a third verdict, `full` (busy but doable); its wrong flags quoted "a moderate pace
+usually allows 5". v3 drops the limits and the "looks busy" counts.
+
+Reading: no version does better than the counts it was meant to replace, and the flagged
+days change between runs, so the review is off by default. The two labelled days need what
+the stops don't hold: "maybe a second show" is in the text, and "Versailles recommends a
+whole afternoon for Trianon" is a visit length. Two positives can't separate a better
+prompt from noise, so prompt work stops here.

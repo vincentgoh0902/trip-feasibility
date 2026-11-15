@@ -277,7 +277,7 @@ export interface components {
              *       "closures"
              *     ]
              */
-            enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags" | "closures")[];
+            enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags" | "closures" | "review")[];
             /**
              * Travel Buffer Min
              * @default 0

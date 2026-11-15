@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
+from trip_feasibility.agent.review import REVIEW_PROMPT_VERSION
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
@@ -102,6 +103,9 @@ async def main() -> int:
         action="store_true",
         help="also run the closures check (web searches on a cache miss; costs money)",
     )
+    parser.add_argument(
+        "--review", action="store_true", help="also run the LLM review (one model call each)"
+    )
     parser.add_argument("--dir", type=Path, default=DATASET)
     args = parser.parse_args()
     if args.split == "test" and not args.final:
@@ -136,21 +140,22 @@ async def main() -> int:
 
     settings = get_settings()
     modes = ["gold", "parsed"] if args.mode == "both" else [args.mode]
-    needs_key = "parsed" in modes or args.fixes or args.closures
+    needs_key = "parsed" in modes or args.fixes or args.closures or args.review
     if needs_key and settings.anthropic_api_key is None:
         print(
-            "Parsed mode, --fixes and --closures need ANTHROPIC_API_KEY (repo-root .env).",
+            "Parsed mode, --fixes, --closures and --review need ANTHROPIC_API_KEY (.env).",
             file=sys.stderr,
         )
         return 1
     hotels = {h.key: h for h in report.hotels}
-    config = CheckConfig(enabled=[n for n in CHECK_NAMES if args.closures or n != "closures"])
+    off = {n for n, on in (("closures", args.closures), ("review", args.review)) if not on}
+    config = CheckConfig(enabled=[n for n in CHECK_NAMES if n not in off])
     engine = make_engine(settings.database_url)
     sessionmaker = async_sessionmaker(engine)
     OUT.mkdir(parents=True, exist_ok=True)
     decisions = MatchDecisions.load(DECISIONS)
     client = None
-    if "parsed" in modes or args.fixes:
+    if "parsed" in modes or args.fixes or args.review:
         client = make_client(settings)
         if args.replay:
             client = ReplayClient(client, paths.EVALS / "llm-replay")
@@ -173,7 +178,7 @@ async def main() -> int:
                     mode=mode,
                     config=config,
                     settings=settings,
-                    client=client if mode == "parsed" or args.fixes else None,
+                    client=client if mode == "parsed" or args.fixes or args.review else None,
                     fixes=args.fixes,
                     decisions=decisions,
                     progress=progress(args.split),
@@ -187,6 +192,8 @@ async def main() -> int:
                     "config": config.model_dump(),
                     "fix_model": settings.fix_model if args.fixes else None,
                     "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
+                    "review_model": settings.review_model if args.review else None,
+                    "review_prompt_version": REVIEW_PROMPT_VERSION if args.review else None,
                     "clean_version": CLEAN_VERSION if mode == "parsed" else None,
                     "match_decisions_version": decisions.version(),
                     "replay": (

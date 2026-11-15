@@ -1,13 +1,15 @@
 """The agent graph (LangGraph): one branch per enabled check, run in parallel through the
-in-process MCP tool server, then fixes.
+in-process MCP tool server, then the review, then fixes.
 
     START ─► run_check (opening_hours) ─┐
-          ├► run_check (travel_time) ───┼─► fix ─► END
+          ├► run_check (travel_time) ───┼─► review ─► fix ─► END
           └► ... one per enabled check ─┘
 
 Each branch calls one MCP tool and stores its CheckResult. A tool error or a broken call
 becomes an "unavailable" result for that check, so the run always finishes (PRD:
-reliability). Which checks run is configuration, not a model's choice. The fix node
+reliability). Which checks run is configuration, not a model's choice. The review node
+(agent/review.py, decision 96) judges each day from the checks' results when "review" is
+enabled; it never goes to the fixer and isn't re-run on fix re-checks. The fix node
 (agent/fixes.py) is where the LLM comes in: it proposes fixes, and code re-checks them. It's
 skipped when the run has no fixer (no API key) or nothing to fix.
 """
@@ -26,14 +28,15 @@ from mcp import Client
 
 from trip_feasibility.agent.fixes import FixReport, propose_fixes
 from trip_feasibility.agent.models import CheckInput, CheckReport
-from trip_feasibility.checks.config import CHECK_NAMES, CheckName
+from trip_feasibility.agent.review import Reviewer, review
+from trip_feasibility.checks.config import TOOL_CHECKS, CheckName
 from trip_feasibility.checks.deps import CheckDeps
 from trip_feasibility.checks.models import CheckResult
 from trip_feasibility.llm import MessagesClient
 from trip_feasibility.mcp_server import create_server
 from trip_feasibility.parse.geocode import City
 
-__all__ = ["CheckInput", "CheckReport", "run_checks", "run_agent", "stream_agent"]
+__all__ = ["CheckInput", "CheckReport", "Reviewer", "run_checks", "run_agent", "stream_agent"]
 
 
 class CheckState(TypedDict, total=False):
@@ -62,6 +65,7 @@ class AgentContext:
     mcp: Client  # connected (or anything with its call_tool, e.g. tracing.TracedMcp)
     deps: CheckDeps | None = None
     fixer: Fixer | None = None
+    reviewer: Reviewer | None = None
 
 
 def tool_arguments(
@@ -109,8 +113,9 @@ async def call_check(
 
 
 async def check_all(mcp: Client, inp: CheckInput) -> CheckReport:
-    """Every enabled check at once, outside the graph (fix re-checks)."""
-    names = [n for n in CHECK_NAMES if n in inp.config.enabled]
+    """Every enabled check at once, outside the graph (fix re-checks). Not the review: it
+    makes a model call, and its findings aren't fixed."""
+    names = [n for n in TOOL_CHECKS if n in inp.config.enabled]
     results = await asyncio.gather(*(call_check(mcp, n, inp, recheck=True) for n in names))
     return CheckReport.from_results(inp, dict(zip(names, results, strict=True)))
 
@@ -119,7 +124,7 @@ def fan_out(state: CheckState) -> list[Send]:
     enabled = state["input"].config.enabled
     return [
         Send("run_check", CheckTask(input=state["input"], check=name))
-        for name in CHECK_NAMES
+        for name in TOOL_CHECKS
         if name in enabled
     ]
 
@@ -127,6 +132,19 @@ def fan_out(state: CheckState) -> list[Send]:
 async def run_check(task: CheckTask, runtime: Runtime[AgentContext]) -> dict:
     name = task["check"]
     return {"results": {name: await call_check(runtime.context.mcp, name, task["input"])}}
+
+
+async def review_node(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
+    inp = state["input"]
+    if "review" not in inp.config.enabled:
+        return {"results": {}}
+    ctx = runtime.context
+    report = CheckReport.from_results(inp, state["results"])
+    if ctx.deps is None:
+        result = CheckResult.unavailable("review", "the review needs the check dependencies")
+    else:
+        result = await review(ctx.deps, ctx.reviewer, inp, report)
+    return {"results": {"review": result}}
 
 
 async def fix(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
@@ -150,9 +168,11 @@ async def fix(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
 def build_graph() -> CompiledStateGraph:
     graph = StateGraph(CheckState, context_schema=AgentContext)
     graph.add_node("run_check", run_check)
+    graph.add_node("review", review_node)
     graph.add_node("fix", fix)
     graph.add_conditional_edges(START, fan_out, ["run_check"])
-    graph.add_edge("run_check", "fix")
+    graph.add_edge("run_check", "review")
+    graph.add_edge("review", "fix")
     graph.add_edge("fix", END)
     return graph.compile()
 
@@ -161,12 +181,12 @@ GRAPH = build_graph()
 
 
 async def run_agent(
-    deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None
+    deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None, reviewer: Reviewer | None = None
 ) -> tuple[CheckReport, FixReport | None]:
     async with Client(create_server(deps)) as client:
         state = await GRAPH.ainvoke(
             {"input": inp, "results": {}},
-            context=AgentContext(mcp=client, deps=deps, fixer=fixer),
+            context=AgentContext(mcp=client, deps=deps, fixer=fixer, reviewer=reviewer),
         )
     return CheckReport.from_results(inp, state["results"]), state.get("fixes")
 
@@ -176,17 +196,21 @@ FixesDone = tuple[Literal["fixes"], FixReport | None]
 
 
 async def stream_agent(
-    mcp: Any, deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None
+    mcp: Any,
+    deps: CheckDeps,
+    inp: CheckInput,
+    fixer: Fixer | None = None,
+    reviewer: Reviewer | None = None,
 ) -> AsyncIterator[CheckDone | FixesDone]:
     """The graph's progress as it happens, for the API's live feed: each check's result as it
-    finishes, then the fixes (None when skipped). `mcp` is a connected client, so the caller
-    can wrap it (tracing)."""
-    context = AgentContext(mcp=mcp, deps=deps, fixer=fixer)
+    finishes (the review last), then the fixes (None when skipped). `mcp` is a connected
+    client, so the caller can wrap it (tracing)."""
+    context = AgentContext(mcp=mcp, deps=deps, fixer=fixer, reviewer=reviewer)
     async for update in GRAPH.astream(
         {"input": inp, "results": {}}, context=context, stream_mode="updates"
     ):
         for node, value in update.items():
-            if node == "run_check":
+            if node in ("run_check", "review"):
                 for result in value["results"].values():
                     yield ("check", result)
             elif node == "fix":

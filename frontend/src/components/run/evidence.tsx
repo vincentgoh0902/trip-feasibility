@@ -135,6 +135,20 @@ function Closures({ e }: { e: Data }) {
   );
 }
 
+function Review({ e }: { e: Data }) {
+  const cited = Object.values(obj(e.cited_findings) ?? {}).filter((m): m is string => typeof m === "string");
+  return (
+    <>
+      <Row label="Kind">a judgement, not a fact: worth a second look</Row>
+      {cited.map((message, i) => (
+        <Row key={i} label={i === 0 ? "Based on" : ""}>
+          {message}
+        </Row>
+      ))}
+    </>
+  );
+}
+
 function Raw({ e }: { e: Data }) {
   return (
     <>
@@ -154,6 +168,7 @@ const VIEWS: Record<string, (props: { e: Data }) => React.ReactNode> = {
   public_holidays: PublicHolidays,
   hotel_red_flags: HotelRedFlags,
   closures: Closures,
+  review: Review,
 };
 
 export function Evidence({ violation }: { violation: Violation }) {

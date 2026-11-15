@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     fix_effort: str = "medium"
     # Closures check (checks/closures.py): one web search per place and month, then a
     # tool-less extraction from the fetched pages. Findings are cached per place and month.
+    # The LLM review after the checks (decision 96): judges whether each day is too much.
+    review_model: str = "claude-haiku-5-5"
+    review_effort: str = "medium"
     closures_model: str = "claude-haiku-5-5"
     closures_search_effort: str = "low"
     closures_effort: str = "medium"

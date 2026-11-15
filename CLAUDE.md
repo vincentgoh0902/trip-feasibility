@@ -28,11 +28,12 @@ LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
 and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; injection
-suite with web pages run live, 29 of 30 resisted; next the LLM review). Not blocked on Vincent: travel
+suite with web pages run live, 30 of 30 after decision 95; LLM review first slice built,
+decision 96, off by default: no version beats the counts on dev). Not blocked on Vincent: travel
 time and daily load using durations and stated journeys, frontend slice 2 code, more demo
 samples, settling the hosting shape.
 
-Waiting on Vincent: nothing blocking. `data/dataset/` + `data/evals/match_decisions.yaml` are
+Waiting on Vincent: the LLM review's next step (PLAN.md "Open"); nothing else blocking. `data/dataset/` + `data/evals/match_decisions.yaml` are
 backed up as a dated zip in his OneDrive (2026-11-11); remind him to redo it after label changes.
 
 Optional: Langfuse Cloud keys; before slice 2 can be tried, OAuth apps + `API_JWT_SECRET`.
@@ -73,7 +74,8 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     parse/                      pipeline.py end to end; clean.py (step 0: chat debris out,
                                 length limits), extract.py (Claude), schema.py,
                                 normalise.py, geocode.py
-    agent/                      graph.py (LangGraph: checks in parallel, then fixes),
+    agent/                      graph.py (LangGraph: checks in parallel, review, then fixes),
+                                review.py (LLM day review, off by default, decision 96),
                                 fixes.py (propose → apply → re-check → retry), models.py
     dataset/                    annotation format (models.py), split rules, validation + gold labels,
                                 draft.py (violation drafts from a non-Anthropic model),
@@ -197,7 +199,7 @@ Planned: `train/` (Tier 2, Mac only).
   `RATE_LIMIT_COOLDOWN_S` (60), `CACHE_TTL_HOLIDAYS_DAYS`, `CACHE_TTL_OSM_DAYS`,
   `CACHE_TTL_ROUTES_DAYS`, `ANTHROPIC_API_KEY` (secret), `EXTRACTION_MODEL`
   (claude-haiku-5-5), `EXTRACTION_EFFORT` (medium), `FIX_MODEL` (claude-haiku-5-5), `FIX_EFFORT`
-  (medium), `CLOSURES_MODEL` (claude-haiku-5-5), `CLOSURES_SEARCH_EFFORT` (low),
+  (medium), `REVIEW_MODEL` (claude-haiku-5-5), `REVIEW_EFFORT` (medium), `CLOSURES_MODEL` (claude-haiku-5-5), `CLOSURES_SEARCH_EFFORT` (low),
   `CLOSURES_EFFORT` (medium), `CLOSURES_MAX_PLACES` (12), `CLOSURES_PAGES_PER_PLACE` (3),
   `CLOSURES_FETCH_TIMEOUT_S` (10), `CLOSURES_FETCH_MAX_BYTES` (2000000),
   `CACHE_TTL_CLOSURES_DAYS` (7), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
@@ -242,6 +244,7 @@ uv run python scripts/check_itinerary.py trip.txt --city Paris --start 2027-04-2
 uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev split
 uv run python scripts/run_eval.py --mode parsed --replay   # reuse saved model replies (A/B)
 uv run python scripts/run_eval.py --mode gold --closures  # + closures (web searches on a cache miss: costs money)
+uv run python scripts/run_eval.py --mode gold --review    # + the LLM review (off by default; one call each)
 uv run python scripts/diagnose_parse.py [--ids ...] [--samples N] [--summary]   # parser misses (dev)
 uv run python scripts/run_eval.py --split test --final  # reported results only
 uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain name matches

@@ -821,15 +821,15 @@ enabled check through the MCP tool server, in parallel, as a LangGraph graph:
 
 ```
 START ─► run_check(opening_hours) ─┐
-      ├► run_check(travel_time) ───┼─► fix ─► END   → CheckReport (worst first) + FixReport
+      ├► run_check(travel_time) ───┼─► review ─► fix ─► END   → CheckReport + FixReport
       └► … one Send per enabled check
 ```
 
 - **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
   would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
   the agent are extraction (before), fixes (the `fix` node, below) and the closures check's
-  search and extraction (inside its tool, section 5); the review node will add another,
-  under decision 92 (section 1).
+  search and extraction (inside its tool, section 5), and the review (below; off by
+  default), under decision 92 (section 1).
 - **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
   server, so an eval run's cache-only mode reaches the tools.
 - **A failed tool never sinks the run:** a tool error, a broken call or a missing country
@@ -849,6 +849,40 @@ START ─► run_check(opening_hours) ─┐
   0.8 s with a warm cache.
 - Streaming: `stream_agent` yields each check's result as it finishes and then the fixes, for
   the API's live feed (section 6c).
+
+### The review (`agent/review.py`, the `review` node; decision 96)
+
+Tier 1 step 3: whether a day is too much is a judgement counts can't make (decision 81), so
+a model makes it, after every check, on their results. "review" is a check name in
+`CheckConfig.enabled` but not an MCP tool (`TOOL_CHECKS` leaves it out); it's **off by
+default** (`DEFAULT_ENABLED`) until it does better on dev than it does now (below).
+
+- **What the model sees,** per day, each item with an id: the day line (`day2`: date,
+  venue and meal counts, first-to-last time, walking km), the stops (`s3`: times, type,
+  name; time-of-day slots as their windows), the legs (`s3>s4`: mode, minutes, km, the gap,
+  "estimate" for transit and taxi), and daily_load's walking warnings (`v1`). Not the other
+  checks' findings, the pace limits or the "looks busy" counts (why: the dev runs below).
+  No tools and no itinerary text, so place names are the only pasted text it sees, as in
+  the fix prompt.
+- **What it answers:** per day `fine`, `full` (busy but doable) or `too_much`, the ids it
+  relies on, one sentence for the traveller (`REVIEW_SCHEMA`).
+- **What code keeps:** a `too_much` that cites at least one id, all of that day; one per
+  day; reason cut to 300 characters. The rest is dropped and counted in a note. Code sets
+  the severity (warning) and confidence (estimated); evidence keeps the cites and the cited
+  findings' messages.
+- **Where it goes:** streamed after the checks; never to the fixer (`ADVISORY_CHECKS`), not
+  re-run on fix re-checks; scored as daily_load for its day, like the labels.
+  `REVIEW_MODEL` / `REVIEW_EFFORT` (Haiku 5.5, medium); `run_eval.py --review`.
+
+**On dev (gold stops, EVALS.md 2026-11-15):** two of 46 days are labelled too much.
+`review-v1` (all findings shown, two verdicts) flagged 17 days, 1 right, most of the others
+restating a closed place or a tight transfer. `review-v2` (daily_load's findings only,
+a `full` verdict) flagged 6, 1 right, quoting the pace limits. `review-v3` (no limits, no
+"looks busy" counts): Haiku 1 of 7 and 1 of 4 over two runs, Sonnet 5.5 1 of 5 and 0 of 3,
+the right one a different labelled day each time. With two positives, precision can't
+really be measured, and which days get flagged changes from run to run. What's missing is
+in the text ("maybe a second show"), visit lengths the stops don't carry, or a firmer
+standard than either model holds.
 
 ### Fixes (`agent/fixes.py`, the `fix` node)
 
@@ -1444,6 +1478,7 @@ Replaced or dropped:
 | 93 | Closures check (Tier 1 step 2): per place and month, one Haiku search (`max_uses: 1`, only result URLs kept), our own guarded fetch of the top 3 pages (own website first), one tool-less structured extraction of dated `closed` / `altered_hours` periods per page, validated in code; official (OSM `website` domain) closed → blocker, web-only → warning, special hours → warning unless the visit fits; findings cached per place and month, re-checks cache-only; at most 12 places; scored as opening_hours (2026-11-13; section 5) | The London Eye case: the facts exist only as page text. Keeping the search model's text out entirely and giving the extractor no tools and no free-text fields means page text can only ever become dates, hours and a URL from the search; our fetch sets the limits Anthropic's web fetch wouldn't (private addresses, size, HTML only) and keeps page text out of any prompt with tools | One search per place and month (~$0.01 each, plus tokens); the extractor can still be fooled by a page's content (a fake notice on another site is only a warning, but a vandalised OSM `website` tag makes it official); DNS rebinding isn't caught; partial closures (one gallery) aren't reported |
 | 94 | Closures after its first dev run: areas (`Stop.area`) aren't looked up; `altered_hours` findings without hours aren't held against a visit; demo runs use cached findings only (`CheckInput.web_search=False`, the same path as fix re-checks) (2026-11-14; section 5, EVALS.md) | All three false alarms on dev were one of these: "Soho" matched a restaurant named after it, and two "special hours" findings had no hours to compare the visit with. Both rules sit after the cache, so no lookup was repeated and `PROMPT_VERSION` stays. The demo is public and unauthenticated: live searches there would spend money per visitor (PLAN's cost decision: no live search calls in the demo) | A real "special hours, see website" notice on the visit's date is now silent; a closed neighbourhood-wide event isn't checked; demo closures show only what the cache holds, so a demo sample needs a live run within the TTL to show any |
 | 95 | A closures finding is official only if the OSM `website` tag is confirmed by Wikidata: the OSM `wikidata` item's official website (P856) is the same site; otherwise `web` (a warning). Applied after the findings cache (2026-11-15; section 5, `sources/wikidata.py`) | The injection suite showed a vandalised OSM `website` tag on a lookalike domain turning a fake closure into a blocker 3 of 3 times. Wikidata is edited and patrolled separately, so an attacker needs both; on dev, all 10 official findings stay official and 36 of 46 tagged places are confirmed. Alternatives were a second agreeing source (most official closures have none) or accepting it | 10 of 46 tagged dev places lose official: no Wikidata item or P856 (parks, a council page), or a domain changed in one database only (Parc Güell, Sainte-Chapelle, Royal Opera House); one Wikidata request per item (cached 30 days, `WIKIDATA_BASE_URL`, `CACHE_TTL_WIKIDATA_DAYS`); vandalising both still works |
+| 96 | The LLM review (Tier 1 step 3): a `review` node after the checks judges each day `fine` / `full` / `too_much` from the stops, legs, day numbers and daily_load's walking warnings, citing ids; code keeps cited `too_much` verdicts as warnings (estimated), never sends them to the fixer, scores them as daily_load; **off by default** (2026-11-15; section 6b) | Decision 81 left "is this day too much" to an LLM; judging from structured results keeps the pasted text and tools out (first slice). Shown other checks' findings it restated them, shown the pace limits it quoted them; both removed. Off by default because on dev it flags 3–7 days for 1 labelled one, and not the same days twice | Not shown to travellers yet; optional and "X or Y" slots, tools and visit lengths are not in it; two dev positives can't tell a better prompt from noise, so prompt work stops until there's more to measure against |
 
 Replaced or dropped:
 - **"The LLM interprets and proposes; code decides"** (from the start until 2026-11-11): every fact from structured data, LLMs only for extraction and fixes. Kept everything it got right (no coordinates from a model, fixes as operations, code deciding what's shown) but left web-only facts and fuzzy judgements as misses (decision 92).

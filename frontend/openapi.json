@@ -709,7 +709,8 @@
                 "travel_time",
                 "daily_load",
                 "hotel_red_flags",
-                "closures"
+                "closures",
+                "review"
               ]
             },
             "type": "array",

@@ -2,15 +2,18 @@ from datetime import date
 from types import SimpleNamespace
 
 from tests.factories import stop
+from tests.parse.test_extract import FakeClient, reply
 from trip_feasibility.agent.graph import (
     GRAPH,
     AgentContext,
     CheckInput,
     CheckReport,
+    Reviewer,
     check_all,
     run_checks,
+    stream_agent,
 )
-from trip_feasibility.checks.config import CheckConfig
+from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.models import CheckResult, Violation
 from trip_feasibility.itinerary import TravelPreferences
 
@@ -68,7 +71,7 @@ async def test_every_enabled_check_runs_with_its_settings():
         "daily_load",
         "hotel_red_flags",
         "closures",
-    ]
+    ]  # not the review: off by default (decision 96)
     assert all(r.status == "ok" for r in report.results.values())
     assert mcp.calls["travel_time"]["buffer_min"] == 20
     assert mcp.calls["travel_time"]["preferences"]["pace"] == "relaxed"
@@ -237,3 +240,36 @@ async def test_no_fixer_no_fixes():
         context=AgentContext(mcp=FakeMcp()),
     )
     assert state["fixes"] is None
+
+
+async def test_the_review_judges_the_checks_results_and_streams_last(check_deps):
+    unlocated = [s.model_copy(update={"osm": None}) for s in STOPS]  # no legs to route
+    walk = violation("daily_load", "warning", ["a", "b"])
+    mcp = FakeMcp(
+        results={"daily_load": CheckResult(check_name="daily_load", status="ok", violations=[walk])}
+    )
+    judged = {"days": [{"day": 1, "verdict": "too_much", "cites": ["v1"], "reason": "Rushed."}]}
+    client = FakeClient(reply(judged))
+    inp = CheckInput(stops=unlocated, city="Paris", country_code="FR",
+                     config=CheckConfig(enabled=list(CHECK_NAMES)))  # fmt: skip
+    events = [
+        e async for e in stream_agent(mcp, check_deps, inp, None, Reviewer(client, "m", "low"))
+    ]
+    checks = [value.check_name for kind, value in events if kind == "check"]
+    assert checks[-1] == "review" and len(checks) == 7
+    assert events[-1] == ("fixes", None)
+    assert "v1 | warning | daily_load | m" in client.calls[0]["messages"][0]["content"]
+    [v] = next(
+        value for kind, value in events if kind == "check" and value.check_name == "review"
+    ).violations
+    assert v.severity == "warning"
+
+
+async def test_review_off_makes_no_call(check_deps):
+    client = FakeClient()
+    config = CheckConfig(enabled=["opening_hours"])
+    inp = CheckInput(stops=STOPS, city="Paris", country_code="FR", config=config)
+    events = [e async for e in stream_agent(FakeMcp(), check_deps, inp, None,
+                                            Reviewer(client, "m", "low"))]  # fmt: skip
+    assert [v.check_name for k, v in events if k == "check"] == ["opening_hours"]
+    assert client.calls == []

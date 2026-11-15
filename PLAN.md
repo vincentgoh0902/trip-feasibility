@@ -161,7 +161,8 @@ the design changes), then 1 → 2 → 4 → 3 → 5.
    "ignore previous instructions", a fake booking link, a vandalised OSM `website` tag.
    **Done 2026-11-14** (`injection-v2`, ARCHITECTURE 6d, EVALS.md): 5 of 6 resisted; the
    vandalised tag worked, closed by the Wikidata check (decision 95, `injection-v3`).
-3. **LLM review node** after the checks: judges only (unrealistic days, feeding
+3. **LLM review node** after the checks (**first slice built 2026-11-15**, decision 96,
+   off by default: on dev it flags 3–7 days for 1 labelled one; EVALS.md): judges only (unrealistic days, feeding
    daily_load; what optional and "X or Y" slots mean). Untimed stops are estimated in code
    (time-of-day windows, durations, stated journeys). Every finding cites the check results
    it relies on and is "estimated"; it may call the read-only MCP tools (a few calls at
@@ -312,6 +313,11 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
   per check" means parse + run, and if so carry the parse usage into the saved version.
 - Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.
+- The LLM review (decision 96): off by default, as no version beats the counts on dev. To
+  decide (Vincent): whether to rate its flagged days by hand (across the runs; ratings
+  only, not labels, as two positives can't measure it), to give it the itinerary text
+  (optional / "X or Y" slots and "maybe" are only there; an injection surface like
+  extraction's), to give it stated visit lengths (Stop has no durations yet), or to drop it.
 - Closures: 40% of page fetches get 403 (bot protection), official sites included, so
   official findings (the only blockers) are rare. Options, none chosen: more pages per
   place, a search domain filter for the OSM website. Not a browser User-Agent: we identify

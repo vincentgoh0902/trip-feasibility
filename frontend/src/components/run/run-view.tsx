@@ -19,8 +19,11 @@ function statusText(state: RunState): string {
       return "Finding the places on the map";
     case "checks": {
       const left = state.checks.filter((name) => !state.results[name]);
-      // closures searches the web, so it's usually the last one by a while
-      if (left.length === 1 && left[0] === "closures") return "Still checking closures…";
+      // closures searches the web, so it's usually the last check by a while; the review
+      // runs after every check
+      const tools = left.filter((name) => name !== "review");
+      if (tools.length === 1 && tools[0] === "closures") return "Still checking closures…";
+      if (left.length === 1 && left[0] === "review") return "Reviewing each day…";
       return `Checking: ${Object.keys(state.results).length} of ${state.checks.length} checks done`;
     }
     case "fixes":

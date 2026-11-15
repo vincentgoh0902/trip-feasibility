@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, run_agent
+from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, Reviewer, run_agent
 from trip_feasibility.checks.config import CheckConfig
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.config import Settings
@@ -143,11 +143,15 @@ async def evaluate_itinerary(
         if fixes:
             assert client is not None
             fixer = Fixer(client, settings.fix_model, settings.fix_effort, city)
+        reviewer = None
+        if "review" in config.enabled and client is not None:
+            reviewer = Reviewer(client, settings.review_model, settings.review_effort)
         report: CheckReport
         report, fix_report = await run_agent(
             deps,
             CheckInput.for_city(city, stops, itin.preferences, config),
             fixer,
+            reviewer,
         )
         if fix_report is not None:
             out.fixes_proposed = len(fix_report.fixes)

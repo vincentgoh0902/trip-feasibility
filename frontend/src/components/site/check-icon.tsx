@@ -96,6 +96,18 @@ function ClosedSign() {
   );
 }
 
+function Clipboard() {
+  return (
+    <>
+      <rect x="7" y="8" width="26" height="28" rx="4" fill="var(--wood-line)" />
+      <rect x="7" y="6" width="26" height="28" rx="4" fill="var(--wood)" />
+      <rect x="11" y="10" width="18" height="20" rx="2" fill="var(--paper)" />
+      <rect x="14" y="3" width="12" height="6" rx="2.5" fill="var(--charcoal)" />
+      <path d="M14 20l4 4 8-8" fill="none" stroke="var(--moss)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  );
+}
+
 const ICONS: Record<string, () => React.ReactNode> = {
   opening_hours: Clock,
   public_holidays: Calendar,
@@ -103,6 +115,7 @@ const ICONS: Record<string, () => React.ReactNode> = {
   daily_load: Footsteps,
   hotel_red_flags: Bed,
   closures: ClosedSign,
+  review: Clipboard,
 };
 
 /** The icon for a check (backend check name); nothing for an unknown check. */

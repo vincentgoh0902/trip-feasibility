@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trip_feasibility import models
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION, FixReport
-from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, stream_agent
+from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, Reviewer, stream_agent
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.checks.models import CheckResult
@@ -276,6 +276,10 @@ class RunService:
                 effort=self.settings.fix_effort,
                 city=city,
             )
+        reviewer = None
+        if self.llm is not None:
+            client = TracedClient(self.llm, self.tracer, usage, "review")
+            reviewer = Reviewer(client, self.settings.review_model, self.settings.review_effort)
         # the closures check's model calls count toward this run's usage too
         deps = self.deps
         if self.llm is not None:
@@ -285,7 +289,7 @@ class RunService:
         fix_report: FixReport | None = None
         async with Client(create_server(deps)) as mcp:
             traced = TracedMcp(mcp, self.tracer)
-            async for kind, value in self.stream(traced, deps, inp, fixer):
+            async for kind, value in self.stream(traced, deps, inp, fixer, reviewer):
                 if kind == "check":
                     results[value.check_name] = value
                     await run.publish(

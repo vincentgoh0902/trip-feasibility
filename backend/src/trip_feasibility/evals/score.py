@@ -75,6 +75,8 @@ def findings(violations: list[Violation], stops: list[Stop]) -> list[Finding]:
                 add(Finding(v.check_name, v.severity, b.day, b.place_name, from_place))
             case "public_holidays" | "daily_load":
                 add(Finding(v.check_name, v.severity, named[0].day, None))
+            case "review":  # its day judgements are what daily_load labels are (decision 96)
+                add(Finding("daily_load", v.severity, named[0].day, None))
             case "hotel_red_flags":
                 add(Finding(v.check_name, v.severity, None, named[0].place_name))
     return list(out.values())

@@ -94,6 +94,8 @@ After changing `src/trip_feasibility/models.py`:
 | `EXTRACTION_EFFORT` | `medium` | Effort level for parse step 1 |
 | `FIX_MODEL` | `claude-haiku-5-5` | Claude model that proposes fixes |
 | `FIX_EFFORT` | `medium` | Effort level for fix proposals |
+| `REVIEW_MODEL` | `claude-haiku-5-5` | Claude model for the day review (off by default) |
+| `REVIEW_EFFORT` | `medium` | Effort level for the day review |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 
 Secrets go in `.env` (gitignored), never in the repo. CI runs gitleaks on every push.

@@ -94,7 +94,7 @@ async def test_demo_uses_the_samples_preferences_and_default_checks(api, service
     await events(api, await start(api, {"sample_id": "paris-one-day"}))
     inp = stream.calls[0]["input"]
     assert inp.country_code == "FR" and inp.city == "Paris"
-    assert len(inp.config.enabled) == 6
+    assert len(inp.config.enabled) == 6  # the review is off by default (decision 96)
     assert inp.preferences.transport_modes == ["walk", "transit"]
     assert inp.web_search is False  # closures from earlier lookups only
 
