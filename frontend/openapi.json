@@ -11,7 +11,7 @@
           "itineraries"
         ],
         "summary": "Parse",
-        "description": "Text → stops for the traveller to review (nothing is saved). Signed in only: the demo\nuses ready-made samples, so anonymous callers never spend on extraction.",
+        "description": "Text → stops for the traveller to review (nothing is saved). Signed in only: anonymous\ncallers parse through `/demo/parse`, which never reaches the model.",
         "operationId": "parse_api_v1_itineraries_parse_post",
         "requestBody": {
           "content": {
@@ -292,31 +292,6 @@
         }
       }
     },
-    "/api/v1/demo/samples": {
-      "get": {
-        "tags": [
-          "checks"
-        ],
-        "summary": "Demo Samples",
-        "operationId": "demo_samples_api_v1_demo_samples_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SampleOut"
-                  },
-                  "type": "array",
-                  "title": "Response Demo Samples Api V1 Demo Samples Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/checks": {
       "post": {
         "tags": [
@@ -426,6 +401,73 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/demo/samples": {
+      "get": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Demo Samples",
+        "operationId": "demo_samples_api_v1_demo_samples_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SampleOut"
+                  },
+                  "type": "array",
+                  "title": "Response Demo Samples Api V1 Demo Samples Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/demo/parse": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Demo Parse",
+        "description": "Text → stops without signing in. Extraction gets only replies prepared for the\nsamples (decision 100): other text, or a sample with another city or date, is refused\nwithout a model call.",
+        "operationId": "demo_parse_api_v1_demo_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
                 }
               }
             }
@@ -836,11 +878,21 @@
               }
             ],
             "title": "Sample Id"
+          },
+          "pasted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PastedCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
         "title": "CheckStart",
-        "description": "Exactly one of: a saved version (signed in) or a demo sample (no sign-in)."
+        "description": "Exactly one of: a saved version (signed in), a demo sample or pasted stops (no\nsign-in; demo runs)."
       },
       "CheckStarted": {
         "properties": {
@@ -1426,6 +1478,32 @@
           "resolved"
         ],
         "title": "ParsedStop"
+      },
+      "PastedCheck": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "City"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Stops"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "stops"
+        ],
+        "title": "PastedCheck",
+        "description": "Stops from /demo/parse as the visitor confirmed them (edited ones without coordinates\nare looked up when the run starts): a demo run, nothing saved."
       },
       "PreferencesIO-Input": {
         "properties": {

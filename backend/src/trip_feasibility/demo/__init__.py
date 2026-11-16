@@ -1,5 +1,6 @@
-"""Demo itineraries: the only thing an anonymous caller can check (no pasted text, so the
-demo never pays for an extraction call on someone else's text)."""
+"""Demo itineraries. Anonymous callers check these, as ready-made stops or pasted as text;
+the model's part of either comes from replies prepared in advance (`prepared`, decision
+100), so no anonymous request ever pays for a model call."""
 
 from datetime import date
 from functools import cache
@@ -28,3 +29,14 @@ class Sample(BaseModel):
 def samples() -> dict[str, Sample]:
     raw = yaml.safe_load(SAMPLES_FILE.read_text())
     return {s["id"]: Sample.model_validate(s) for s in raw}
+
+
+def _words(text: str) -> str:
+    return " ".join(text.split())
+
+
+def sample_for_text(text: str) -> Sample | None:
+    """The sample this pasted text is, ignoring whitespace (a copy may gain or lose line
+    breaks), so its prepared extraction is found."""
+    pasted = _words(text)
+    return next((s for s in samples().values() if _words(s.text) == pasted), None)

@@ -8,6 +8,7 @@ from tests.parse.test_geocode import search_route
 from trip_feasibility import models
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION, Fix, FixReport, Operation
 from trip_feasibility.main import app
+from trip_feasibility.prepared import PreparedClient
 
 V1 = "/api/v1"
 CLOSED = violation("opening_hours", "blocker", ["s1"], "Closed on Tuesdays")
@@ -84,7 +85,7 @@ async def test_demo_run_streams_and_saves_nothing(api, services, nominatim):
     result = got[-1]["run"]
     assert result["violations"][0]["id"] == v["id"]
     assert all(s["lat"] for s in result["stops"])  # geocoded
-    assert result["fixes_enabled"] is False
+    assert result["fixes_enabled"] is True  # from prepared replies only (decision 100)
     r = await api.get(run["result_url"])
     assert r.json()["status"] == "done" and r.json()["demo"] is True
     assert await count(models.CheckRun) == 0
@@ -99,12 +100,40 @@ async def test_demo_uses_the_samples_preferences_and_default_checks(api, service
     assert len(inp.config.enabled) == 7  # the review is off by default (decision 96)
     assert inp.preferences.transport_modes == ["walk", "transit"]
     assert inp.web_search is False  # closures from earlier lookups only
+    # every model part of a demo run gets prepared replies, never the model
+    assert isinstance(stream.calls[0]["fixer"].client.messages._inner, PreparedClient)
+
+
+PASTED = {"city": "Paris", "stops": [
+    {"id": "s1", "day": 1, "date": "2026-12-08", "start_time": "09:00:00", "end_time": "12:00:00",
+     "place_name": "Louvre Museum", "type": "venue", "lat": 48.8611, "lon": 2.3358},
+    {"id": "s2", "day": 1, "date": "2026-12-08", "start_time": "12:15:00", "end_time": "13:30:00",
+     "place_name": "Café Marly", "type": "meal"},
+]}  # fmt: skip
+
+
+async def test_pasted_stops_run_as_a_demo(api, services, nominatim):
+    services.runs.stream = stream = fake_stream()
+    run = await start(api, {"pasted": PASTED})
+    assert run["demo"] is True
+    got = await events(api, run)
+    assert got[0]["step"] == "geocode" and got[0]["stop_ids"] == ["s2"]  # only the unlocated
+    inp = stream.calls[0]["input"]
+    assert [s.id for s in inp.stops] == ["s1", "s2"]
+    assert inp.preferences.pace == "moderate" and inp.web_search is False
+    assert isinstance(stream.calls[0]["fixer"].client.messages._inner, PreparedClient)
+    assert await count(models.CheckRun) == 0
 
 
 async def test_unknown_sample_and_bad_bodies(api):
     r = await api.post(f"{V1}/checks", json={"sample_id": "atlantis"})
     assert r.status_code == 404
-    for body in ({}, {"sample_id": "paris-one-day", "version_id": str(uuid.uuid4())}):
+    for body in (
+        {},
+        {"sample_id": "paris-one-day", "version_id": str(uuid.uuid4())},
+        {"sample_id": "paris-one-day", "pasted": PASTED},
+        {"pasted": PASTED | {"stops": []}},
+    ):
         assert (await api.post(f"{V1}/checks", json=body)).status_code == 422
 
 

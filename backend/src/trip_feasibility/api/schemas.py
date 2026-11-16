@@ -14,6 +14,7 @@ from trip_feasibility.parse.clean import MAX_RAW_CHARS
 from trip_feasibility.parse.schema import ExtractedStop
 
 MAX_STOPS = 200
+MAX_PASTED_STOPS = 40  # a demo run: the samples have 6
 
 # --- stops ---
 
@@ -131,16 +132,26 @@ class ItineraryDetail(BaseModel):
 # --- check runs ---
 
 
+class PastedCheck(BaseModel):
+    """Stops from /demo/parse as the visitor confirmed them (edited ones without coordinates
+    are looked up when the run starts): a demo run, nothing saved."""
+
+    city: str = Field(min_length=1, max_length=100)
+    stops: list[Stop] = Field(min_length=1, max_length=MAX_PASTED_STOPS)
+
+
 class CheckStart(BaseModel):
-    """Exactly one of: a saved version (signed in) or a demo sample (no sign-in)."""
+    """Exactly one of: a saved version (signed in), a demo sample or pasted stops (no
+    sign-in; demo runs)."""
 
     version_id: uuid.UUID | None = None
     sample_id: str | None = Field(default=None, max_length=100)
+    pasted: PastedCheck | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self):
-        if (self.version_id is None) == (self.sample_id is None):
-            raise ValueError("give either version_id or sample_id")
+        if sum(x is not None for x in (self.version_id, self.sample_id, self.pasted)) != 1:
+            raise ValueError("give one of version_id, sample_id or pasted")
         return self
 
 

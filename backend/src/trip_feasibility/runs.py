@@ -7,7 +7,9 @@ Last-Event-ID) and then follows, so a late or reconnecting subscriber misses not
 
 Saved runs (signed-in, from an itinerary version) are written to check_runs, violations and
 fixes when they finish, then dropped from memory; the database is their record. Demo runs
-are never written anywhere and expire from memory after DEMO_RUN_TTL_S.
+are never written anywhere and expire from memory after DEMO_RUN_TTL_S, and their model
+calls only get prepared replies (`prepared.PreparedClient`, decision 100): no demo run
+reaches the model.
 
 Events (`type` field, PRD "API design"):
     step_started  {"step": "geocode" | "checks" | "fixes", ...}
@@ -73,6 +75,9 @@ class RunRequest:
     owner_id: uuid.UUID | None = None  # None: a demo run
     version_id: uuid.UUID | None = None
     run_id: uuid.UUID = field(default_factory=uuid.uuid4)
+    # demo.warm only, never from the API: a demo run that searches the web, so its lookups
+    # and (with a PreparingClient) its model replies are there for the demo runs after it
+    searches: bool = False
 
     @property
     def demo(self) -> bool:
@@ -145,9 +150,11 @@ class RunService:
         tracer: Tracer,
         llm: Any | None,  # anthropic.AsyncAnthropic, or None without a key (no fixes)
         stream: AgentStream = stream_agent,
+        prepared: Any | None = None,  # demo runs' client: PreparedClient (None: no fixes)
     ) -> None:
         self.settings, self.deps, self.sessionmaker = settings, deps, sessionmaker
         self.tracer, self.llm, self.stream = tracer, llm, stream
+        self.prepared = prepared
         self.live: dict[uuid.UUID, LiveRun] = {}
         self._tasks: set[asyncio.Task] = set()
         self._slots = asyncio.Semaphore(settings.max_concurrent_runs)
@@ -260,7 +267,7 @@ class RunService:
         stops = await self._locate(req.stops, city, run)
         inp = CheckInput.for_city(city, stops, req.preferences, req.config)
         # the public demo makes no web searches: closures come from earlier lookups only
-        inp.web_search = not req.demo
+        inp.web_search = not req.demo or req.searches
         enabled = [n for n in CHECK_NAMES if n in req.config.enabled]
         # The located stops go out with the first checks event, so the live feed can lay out
         # the itinerary before the first result arrives.
@@ -274,9 +281,10 @@ class RunService:
             }
         )
 
+        llm = self.prepared if req.demo else self.llm
         fixer = None
-        if self.llm is not None:
-            client = TracedClient(self.llm, self.tracer, usage, "fixes")
+        if llm is not None:
+            client = TracedClient(llm, self.tracer, usage, "fixes")
             fixer = Fixer(
                 client=client,
                 model=self.settings.fix_model,
@@ -284,21 +292,21 @@ class RunService:
                 city=city,
             )
         reviewer = None
-        if self.llm is not None:
-            client = TracedClient(self.llm, self.tracer, usage, "review")
+        if llm is not None:
+            client = TracedClient(llm, self.tracer, usage, "review")
             reviewer = Reviewer(client, self.settings.review_model, self.settings.review_effort)
         opinion = None
-        if self.llm is not None:
+        if llm is not None:
             opinion = SecondOpinion(
-                TracedClient(self.llm, self.tracer, usage, "second_opinion"),
+                TracedClient(llm, self.tracer, usage, "second_opinion"),
                 self.settings.second_opinion_model,
                 self.settings.second_opinion_effort,
                 self.settings.second_opinion_max_searches,
             )
         # the closures check's model calls count toward this run's usage too
         deps = self.deps
-        if self.llm is not None:
-            deps = replace(deps, llm=TracedClient(self.llm, self.tracer, usage, "closures"))
+        if llm is not None:
+            deps = replace(deps, llm=TracedClient(llm, self.tracer, usage, "closures"))
         results: dict[str, CheckResult] = {}
         violation_ids: dict[int, uuid.UUID] = {}  # id(Violation) -> its id
         fix_report: FixReport | None = None

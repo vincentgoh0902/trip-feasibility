@@ -1,9 +1,10 @@
-"""Check runs (PRD: POST /checks, GET /checks/{id}/events, GET /checks/{id}) and demo samples.
+"""Check runs (PRD: POST /checks, GET /checks/{id}/events, GET /checks/{id}).
 
 A signed-in caller checks a saved itinerary version with their own preferences and check
-settings; the run is saved. Anyone can check a demo sample with the default settings; the
-run lives in memory only (PRD FR-6: no sign-in, nothing saved). Demo run ids are random
-UUIDs, so only whoever started one can find it.
+settings; the run is saved. Anyone can check a demo sample, or stops parsed by /demo/parse,
+with the default settings; the run lives in memory only (PRD FR-6: no sign-in, nothing
+saved) and its model calls get prepared replies only (decision 100). Demo run ids are
+random UUIDs, so only whoever started one can find it.
 
 Browsers' EventSource can't send an Authorization header: the frontend's server proxies
 /events and adds the token (as for every other call).
@@ -30,12 +31,12 @@ from trip_feasibility.api.common import (
     owned_version,
     travel_preferences,
 )
-from trip_feasibility.api.schemas import CheckStart, CheckStarted, RunOut, SampleOut
+from trip_feasibility.api.schemas import CheckStart, CheckStarted, PastedCheck, RunOut
 from trip_feasibility.auth import OptionalUser
 from trip_feasibility.checks.config import CheckConfig
-from trip_feasibility.demo import samples
+from trip_feasibility.demo import Sample, samples
 from trip_feasibility.errors import AppError
-from trip_feasibility.itinerary import Stop
+from trip_feasibility.itinerary import Stop, TravelPreferences
 from trip_feasibility.models import User
 from trip_feasibility.parse.normalise import normalise
 from trip_feasibility.runs import LiveRun, RunFailed, RunRequest
@@ -43,9 +44,19 @@ from trip_feasibility.runs import LiveRun, RunFailed, RunRequest
 router = APIRouter(tags=["checks"])
 
 
-@router.get("/demo/samples")
-async def demo_samples() -> list[SampleOut]:
-    return [SampleOut.model_validate(s.model_dump()) for s in samples().values()]
+def sample_run(sample: Sample) -> RunRequest:
+    return RunRequest(
+        stops=normalise(sample.stops, sample.start_date),  # located when it runs
+        city=sample.city,
+        preferences=sample.preferences,
+        config=CheckConfig(),
+    )
+
+
+def pasted_run(pasted: PastedCheck) -> RunRequest:
+    return RunRequest(
+        stops=pasted.stops, city=pasted.city, preferences=TravelPreferences(), config=CheckConfig()
+    )
 
 
 @router.post("/checks", status_code=202)
@@ -57,12 +68,10 @@ async def start_check(
         if sample is None:
             raise not_found("demo sample")
         svc.demo_limit.hit(client_ip(request))
-        req = RunRequest(
-            stops=normalise(sample.stops, sample.start_date),  # located when it runs
-            city=sample.city,
-            preferences=sample.preferences,
-            config=CheckConfig(),
-        )
+        req = sample_run(sample)
+    elif body.pasted is not None:
+        svc.demo_limit.hit(client_ip(request))
+        req = pasted_run(body.pasted)
     else:
         if user is None:
             raise AppError(401, "unauthorized", "Sign in to check a saved itinerary")

@@ -32,6 +32,7 @@ against the checks) gets 19 of 30 end to end at 70% precision; confirmed flags r
 held-out data (33 against 24 of 47 found; 80% against 44% precision); confirmed flags 7 of 8;
 Vienna as good as the seen cities; fixes 36 of 43 valid. Test results are now seen: any
 later change is marked as tuned after them, and Vienna no longer counts as unseen.
+The public demo pastes samples end to end at no visitor cost (decision 100, 2026-11-17).
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
 and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; injection
@@ -62,12 +63,14 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     llm.py                      the one Claude call (structured output, coded errors; decision 85)
     paths.py                    where local files live (scripts and evals only, never the app)
     errors.py models.py         error shape, database schema
-    api/                        routes under /api/v1: itineraries.py, checks.py (runs, SSE,
-                                demo), fixes.py, me.py; schemas.py, common.py (ownership)
+    api/                        routes under /api/v1: itineraries.py, checks.py (runs, SSE),
+                                demo.py (samples, pasted samples), fixes.py, me.py;
+                                schemas.py, common.py (ownership)
     auth.py                     verifies the per-call token the Next.js server signs
     runs.py                     RunService: background runs, LiveRun event log, saving
     ratelimit.py tracing.py     hourly limits; Langfuse + TracedClient/TracedMcp + Usage
-    pricing.py demo/            model prices; demo samples (samples.yaml)
+    pricing.py demo/            model prices; demo samples (samples.yaml), warm.py (prepares them)
+    prepared.py                 stored model replies: anonymous requests never call the model
     itinerary.py                the Stop schema every check takes
     mcp_server.py               checks as MCP tools; create_server(deps) for in-process use
     checks/                     one module per check; models.py (CheckResult), deps.py (HTTP
@@ -101,8 +104,10 @@ frontend/                       Next.js (npm); Dockerfile (standalone); openapi.
   e2e/                          Playwright (playwright.config.ts): landing → demo → a live check
   src/app/                      pages; api/v1/[...path]/route.ts proxies every call to FastAPI
   src/components/run/ ui/       results page pieces; shadcn/ui components (owned, editable)
+  src/components/paste/         the paste flow (/check): text → the stops it read → a demo run
   src/lib/                      api/ (generated schema.d.ts, clients, SSE event types), run/
-                                (state reducer, timeline layout), format.ts, config.ts
+                                (state reducer, timeline layout), paste/ (sample matching,
+                                stops to check), format.ts, config.ts
 e2e/run.sh                      the pre-commit gate (lint, tests, snapshot, full stack + Playwright)
 docs/                           PRD, ARCHITECTURE, ANNOTATION, EVALS (results log), DEPLOY,
                                 TEST_CITIES; annotation/ holds
@@ -164,7 +169,9 @@ Planned: `train/` (Tier 2, Mac only).
   checks or data sources.
 - **API:** every query for user data filters by the caller (another user's thing is a 404).
   Sign-in routes take `CurrentUser`; demo-capable ones `OptionalUser` (a bad token is still
-  401). The demo checks samples only and saves nothing. Runs go through `RunService`, never
+  401). The demo checks samples only (as cards or pasted) and saves nothing, and **no
+  anonymous request reaches the model** (decision 100): anonymous parses and demo runs get
+  `prepared.PreparedClient` only, never `services.llm`. Runs go through `RunService`, never
   the request: tests swap `services.runs.stream` for `tests/api/conftest.fake_stream`.
 - **Third-party text never reaches a prompt:** review excerpts, free-text OSM tags and
   opening-hours comments are filtered by `agent.fixes.safe_evidence`. Changing what the fix
@@ -269,7 +276,7 @@ uv run python scripts/run_injection_suite.py          # needs the key; --defende
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
 uv run python scripts/snapshot.py [--save]            # behaviour snapshot: dev gold eval + example
-uv run python -m trip_feasibility.demo.warm           # look the demo samples up (web searches, ~$0.30)
+uv run python -m trip_feasibility.demo.warm           # prepare the demo: lookups + model replies (~$0.50)
 
 # before committing (repo root): lint, tests, snapshot, frontend checks, full stack + Playwright
 e2e/run.sh [--no-browser]                             # record the snapshot first (--save) if missing

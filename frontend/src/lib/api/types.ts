@@ -10,6 +10,8 @@ export type Violation = Schemas["ViolationOut"];
 export type Fix = Schemas["FixOut"];
 export type CheckResult = Schemas["CheckResultOut"];
 export type Sample = Schemas["SampleOut"];
+export type ParseResponse = Schemas["ParseResponse"];
+export type ParsedStop = Schemas["ParsedStop"];
 export type CheckStarted = Schemas["CheckStarted"];
 export type Severity = Violation["severity"];
 

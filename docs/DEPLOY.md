@@ -30,8 +30,10 @@ would also work, but the two apps together need more than the 256 MB default.
   the same one the `db` container gets (`POSTGRES_PASSWORD`, `POSTGRES_USER=trip`,
   `POSTGRES_DB=trip`).
 - `ANTHROPIC_API_KEY` (secret): parsing, fixes, closures and the second opinion. Set a
-  monthly spend cap in the Anthropic Console. A demo run costs about $0.01 (one or two fix
-  calls; no web searches); a signed-in live check about $0.15–0.30.
+  monthly spend cap in the Anthropic Console. Visitors can't spend it: demo runs and pasted
+  samples get only replies prepared by step 4 and never call the model (decision 100).
+  The key is used by `demo.warm`, and later by signed-in live checks (about $0.15–0.30
+  each, once sign-in exists).
 - `PORT=8000`.
 - `FORWARDED_ALLOW_IPS`: the `web` container's address (or the internal subnet), so the
   API trusts the `X-Forwarded-For` that `web` passes on.
@@ -57,13 +59,15 @@ backed up. Nothing else writes there.
    Expect 1,227 hotels and 295,728 reviews
    (`select count(*) from hotels; select count(*) from hotel_reviews;`). Delete the dump
    file afterwards. Restoring into a fresh, migrated database was tested on the Mac.
-4. **Warm the demo** (web searches for the three sample itineraries, about $0.30):
-   `docker exec <api container> python -m trip_feasibility.demo.warm`
-   It prints `closures ok, second_opinion ok` per sample. Demo runs never search; they
-   use these lookups, of any age. Rerun it after a sample or the second opinion's prompt
-   changes.
-5. Try it: open `/demo`, run each sample. Each should finish with problems shown, the
-   second opinion's "Confirmed by a web search" / "Worth checking" labels and some fixes.
+4. **Prepare the demo** (web searches and model replies for the three samples, about $0.50,
+   three minutes): `docker exec <api container> python -m trip_feasibility.demo.warm`
+   It prints one line per sample and way in, e.g. `london-bank-holiday (pasted): 8
+   problems, 3 fixes`, with no "fix error". Demo runs never search or call the model; they
+   use these lookups and stored replies, of any age. Rerun it after a deploy that changes a
+   sample, a prompt, a model or a check.
+5. Try it: on `/demo`, check each sample, then copy one, paste it on `/check`, confirm the
+   stops and check. Each should finish with problems shown, the second opinion's "Confirmed
+   by a web search" / "Worth checking" labels and some fixes.
 
 ## Later deploys
 

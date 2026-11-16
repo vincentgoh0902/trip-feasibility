@@ -2,12 +2,14 @@
 accepted fix adds one, nothing is overwritten."""
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Response
 from sqlalchemy import func, select
 
 from trip_feasibility import models
 from trip_feasibility.api.common import (
+    Services,
     Session,
     Svc,
     next_version_no,
@@ -49,16 +51,22 @@ _PARSE_STATUS = {
     "refused": 422,
     "truncated": 422,
     "no_schedule": 422,
+    "not_prepared": 422,
 }
 
 
 @router.post("/parse")
 async def parse(body: ParseRequest, user: CurrentUser, svc: Svc) -> ParseResponse:
-    """Text → stops for the traveller to review (nothing is saved). Signed in only: the demo
-    uses ready-made samples, so anonymous callers never spend on extraction."""
+    """Text → stops for the traveller to review (nothing is saved). Signed in only: anonymous
+    callers parse through `/demo/parse`, which never reaches the model."""
     if svc.llm is None:
         raise AppError(503, "unavailable", "Parsing isn't configured on this server")
     svc.parse_limit.hit(str(user.id))
+    return await parse_text(svc, svc.llm, body)
+
+
+async def parse_text(svc: Services, llm: Any, body: ParseRequest) -> ParseResponse:
+    """The parse pipeline as the API answers it, with `llm` for extraction."""
     usage = Usage()
     with svc.tracer.observe(
         "parse",
@@ -66,7 +74,7 @@ async def parse(body: ParseRequest, user: CurrentUser, svc: Svc) -> ParseRespons
         metadata={"city": body.city, "chars": len(body.text)},
         input={"text": body.text} if svc.tracer.capture_content else None,
     ):
-        client = TracedClient(svc.llm, svc.tracer, usage, "extraction")
+        client = TracedClient(llm, svc.tracer, usage, "extraction")
         try:
             parsed = await parse_itinerary(
                 svc.deps,

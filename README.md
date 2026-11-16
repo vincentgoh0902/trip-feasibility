@@ -7,9 +7,10 @@ see them.
 
 **Live demo:** not hosted yet (it runs locally with one command, below).
 
-![A demo run on a bank holiday Monday in London: the checks run live, two closed places are confirmed by a web search with their sources, and four fixes pass the re-check](docs/images/demo.gif)
+![Copying a chatbot-style London itinerary, pasting it, confirming the six stops it read, then the live check: two closed places confirmed by a web search with their sources, and fixes that passed the re-check](docs/images/demo.gif)
 
-*A sample run, about 30 seconds. [Still screenshot](docs/images/results.png).*
+*The main use, about 30 seconds: paste an itinerary a chatbot wrote, confirm the stops it
+read, review the problems and fixes. [Still screenshot](docs/images/results.png).*
 
 ## Why I built this
 
@@ -35,6 +36,10 @@ plan against real opening hours, holidays and travel times before you book aroun
 4. **Fix.** Claude proposes fixes as operations (move, remove, replace a stop); code applies
    each one to a copy of the itinerary and re-runs every check. Only fixes that remove their
    problem without adding a blocker are shown.
+
+The public demo runs this whole flow on sample itineraries at no cost per visitor: every
+model reply it needs was prepared in advance, and an anonymous request has no way to call the
+model (anything else pasted is politely refused).
 
 The rule behind all of it: **every fact has a cited source.** A model may judge fuzzy
 questions and search the web, but it never states hours, holidays or travel times from
@@ -131,11 +136,13 @@ Needs Docker.
 cp .env.example .env             # add ANTHROPIC_API_KEY for parsing, fixes and web search
 docker compose up --build        # Postgres 17 + pgvector, the API on :8020, the site on :3020
 curl localhost:8020/health       # {"status":"ok","database":"ok"}
-open http://localhost:3020/demo  # check a sample itinerary
+docker compose exec api python -m trip_feasibility.demo.warm   # prepare the demo (~$0.50)
+open http://localhost:3020/check # paste a sample itinerary (copy one from /demo)
 ```
 
-The API container applies database migrations on start. Without a key the demo still runs
-every structured check; fixes and web lookups need it. The hotel check needs the review data
+The API container applies database migrations on start. Demo runs, pasted or not, never call
+the model: `demo.warm` looks the samples up and stores the model's replies once (it needs the
+key); without it the demo still runs every structured check, and pasted text can't be read. The hotel check needs the review data
 (`scripts/load_reviews.py`, from the Kaggle dataset), which isn't in the repo.
 
 ## Develop the backend

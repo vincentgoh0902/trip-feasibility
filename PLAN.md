@@ -152,6 +152,10 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Final test-set run on the pinned model; results in README (2026-11-16, `d269706a`
       + `baseline-v4`, EVALS.md: the baseline wins, 33 against 24 of 47 at 80% against
       44% precision; confirmed tier 7 of 8; travel time and daily load lost it)
+- [x] The paste flow on the public demo (decision 100, 2026-11-17): `/check` pastes a sample,
+      `POST /demo/parse` reads it, the visitor confirms the stops, `POST /checks {pasted}`;
+      every anonymous model call is answered from replies `demo.warm` prepared (no visitor
+      spend); demo GIF re-recorded on the paste flow
 - [ ] Tune travel time and daily load on dev (untuned constants; marked in the README as
       done after the test results were seen); deferred by Vincent (2026-11-17)
       **How (Vincent's terminal, from `backend/`, once; nothing changes after it):**

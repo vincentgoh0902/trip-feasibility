@@ -25,9 +25,12 @@ function statusText(state: RunState): string {
       const tools = left.filter((name) => name !== "review");
       const web = ["closures", "second_opinion"];
       if (tools.length > 0 && tools.every((name) => web.includes(name))) {
-        return tools.includes("closures") ? "Still checking closures…" : "Getting a second opinion from the web…";
+        return tools.includes("closures")
+          ? "Still checking closures…"
+          : "Getting a second opinion from the web…";
       }
-      if (left.length === 1 && left[0] === "review") return "Reviewing each day…";
+      if (left.length === 1 && left[0] === "review")
+        return "Reviewing each day…";
       return `Checking: ${Object.keys(state.results).length} of ${state.checks.length} checks done`;
     }
     case "fixes":
@@ -40,20 +43,23 @@ function statusText(state: RunState): string {
 }
 
 function TierSummary({ tiers }: { tiers: Tiers }) {
-  const count = (tier: string) => [...tiers.byViolation.values()].filter((t) => t.tier === tier).length;
+  const count = (tier: string) =>
+    [...tiers.byViolation.values()].filter((t) => t.tier === tier).length;
   const confirmed = count("confirmed");
   const unsure = count("unconfirmed") + count("disputed");
   if (confirmed + unsure === 0) return null;
   return (
     <p className="text-sm text-muted-foreground">
-      Opening hours: {confirmed} confirmed by a web search, {unsure} worth checking
+      Opening hours: {confirmed} confirmed by a web search, {unsure} worth
+      checking
     </p>
   );
 }
 
 function Summary({ state, tiers }: { state: RunState; tiers: Tiers }) {
   if (state.phase !== "done") return null;
-  const count = (severity: string) => state.violations.filter((v) => v.severity === severity).length;
+  const count = (severity: string) =>
+    state.violations.filter((v) => v.severity === severity).length;
   const blockers = count("blocker");
   const warnings = count("warning");
   if (blockers + warnings === 0) {
@@ -86,18 +92,28 @@ function Fixes({ state }: { state: RunState }) {
       </h2>
       {run?.fixes_enabled !== false && (
         <p className="text-sm text-muted-foreground">
-          Each fix was applied to a copy of the itinerary and every check was run again. Only fixes that
-          removed their problems without adding a blocker are shown.
+          Each fix was applied to a copy of the itinerary and every check was
+          run again. Only fixes that removed their problems without adding a
+          blocker are shown.
         </p>
       )}
       {run && !run.fixes_enabled && (
-        <p className="text-sm">Fix suggestions are switched off on this server.</p>
+        <p className="text-sm">
+          Fix suggestions are switched off on this server.
+        </p>
       )}
-      {run?.fix_error && <p className="text-sm">Couldn’t propose fixes this time: {run.fix_error}</p>}
-      {state.phase === "fixes" && state.fixes.length === 0 && <Skeleton className="h-24 w-full" />}
-      {state.phase === "done" && run?.fixes_enabled && state.fixes.length === 0 && !run.fix_error && (
-        <p className="text-sm">No fix passed the re-check.</p>
+      {run?.fix_error && (
+        <p className="text-sm">{fixErrorText(run.fix_error)}</p>
       )}
+      {state.phase === "fixes" && state.fixes.length === 0 && (
+        <Skeleton className="h-24 w-full" />
+      )}
+      {state.phase === "done" &&
+        run?.fixes_enabled &&
+        state.fixes.length === 0 &&
+        !run.fix_error && (
+          <p className="text-sm">No fix passed the re-check.</p>
+        )}
       {state.fixes.map((fix) => (
         <FixCard
           key={fix.id}
@@ -106,7 +122,9 @@ function Fixes({ state }: { state: RunState }) {
           violations={state.violations}
           action={
             run?.demo !== false && (
-              <span className="text-xs text-muted-foreground">Sign in to save a fixed copy of your own trips.</span>
+              <span className="text-xs text-muted-foreground">
+                Sign in to save a fixed copy of your own trips.
+              </span>
             )
           }
         />
@@ -122,8 +140,12 @@ export function RunView({ runId }: { runId: string }) {
 /** The results page for a run's state, live or finished. */
 export function RunLayout({ state }: { state: RunState }) {
   const unfixed = new Set(state.run?.unfixed ?? []);
-  const notes = [...new Set(Object.values(state.results).flatMap((r) => r.notes))];
-  const unavailable = Object.entries(state.results).filter(([, r]) => r.status === "unavailable");
+  const notes = [
+    ...new Set(Object.values(state.results).flatMap((r) => r.notes)),
+  ];
+  const unavailable = Object.entries(state.results).filter(
+    ([, r]) => r.status === "unavailable",
+  );
   const dates = state.stops.map((s) => s.date).sort();
   const tiers = opinionTiers(state.violations);
 
@@ -132,9 +154,13 @@ export function RunLayout({ state }: { state: RunState }) {
       <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
         <div>
           <p className="font-mono text-xs tracking-wide text-label uppercase">
-            {state.run?.demo === false ? "Saved check" : "Demo check · nothing is saved"}
+            {state.run?.demo === false
+              ? "Saved check"
+              : "Demo check · nothing is saved"}
           </p>
-          <h1 className="mt-1 text-3xl font-extrabold">{state.city ?? "Your trip"}</h1>
+          <h1 className="mt-1 text-3xl font-extrabold">
+            {state.city ?? "Your trip"}
+          </h1>
           {dates.length > 0 && (
             <p className="text-sm text-muted-foreground">
               {formatDate(dates[0])}
@@ -160,8 +186,8 @@ export function RunLayout({ state }: { state: RunState }) {
           <Alert>
             <AlertTitle>Some checks couldn’t run</AlertTitle>
             <AlertDescription>
-              {unavailable.map(([name]) => checkLabel(name)).join(", ")}: a data source was unavailable. The
-              other results stand.
+              {unavailable.map(([name]) => checkLabel(name)).join(", ")}: a data
+              source was unavailable. The other results stand.
             </AlertDescription>
           </Alert>
         )}
@@ -195,16 +221,31 @@ export function RunLayout({ state }: { state: RunState }) {
           ))}
           <p>
             Places, opening hours and routes from{" "}
-            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
               © OpenStreetMap contributors
             </a>
             , routed by{" "}
-            <a href="https://routing.openstreetmap.de" target="_blank" rel="noreferrer" className="underline">
+            <a
+              href="https://routing.openstreetmap.de"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
               FOSSGIS OSRM
             </a>
-            ; public holidays from Nager.Date. Public transport times are estimates. Spotted a wrong place
-            or opening time?{" "}
-            <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer" className="underline">
+            ; public holidays from Nager.Date. Public transport times are
+            estimates. Spotted a wrong place or opening time?{" "}
+            <a
+              href="https://www.openstreetmap.org/fixthemap"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
               Fix the map
             </a>
             .
@@ -213,4 +254,12 @@ export function RunLayout({ state }: { state: RunState }) {
       </div>
     </div>
   );
+}
+
+function fixErrorText(error: string): string {
+  // a demo run whose itinerary was edited: the model's fixes were prepared for the samples
+  if (error.startsWith("not_prepared")) {
+    return "Fixes on this demo were prepared for the sample itineraries as written, so this edited one is checked without them.";
+  }
+  return `Couldn’t propose fixes this time: ${error}`;
 }

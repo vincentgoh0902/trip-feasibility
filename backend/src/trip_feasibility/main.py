@@ -15,6 +15,7 @@ from trip_feasibility.config import get_settings
 from trip_feasibility.db import make_engine
 from trip_feasibility.errors import install_error_handlers
 from trip_feasibility.llm import make_client
+from trip_feasibility.prepared import PreparedClient
 from trip_feasibility.ratelimit import SlidingWindowLimiter
 from trip_feasibility.runs import RunService
 from trip_feasibility.tracing import make_tracer
@@ -35,7 +36,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     deps = make_check_deps(http, sessionmaker, settings)
     tracer = make_tracer(settings)
     llm = make_client(settings) if settings.anthropic_api_key is not None else None
-    runs = RunService(settings, deps, sessionmaker, tracer, llm)
+    # demo runs never reach the model: they get replies prepared for the samples
+    prepared = PreparedClient(deps.cache)
+    runs = RunService(settings, deps, sessionmaker, tracer, llm, prepared=prepared)
     app.state.services = Services(
         settings=settings,
         deps=deps,

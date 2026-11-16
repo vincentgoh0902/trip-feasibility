@@ -77,6 +77,8 @@ async def create_json(
         raise error("unavailable", "the model API is rate-limiting us") from e
     except anthropic.APIStatusError as e:
         raise error("unavailable", f"the model API returned {e.status_code}") from e
+    except LLMError as e:  # a client that answers without the API (prepared.PreparedClient)
+        raise error(e.code, str(e)) from e
     return Reply(
         stop_reason=message.stop_reason,
         text="".join(b.text for b in message.content if b.type == "text"),

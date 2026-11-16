@@ -13,7 +13,9 @@ export function StartDemoButton({ sampleId }: { sampleId: string }) {
 
   async function start() {
     setStarting(true);
-    const { data, error } = await browserApi.POST("/api/v1/checks", { body: { sample_id: sampleId } });
+    const { data, error } = await browserApi.POST("/api/v1/checks", {
+      body: { sample_id: sampleId },
+    });
     if (error || !data) {
       toast.error(errorMessage(error));
       setStarting(false);

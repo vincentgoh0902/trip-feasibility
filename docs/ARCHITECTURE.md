@@ -73,7 +73,8 @@ trip-feasibility/
 ├── frontend/                 Next.js 16 (App Router), Tailwind 4, shadcn/ui (section 6e)
 │   ├── openapi.json          the API schema, exported from the backend (types come from it)
 │   └── src/
-│       ├── app/              pages (/, /demo, /check/[runId]); api/v1/[...path] proxies the API
+│       ├── app/              pages (/, /demo, /check, /check/[runId]); api/v1/[...path] proxies the API
+│       ├── components/paste/ the paste flow: text → the stops it read → a run
 │       ├── components/run/   results page: progress, timeline, violation + fix cards, evidence
 │       ├── components/ui/    shadcn/ui components (copied in, owned and editable)
 │       ├── hooks/            use-run-events.ts (the live feed)
@@ -90,14 +91,15 @@ trip-feasibility/
     │   ├── main.py           FastAPI app: lifespan wires the services, /health, /api/v1
     │   ├── llm.py            the one Claude call: structured output, coded errors (decision 85)
     │   ├── paths.py          where local files live (scripts and evals only, never the app)
-    │   ├── api/              routes: itineraries.py, checks.py (runs, SSE, demo), fixes.py,
-    │   │                     me.py; schemas.py (bodies), common.py (ownership, conversions)
+    │   ├── api/              routes: itineraries.py, checks.py (runs, SSE), demo.py (samples,
+    │   │                     pasted samples), fixes.py, me.py; schemas.py, common.py
     │   ├── auth.py           verifies the frontend's signed token, creates users
     │   ├── runs.py           check runs in the background: live events, saving, failures
     │   ├── ratelimit.py      per-user / per-IP hourly limits
     │   ├── tracing.py        Langfuse (optional), traced LLM and MCP clients, run usage
     │   ├── pricing.py        model prices → cost per call
-    │   ├── demo/             demo sample itineraries (samples.yaml)
+    │   ├── demo/             demo sample itineraries (samples.yaml); warm.py prepares them
+    │   ├── prepared.py       stored model replies: anonymous requests never call the model
     │   ├── config.py         all settings, read from environment variables
     │   ├── db.py             database engine + session helper
     │   ├── errors.py         the single error response shape
@@ -984,7 +986,8 @@ FastAPI under `/api/v1`, following the PRD's route table. The OpenAPI schema
 | `POST /itineraries`, `GET /itineraries`, `GET/PATCH/DELETE /itineraries/{id}` | signed in | saved itineraries; delete cascades |
 | `POST /itineraries/{id}/versions` | signed in | edited stops as a new version |
 | `GET /demo/samples` | anyone | the demo itineraries |
-| `POST /checks` | either | `{"version_id"}` (signed in, saved) or `{"sample_id"}` (demo, not saved); 202 with the run id |
+| `POST /demo/parse` | anyone | a pasted sample → stops for review, from prepared replies only (decision 100); 20 per IP per hour |
+| `POST /checks` | either | `{"version_id"}` (signed in, saved), `{"sample_id"}` or `{"pasted": {city, stops}}` (demo, not saved); 202 with the run id |
 | `GET /checks/{id}/events` | either | the live feed (SSE) |
 | `GET /checks/{id}` | either | the run so far, or its result |
 | `POST /fixes/{id}/accept`, `/reject` | signed in | accept → a new version |
@@ -1040,11 +1043,18 @@ ids are random UUIDs, so only whoever started one can find it. This settles the 
 nothing, but `version_id` is required" gap. The cost: a restart forgets demo runs, which is
 harmless for a demo.
 
-**Demo scope** (PRD open question, decided 2026-10-25): the demo checks **ready-made sample
-itineraries only** (`demo/samples.yaml`, made up, never from the dataset), with stops already
-extracted. Anonymous visitors can't paste text, so they never cause an extraction call;
-fixes still run (about a tenth of a cent each), within the demo rate limit. Parsing pasted text needs
-sign-in.
+**Demo scope** (PRD open question, decided 2026-10-25; changed by decision 100, 2026-11-17):
+the demo checks **sample itineraries only** (`demo/samples.yaml`, made up, never from the
+dataset), either as ready-made stops (the sample's card) or **pasted as text** at `/check`,
+read into stops by `POST /demo/parse`, reviewed, and checked from those stops
+(`POST /checks {"pasted"}`). **No anonymous request reaches the model**: every model part of
+it (extraction, fixes, the review, closures) gets `prepared.PreparedClient`, which serves
+replies stored in advance by `demo.warm` under a hash of the whole request and raises
+`not_prepared` for anything else. A pasted sample is matched by its words (whitespace
+ignored) and parsed from the sample's own text, so a copy that lost line breaks still finds
+its reply. Other text, or a sample with another city or date, gets a 422 `not_prepared`
+without a model call; an edited stop is checked by every free check, and its fixes say they
+weren't prepared. Sign-in for live checks of one's own text is slice 2.
 
 **Limits:** at most `MAX_CONCURRENT_RUNS` (4) runs at once; others wait their turn (Nominatim
 and OSRM allow 1 request/second anyway). On startup, runs a previous process left `queued` or
@@ -1187,8 +1197,10 @@ Next.js 16 (App Router) with TypeScript, Tailwind 4 and shadcn/ui, as the PRD se
 renders and calls the API; it holds no agent or check logic.
 
 **Pages so far:** `/` (pitch, the five checks, how it works), `/demo` (the samples from
-`GET /demo/samples`, each with a "Check this itinerary" button) and `/check/[runId]` (the live
-results page). Sign-in, `/check/new`, `/trips` and the settings pages come next.
+`GET /demo/samples`, each with "Check this itinerary" and "Copy the text"), `/check` (paste:
+text, city and start date; a recognised sample fills in the last two; then the stops it read,
+by day, to rename or remove before checking; `lib/paste/stops.ts`) and `/check/[runId]` (the
+live results page). Sign-in, `/trips` and the settings pages come next.
 
 **Talking to the API.** The browser only calls its own origin: `app/api/v1/[...path]/route.ts`
 forwards each request to FastAPI at `API_INTERNAL_URL` (server-side, default
@@ -1676,7 +1688,8 @@ not sent, decision 75).
 | --- | --- | --- | --- |
 | 54, 63 | FastAPI verifies a short-lived HS256 token that the Next.js server signs per call; the browser calls only a Next.js route that proxies `/api/v1/*` (2026-10-25) | Independent of Auth.js internals (not decrypting its JWE cookie); the browser never holds a token; one origin, no CORS | A secret shared by both servers; an extra hop, and the proxy must stream SSE unbuffered |
 | 55, 65 | Runs are asyncio tasks with in-memory event logs, replayed to every SSE subscriber; the `checks` step event carries the located stops (2026-10-25) | No queue service (PRD ADR-7); late or reconnecting subscribers miss nothing; the timeline fills in live | One API process; runs don't survive a restart (they're marked interrupted) |
-| 56 | Demo runs in memory for an hour, on ready-made samples only (2026-10-25) | "Saves nothing" taken literally; anonymous visitors never cause an extraction call | A restart forgets demo runs; recruiters can't try their own text without signing in |
+| 56 | Demo runs in memory for an hour, on ready-made samples only (2026-10-25; the samples-only part widened by 100) | "Saves nothing" taken literally; anonymous visitors never cause an extraction call | A restart forgets demo runs; recruiters can't try their own text without signing in |
+| 100 | **Anonymous requests never reach the model** (Vincent, 2026-11-17): the samples can also be pasted as text (`/check`, `POST /demo/parse`) and checked from the parsed stops, and every model call in an anonymous parse or run is answered from replies `demo.warm` stored in advance (`prepared.py`, keyed by a hash of the whole request; a miss is `not_prepared`, never a call). Demo fixes come from there too | The demo should show the real use (paste a chatbot's itinerary, confirm the stops, review the problems) without letting visitors spend money at all; rate limits only bound the spend, a client that can't call the model removes it. Exact-request keys mean a stored reply only ever answers the question it was made for | Visitors can't check their own text; an edited sample loses its fixes; `demo.warm` (~$0.50) after any change to a sample, prompt, model or check that changes what the model is asked |
 | 57, 58 | Saved runs store the violations, every fix (invalid ones too) and a report JSON; accepting a fix builds on the version it was checked on | Accept and reject need rows; invalid fixes feed the validity metric; a fix is only known to be valid against that version | The report JSON isn't enforced by the database; two accepted fixes give two versions |
 | 59 | Rate limits in memory, per hour: 20 runs and 20 parses per user, 10 demo runs per IP | One process; no database write per request | They reset on restart |
 | 60, 61 | Tracing through wrappers on the LLM and MCP clients, with no traveller content by default; cost per call from a local price table | Agent code unchanged, works without Langfuse, private by default; cost is stored with the run | Debugging needs `TRACE_CONTENT=true`; prices are copied by hand |
@@ -1724,17 +1737,14 @@ Replaced or dropped:
 
 ## 13. Known gaps and next steps
 
-- **The hybrid (decision 97) is ahead of a plain LLM on recall, behind on precision.** End
-  to end on dev, checks plus the second opinion find 19 of 30 at 70% precision, the
-  baseline 18 of 30 at 78%; confirmed flags are right 15 of 17 times. Off by default until
-  Vincent decides; the results page shows the tiers (section 6e); the second opinion isn't
-  in the injection suite.
-- **Without the second opinion, the pipeline trails a plain LLM with web search slightly.** With
-  `extract-v11` at medium effort (three dev runs) it finds 16–17 of 30 problems at 71–80%
-  precision; the baseline 18 of 30 at 78%; the checks on gold stops 19 of 30 at 86%.
-  Extraction now finds 89% of the gold stops, so most of the remaining gap is in what the
-  checks can't see (long closures, missing OSM hours, overloaded days): the closures check
-  and the LLM review. Both systems agree on 14 problems, all real (EVALS.md).
+- **On the held-out test set a plain LLM with web search beats the pipeline** (EVALS.md,
+  2026-11-16): 33 against 24 of 47 problems, at 80% against 44% precision. Travel time (19
+  false alarms) and daily load (none raised) lose it, both on untuned constants; confirmed
+  opening-hours flags were right 7 of 8, as on dev (15 of 17), and Vienna did as well as the
+  dev cities. Tuning is deferred (Vincent, 2026-11-17); anything tuned now is tuned with the
+  test results seen, and the README must say so.
+- **Visitors can't check their own text** (decision 100): the public demo answers the samples
+  only. Live checks of anyone's text wait for sign-in (slice 2).
 - A Nominatim timeout fails a whole itinerary's parse (it isn't retried, by the usage
   policy); eval runs are rerun until none fails.
 - The holiday calendar used for `PH` rules differs from Nager.Date (section 5).

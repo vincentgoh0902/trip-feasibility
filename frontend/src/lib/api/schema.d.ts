@@ -15,8 +15,8 @@ export interface paths {
         put?: never;
         /**
          * Parse
-         * @description Text → stops for the traveller to review (nothing is saved). Signed in only: the demo
-         *     uses ready-made samples, so anonymous callers never spend on extraction.
+         * @description Text → stops for the traveller to review (nothing is saved). Signed in only: anonymous
+         *     callers parse through `/demo/parse`, which never reaches the model.
          */
         post: operations["parse_api_v1_itineraries_parse_post"];
         delete?: never;
@@ -79,23 +79,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/demo/samples": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Demo Samples */
-        get: operations["demo_samples_api_v1_demo_samples_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/checks": {
         parameters: {
             query?: never;
@@ -145,6 +128,45 @@ export interface paths {
         get: operations["get_run_api_v1_checks__run_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/demo/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Demo Samples */
+        get: operations["demo_samples_api_v1_demo_samples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/demo/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Demo Parse
+         * @description Text → stops without signing in. Extraction gets only replies prepared for the
+         *     samples (decision 100): other text, or a sample with another city or date, is refused
+         *     without a model call.
+         */
+        post: operations["demo_parse_api_v1_demo_parse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -314,13 +336,15 @@ export interface components {
         };
         /**
          * CheckStart
-         * @description Exactly one of: a saved version (signed in) or a demo sample (no sign-in).
+         * @description Exactly one of: a saved version (signed in), a demo sample or pasted stops (no
+         *     sign-in; demo runs).
          */
         CheckStart: {
             /** Version Id */
             version_id?: string | null;
             /** Sample Id */
             sample_id?: string | null;
+            pasted?: components["schemas"]["PastedCheck"] | null;
         };
         /** CheckStarted */
         CheckStarted: {
@@ -552,6 +576,17 @@ export interface components {
             outside_city: boolean;
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * PastedCheck
+         * @description Stops from /demo/parse as the visitor confirmed them (edited ones without coordinates
+         *     are looked up when the run starts): a demo run, nothing saved.
+         */
+        PastedCheck: {
+            /** City */
+            city: string;
+            /** Stops */
+            stops: components["schemas"]["Stop"][];
         };
         /** PreferencesIO */
         "PreferencesIO-Input": {
@@ -1093,26 +1128,6 @@ export interface operations {
             };
         };
     };
-    demo_samples_api_v1_demo_samples_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SampleOut"][];
-                };
-            };
-        };
-    };
     start_check_api_v1_checks_post: {
         parameters: {
             query?: never;
@@ -1195,6 +1210,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    demo_samples_api_v1_demo_samples_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SampleOut"][];
+                };
+            };
+        };
+    };
+    demo_parse_api_v1_demo_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParseResponse"];
                 };
             };
             /** @description Validation Error */

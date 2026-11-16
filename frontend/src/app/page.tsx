@@ -7,18 +7,57 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const CHECKS = [
-  ["opening_hours", "Opening hours", "A visit falls outside a place’s hours, or the place no longer exists.", "OpenStreetMap"],
-  ["public_holidays", "Public holidays", "A day is a public holiday that may close or crowd what you planned.", "Nager.Date"],
-  ["travel_time", "Travel time", "The gap between two stops is shorter than the trip there, plus a buffer.", "OSRM routing"],
-  ["daily_load", "Daily load", "A day is longer, busier or more walking than your pace allows.", "Your preferences"],
-  ["hotel_red_flags", "Hotel red flags", "Reviews repeatedly mention noise, dirt, safety or a poor location.", "Booking.com reviews (Kaggle)"],
-  ["closures", "Closures", "A place is shut for works or keeps special hours on your dates, as its website or the web says.", "Web search, sources linked"],
+  [
+    "opening_hours",
+    "Opening hours",
+    "A visit falls outside a place’s hours, or the place no longer exists.",
+    "OpenStreetMap",
+  ],
+  [
+    "public_holidays",
+    "Public holidays",
+    "A day is a public holiday that may close or crowd what you planned.",
+    "Nager.Date",
+  ],
+  [
+    "travel_time",
+    "Travel time",
+    "The gap between two stops is shorter than the trip there, plus a buffer.",
+    "OSRM routing",
+  ],
+  [
+    "daily_load",
+    "Daily load",
+    "A day is longer, busier or more walking than your pace allows.",
+    "Your preferences",
+  ],
+  [
+    "hotel_red_flags",
+    "Hotel red flags",
+    "Reviews repeatedly mention noise, dirt, safety or a poor location.",
+    "Booking.com reviews (Kaggle)",
+  ],
+  [
+    "closures",
+    "Closures",
+    "A place is shut for works or keeps special hours on your dates, as its website or the web says.",
+    "Web search, sources linked",
+  ],
 ] as const;
 
 const STEPS = [
-  ["Paste", "An itinerary from a chatbot or your own notes, with the city and start date."],
-  ["Confirm", "Check the stops it read from your text and fix any it got wrong."],
-  ["Repair", "See each problem with its evidence, and fixes that passed every check again."],
+  [
+    "Paste",
+    "An itinerary from a chatbot or your own notes, with the city and start date.",
+  ],
+  [
+    "Confirm",
+    "Check the stops it read from your text and fix any it got wrong.",
+  ],
+  [
+    "Repair",
+    "See each problem with its evidence, and fixes that passed every check again.",
+  ],
 ] as const;
 
 export default function Home() {
@@ -26,18 +65,36 @@ export default function Home() {
     <div className="mx-auto w-full max-w-5xl px-4 py-12 sm:py-16">
       <section className="grid items-center gap-8 md:grid-cols-[1fr_1.05fr] md:gap-10">
         <div>
-          <p className="font-mono text-xs tracking-widest text-label uppercase">Trip feasibility checker</p>
+          <p className="font-mono text-xs tracking-widest text-label uppercase">
+            Trip feasibility checker
+          </p>
           <h1 className="mt-3 text-4xl leading-[1.1] font-extrabold sm:text-5xl">
             Will your itinerary survive the trip?
           </h1>
           <p className="mt-5 text-lg leading-relaxed">
-            Plans that look fine on paper fall apart on the day: a museum closed on Tuesdays, a 20-minute
-            transfer squeezed into 10. This checks every stop against real data, shows you the evidence, and
-            suggests fixes it has already re-checked.
+            Plans that look fine on paper fall apart on the day: a museum closed
+            on Tuesdays, a 20-minute transfer squeezed into 10. This checks
+            every stop against real data, shows you the evidence, and suggests
+            fixes it has already re-checked.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/demo" className={cn(buttonVariants({ size: "lg" }), "h-12 px-6 text-base")}>
+            <Link
+              href="/demo"
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "h-12 px-6 text-base",
+              )}
+            >
               Try a sample itinerary
+            </Link>
+            <Link
+              href="/check"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "h-12 px-6 text-base",
+              )}
+            >
+              Paste an itinerary
             </Link>
           </div>
         </div>
@@ -60,7 +117,10 @@ export default function Home() {
         </h2>
         <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {CHECKS.map(([check, name, what, source]) => (
-            <li key={check} className="flex gap-4 rounded-2xl bg-card p-5 card-raised">
+            <li
+              key={check}
+              className="flex gap-4 rounded-2xl bg-card p-5 card-raised"
+            >
               <CheckIcon check={check} className="size-11 shrink-0" />
               <div>
                 <h3 className="text-lg font-bold">{name}</h3>
@@ -92,8 +152,9 @@ export default function Home() {
           ))}
         </ol>
         <p className="mt-10 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          An AI model reads your text and proposes fixes. The checks themselves are code working on real
-          data, and a fix is only shown once every check has run again on the changed plan.
+          An AI model reads your text and proposes fixes. The checks themselves
+          are code working on real data, and a fix is only shown once every
+          check has run again on the changed plan.
         </p>
       </section>
     </div>
