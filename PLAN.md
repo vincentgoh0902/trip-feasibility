@@ -130,8 +130,9 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [x] Tiers on the results page (2026-11-16): the second opinion's notes fold into the card
       they're about, cards get a chip (confirmed / a web search disagrees / worth checking),
       the sidebar counts them; checked in the browser at desktop and 375 px on a made-up run
-- [ ] Second opinion: web-search-result attacks in the injection suite; log its tokens in
-      the eval runner
+- [x] Second opinion in the injection suite (`injection-v4`, 2026-11-16): six search-result
+      attacks, all resisted with and without the prompt sentence; 36 of 36 defended overall
+- [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
 
