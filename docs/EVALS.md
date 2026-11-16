@@ -7,8 +7,9 @@ runner"); the labelling rules are in ANNOTATION.md.
 
 ## How to read the numbers
 
-- **Dev split only** (5 each from Paris, London, Barcelona) until the final test run. Vienna
-  and the rest of the test split are untouched.
+- **Dev split only** (5 each from Paris, London, Barcelona) until the final test run
+  (2026-11-16, the last entry), which is the only time Vienna and the rest of the test
+  split were run.
 - **What's compared:** our checks' violations against the human-verified gold violations.
   A prediction matches a label on check + day + place name (fuzzy, one to one; uncertain
   names are decided once by a human, `scripts/match_decisions.py`).
@@ -553,3 +554,70 @@ two runs agree. "Valid" is the re-check's verdict, not a judgement of the fix's 
 no OSM hours), shown on the page as "not verified". So 10 of 18 are verified by every
 check. A demo run showed the risk: a replacement museum that closed in 2022 but is still
 in OSM without hours. Fix quality needs the judge (another provider), not built.
+
+### 2026-11-16 · **test split, final** · parsed · `d269706a` + `baseline-v4`
+
+What changed: nothing; the one reported run on the 25 held-out itineraries (15 from Paris,
+London and Barcelona, all 10 from Vienna), with the configuration at `d710a79`: parse
+`extract-v11` (Haiku 5.5, medium), second opinion on (decision 98), closures and review off,
+fixes on. `run_eval.py --split test --final --mode parsed --replay --second-opinion
+--fixes`, after Vincent's name decisions (`match_decisions.py --ask --final`; the run
+before them was `f43c1d8b`). Test files have no gold stops, so parsed mode only. Baseline:
+`baseline-v4` run on the test split the same evening (Haiku 5.5 via `claude -p`, web
+search). Same dataset (`sha256:50ab3afeda14`). One itinerary (london-02) failed to parse
+(`no_schedule`): its labels count as missed.
+
+Ours, all five checks:
+
+| Check | Precision | Recall |
+|---|---|---|
+| opening_hours | 12 of 23 (52%) | 12 of 20 (60%) |
+| public_holidays | 11 of 11 (100%) | 11 of 11 (100%) |
+| travel_time | 1 of 20 (5%) | 1 of 10 (10%) |
+| daily_load | none raised | 0 of 6 |
+| hotel_red_flags | 3 of 4 (75%) | 3 of 11 (27%) |
+| **All** | **27 of 58 (47%)** | **27 of 58 (47%)** |
+| All, without the second opinion | 23 of 51 (45%) | 23 of 58 (40%) |
+
+Against the baseline, on the four checks it's scored on (hotels left out):
+
+| | Precision | Recall | Seen cities: P / R | Vienna: P / R |
+|---|---|---|---|---|
+| Hybrid `d269706a` | 24 of 54 (44%) | 24 of 47 (51%) | 12 of 31 / 12 of 23 | 12 of 23 / 12 of 24 |
+| Baseline `baseline-v4` | 31 of 41 (76%) | 31 of 47 (66%) | 17 of 24 / 17 of 23 | 14 of 17 / 14 of 24 |
+
+The baseline's numbers are provisional by at most 2: two of its place-name pairs await
+Vincent's decision (`match_decisions.py --from-baseline --ask --final`).
+
+| Check | Hybrid: P / R | Baseline: P / R |
+|---|---|---|
+| opening_hours | 12 of 23 / 12 of 20 | 12 of 14 / 12 of 20 |
+| public_holidays | 11 of 11 / 11 of 11 | 11 of 11 / 11 of 11 |
+| travel_time | 1 of 20 / 1 of 10 | 3 of 9 / 3 of 10 |
+| daily_load | none / 0 of 6 | 5 of 7 / 5 of 6 |
+
+Opening-hours predictions by tier (precision): confirmed 7 of 8 (88%); disputed (the
+checks flag it, the search found it open) 1 of 8 (12%); second opinion only 4 of 7 (57%).
+By cause: regular 11 of 15, special 1 of 5 (baseline: 10 of 15, 2 of 5).
+
+Fixes: 36 of 43 valid (84%), 39 of 40 problems got one; 19 of the 36 change a stop some
+check couldn't judge (the run includes decision 99).
+
+Reading:
+- **On held-out data the plain LLM wins.** 31 against 24 problems found, at 76% against 44%
+  precision. The dev-set lead (19 against 18 of 30) didn't hold; the dev numbers were the
+  set the design was tuned on, and this is the reason the test set was kept apart.
+- **Where it lost:** travel time (19 false alarms, 1 of 10 found) and daily load (the
+  check raised nothing; the LLM found 5 of 6). Both use untuned constants (transit and taxi
+  estimates, pace limits) that were left for "tune on dev" and never were. Opening hours and
+  holidays tie on what's found; the baseline is far more precise on hours.
+- **What replicated:** agreement. Confirmed opening-hours flags were right 7 of 8, the same
+  88% as on dev (15 of 17 over both dev modes): the tier is a signal a user can trust. The
+  second opinion again added real problems (27 against 23 found). Disputed flags were
+  wrong 7 of 8, so a dispute is a good reason to doubt a check.
+- **No city overfitting:** Vienna, never seen while building, did as well as the test
+  itineraries from the dev cities (precision 12 of 23 against 12 of 31, recall 12 of 24
+  against 12 of 23). The drop from dev comes from new itineraries, not a new city.
+- **Fixes held up:** 84% pass every re-check (89% on dev).
+- Anything changed after this run is tuned with test results seen; it must be marked as
+  such in the README, and Vienna no longer counts as unseen.

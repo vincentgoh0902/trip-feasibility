@@ -144,12 +144,18 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       99). Fix validity under 99 not re-measured: the API credits ran out
 - [x] Deployment handoff for the server session: `docs/DEPLOY.md` (three containers, env,
       the review-data dump in `data/deploy/reviews.dump`, restore tested, demo warm-up)
-- [ ] **Vincent:** top up Anthropic credits (auto-reload is off), then re-run
-      `run_eval.py --mode gold --fixes` for validity under decision 99
+- [ ] **Vincent:** re-run `run_eval.py --mode gold --fixes` on dev for validity under
+      decision 99 (the test run has it: 36 of 43)
 - [ ] **Vincent:** the server session follows `docs/DEPLOY.md`
 - [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
-- [ ] Final test-set run on the pinned model; results in README
+- [x] Final test-set run on the pinned model; results in README (2026-11-16, `d269706a`
+      + `baseline-v4`, EVALS.md: the baseline wins, 31 against 24 of 47 at 76% against
+      44% precision; confirmed tier 7 of 8; travel time and daily load lost it)
+- [ ] **Vincent:** `match_decisions.py --from-baseline --ask --final` (2 baseline pairs
+      left; then rerun `score_baseline.py --split test --final` and give Claude the totals)
+- [ ] Tune travel time and daily load on dev (untuned constants; marked in the README as
+      done after the test results were seen)
       **How (Vincent's terminal, from `backend/`, once; nothing changes after it):**
       1. Decide the configuration first (second opinion on or off, PLAN "Open"); commit, so
          the run is tied to a commit.

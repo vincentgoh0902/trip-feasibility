@@ -39,41 +39,51 @@ questions and search the web, but it never states hours, holidays or travel time
 memory, and code validates every claim (a search-result URL, dates that parse) and sets the
 severity. How it works and why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Results so far
+## Results
 
 Measured against a hand-verified dataset of 40 itineraries written by ChatGPT, Claude and
 Gemini for Paris, London, Barcelona and Vienna. Labels were drafted by a model from another
 provider (GPT, with web search) and checked one by one against official sites and Google
-Maps. 15 itineraries are for development; the other 25, including every Vienna one, are
-held out and haven't been run yet. The numbers below are **development-set** results, the
-set the design was tuned on; the held-out results will go here, whatever they are.
+Maps. 15 itineraries were used for development; the other 25, including every Vienna one,
+were held out and run once, at the end.
 
-End to end from the raw text, on the 30 labelled problems:
+**Held-out test set** (25 itineraries, end to end from the raw text, the 47 labelled
+problems both systems are scored on):
 
 | | Problems found | Flags that were right |
 |---|---|---|
-| Plain LLM with web search (Claude Haiku 5.5, given the same rules) | 18 of 30 (60%) | 78% |
-| Our checks alone | 16 of 30 (53%) | 80% |
-| **Checks + second opinion (the hybrid)** | **19 of 30 (63%)** | 70% |
-| Checks + second opinion, on hand-parsed stops (the ceiling) | 22 of 30 (73%) | 79% |
+| Plain LLM with web search (Claude Haiku 5.5, given the same rules) | **31 of 47 (66%)** | **76%** |
+| Checks + second opinion (the hybrid) | 24 of 47 (51%) | 44% |
 
-- **Agreement is the useful signal:** problems that the checks and the second opinion both
-  flagged were right 15 of 17 times; problems only the second opinion flagged, about half
-  the time. That's why the results page labels them differently.
-- **What I learned:** structured data alone tied a well-prompted LLM; each missed problems the
-  other found, and almost never flagged the same thing wrongly. Combining them beat both on
-  recall. The gaps left are what no source states yet (a 2027 maintenance closure not
-  announced) and judgement calls (is this day too much?), where an LLM review was tried and
-  [didn't beat simple counts](docs/EVALS.md), so it's off.
-- **Fixes:** 16 of 18 proposed fixes passed every re-check, and 18 of 19 problems got one.
-  6 of the 16 changed a stop that a check couldn't verify (no hours in OpenStreetMap); since
-  then, a fix that swaps in a place whose hours can't be checked isn't shown at all.
+On the development set the hybrid had edged ahead (19 against 18 of 30). **On held-out
+data it didn't: the plain LLM wins.** What the numbers say:
+
+- **Where it lost:** travel time (19 false alarms) and overloaded days (none raised; the
+  LLM found 5 of 6). Both rest on constants (transit estimates, pace limits) I never tuned.
+  On opening hours and public holidays both found the same number of problems (12 of 20,
+  11 of 11), the LLM with fewer false alarms.
+- **What held up:** agreement. When the checks and the web-search second opinion both
+  flagged a closed venue, they were right 7 of 8 times, the same 88% as on the dev set; when
+  they disagreed, the check was usually the one that was wrong. That's why the results page
+  labels confirmed problems differently from single-source ones.
+- **No overfitting to the cities:** Vienna, never looked at while building, scored as well
+  as the held-out itineraries from the three development cities.
+- **Fixes:** 36 of 43 proposed fixes passed every re-check (84%), and 39 of 40 problems
+  got one. A fix that swaps in a place whose hours can't be checked isn't shown.
 - **Prompt injection:** 36 attacks of our own hidden in pasted text, OpenStreetMap tags,
   opening-hours comments, hotel reviews, web pages and search results: all 36 resisted with
   the shipped defences. The defences that matter are structural (no free text from third
   parties in a prompt, tool-less extractors, code choosing sources and severity); one
   attack (a vandalised map link to a fake official site) got through until official sites
   had to be confirmed by Wikidata.
+
+**What I take from it:** a well-prompted LLM with web search is a strong baseline that's
+easy to underestimate, and a 15-itinerary dev set is too small to tune against: a one-label
+lead there meant nothing. What the structured pipeline adds is not more problems found but
+evidence: every flag cites its source, agreement between two independent methods is a
+calibrated confidence signal, and fixes are verified by re-running the checks rather than
+trusted. The next step would be tuning travel time and daily load on dev, and any number
+after that is marked as tuned with the test results seen.
 
 Every run, with what changed in between, is in [`docs/EVALS.md`](docs/EVALS.md).
 
@@ -102,8 +112,10 @@ Every run, with what changed in between, is in [`docs/EVALS.md`](docs/EVALS.md).
   showed that much of what breaks a trip exists only as text on the web (the London Eye's
   winter maintenance shutdown isn't in OpenStreetMap). Models may now search, but every
   claim must cite a page the search returned, and code decides what's shown.
-- **The hybrid (Nov 2026).** The checks tied the LLM baseline, but their errors were
-  different. An independent second opinion turns agreement into confidence.
+- **The hybrid (Nov 2026).** The checks tied the LLM baseline on dev, but their errors
+  were different. An independent second opinion turns agreement into confidence.
+- **The held-out run (16 Nov 2026).** Run once, after the configuration was committed. The
+  plain LLM won; the numbers above are that run, unchanged.
 
 The full decision log, with what each choice cost, is in
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#12-decision-log). Requirements:
