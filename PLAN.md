@@ -245,7 +245,8 @@ unchanged (2 of 15 / 2 of 2). Baseline needs a rerun on `baseline-v4` before ste
   with the baseline; fix validity (share of fixes passing every re-check) reported.
 - The injection suite covering web pages.
 - A deployed demo (fallback if hosting slips: a recorded demo).
-- A README section "What changed and why", including the rule change.
+- A README section "What changed and why", including the rule change. Done 2026-11-16 (with
+  results, screenshots and setup); test-set numbers to add after the final run.
 
 Tier 2 is decided after this is done.
 
