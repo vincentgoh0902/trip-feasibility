@@ -141,6 +141,22 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
+      **How (Vincent's terminal, from `backend/`, once; nothing changes after it):**
+      1. Decide the configuration first (second opinion on or off, PLAN "Open"); commit, so
+         the run is tied to a commit.
+      2. `uv run python scripts/run_baseline.py --split test --final` (Claude plan, cached)
+      3. `uv run python scripts/run_eval.py --split test --final --mode parsed --replay`
+         (add `--second-opinion` if it's on; `--fixes` for fix validity). Test files have
+         no gold stops, so parsed mode only. Prints aggregates, seen and unseen city apart.
+      4. `uv run python scripts/match_decisions.py --ask --final` and
+         `--from-baseline --ask --final`: decide the uncertain name pairs (this shows test
+         predictions and labels: your terminal only).
+      5. Rerun 3 (same flags: replies, searches and checks come from the cache, so it's the
+         same run, now with the decisions) and `uv run python scripts/score_baseline.py
+         --split test --final`.
+      6. Give Claude the printed aggregates (or the `eval_runs` id: its metrics hold
+         aggregates only); Claude writes EVALS.md and the README results. Never the
+         `data/evals/runs/` detail file: it has per-itinerary test outputs.
 
 ## Tier 1 plan from here (decided 2026-10-29)
 
