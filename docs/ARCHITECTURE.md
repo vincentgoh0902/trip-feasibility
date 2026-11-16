@@ -961,9 +961,13 @@ as theme counts only, OSM tags only as the few that say what a place is (section
 opening hours without their comments. All other tool output is wrapped in `<violations>` and
 declared data. The injection suite (6d) measures how well this holds.
 
-**Live:** fixes run on every demo check (two calls in the e2e run of 2026-11-03); fix
-validity on the dataset (`run_eval.py --fixes`) hasn't been measured yet. Model and effort are
-settings, tuned once the fix-quality judge exists.
+**Live:** fixes run on every demo check (two calls in the e2e run of 2026-11-03). On dev
+(gold stops, EVALS.md 2026-11-16) 16 of 18 proposed fixes are valid and 18 of 19 problems
+get one, the same over two runs; 6 of the 16 change a stop a check couldn't judge (a
+replacement with no OSM hours, say), so 10 of 18 are verified by every check. A
+replacement the checks can't verify can still be a bad one (the London demo once offered
+the Museum of London, closed since 2022, which OSM still maps without hours). Model and
+effort are settings, tuned once the fix-quality judge exists.
 
 ## 6c. The API (`api/`, `runs.py`, `auth.py`)
 
@@ -1744,9 +1748,10 @@ Replaced or dropped:
 - API runs, live feeds, rate-limit counters and demo runs live in one process's memory; more
   than one API container would need them in Postgres (section 6c).
 - Parse cost isn't tied to the check run that follows it (section 6c).
-- Not yet measured: fix validity on the dataset, fix quality (needs the judge). The
-  injection suite's attacks are ours and few (30); the only one followed, a vandalised OSM
-  `website` tag, is closed by decision 95 (section 6d).
+- Not yet measured: fix quality (needs the judge). Fix validity is 16 of 18 on dev, but 6
+  of the 16 rest on a stop some check couldn't judge. The injection suite's attacks are ours
+  and few (36); the only one followed, a vandalised OSM `website` tag, is closed by decision
+  95 (section 6d).
 - Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; its Dockerfile exists
   but the server has no project for it until the hosting shape is settled (section 11).
 - Closures check: on dev, no false alarms and 0 of 2 `special` labels (EVALS.md); 40% of

@@ -64,6 +64,7 @@ class Outcome:
     # fixes (PRD "fix validity"), when the run proposes them
     fixes_proposed: int = 0
     fixes_valid: int = 0
+    fixes_unverified: int = 0  # valid fixes changing a stop some check couldn't judge
     fixable: int = 0  # warnings and blockers found
     fixed: int = 0  # of those, how many got a valid fix
     fix_tokens: tuple[int, int] = (0, 0)
@@ -171,6 +172,7 @@ async def evaluate_itinerary(
         if fix_report is not None:
             out.fixes_proposed = len(fix_report.fixes)
             out.fixes_valid = sum(f.valid for f in fix_report.fixes)
+            out.fixes_unverified = sum(f.valid and bool(f.unverified) for f in fix_report.fixes)
             out.fixable = len(fix_report.violation_ids)
             out.fixed = out.fixable - len(fix_report.unfixed)
             out.fix_tokens = (fix_report.input_tokens, fix_report.output_tokens)
@@ -309,6 +311,7 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
             "proposed": proposed,
             "valid": sum(o.fixes_valid for o in outcomes),
             "validity": sum(o.fixes_valid for o in outcomes) / proposed if proposed else None,
+            "valid_unverified": sum(o.fixes_unverified for o in outcomes),
             "violations": fixable,
             "violations_fixed": sum(o.fixed for o in outcomes),
             "coverage": sum(o.fixed for o in outcomes) / fixable if fixable else None,

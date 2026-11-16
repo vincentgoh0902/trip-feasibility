@@ -80,7 +80,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       parse, `check_runs` rows with violations and fixes (`tracing.py`, `pricing.py`, `runs.py`)
 - [ ] **Vincent: Langfuse Cloud** project keys in `.env` (optional; tracing stays off without)
 - [x] Fixes with re-checks (`agent/fixes.py`): Claude proposes operations, code applies and
-      re-runs every check, one retry; fix validity in `run_eval.py --fixes` (not run yet).
+      re-runs every check, one retry; fix validity in `run_eval.py --fixes`: on dev 16 of 18 valid, 6 of them
+      resting on a stop a check couldn't judge (2026-11-16, EVALS.md).
       Live on the demo since 2026-11-03
 - [x] FastAPI routes (PRD table), SSE live feed with replay, sign-in via a per-call token
       signed by the Next.js server, demo mode (samples, in memory), rate limits (`api/`,

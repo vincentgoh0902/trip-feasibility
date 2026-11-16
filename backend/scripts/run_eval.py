@@ -277,7 +277,8 @@ async def main() -> int:
                     fx = summary["fixes"]
                     valid = _of(fx["valid"], fx["proposed"])
                     fixed = _of(fx["violations_fixed"], fx["violations"])
-                    print(f"  fixes: {valid} valid; {fixed} violations got one")
+                    print(f"  fixes: {valid} valid ({fx['valid_unverified']} of them change a stop "
+                          f"a check couldn't judge); {fixed} violations got one")  # fmt: skip
                 if "tiers" in summary:
                     w = summary["without_second_opinion"]
                     precision = _of(w["tp"], w["tp"] + w["fp"])

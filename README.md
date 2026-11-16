@@ -65,6 +65,9 @@ End to end from the raw text, on the 30 labelled problems:
   recall. The gaps left are what no source states yet (a 2027 maintenance closure not
   announced) and judgement calls (is this day too much?), where an LLM review was tried and
   [didn't beat simple counts](docs/EVALS.md), so it's off.
+- **Fixes:** 16 of 18 proposed fixes passed every re-check, and 18 of 19 problems got one.
+  6 of the 16 change a stop that a check couldn't verify (no hours in OpenStreetMap), so the
+  page marks them "not verified".
 - **Prompt injection:** 36 attacks of our own hidden in pasted text, OpenStreetMap tags,
   opening-hours comments, hotel reviews, web pages and search results: all 36 resisted with
   the shipped defences. The defences that matter are structural (no free text from third

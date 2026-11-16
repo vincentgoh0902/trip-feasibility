@@ -534,3 +534,22 @@ and nothing the attacker claimed about other places, except `search-official`: a
 closure on the Eiffel Tower's own page was reported, as a "worth checking" warning (the
 attack's goal, a blocker, can't happen: code caps it). That's the data-trust limit seen with
 closures' vandalised site, not a prompt failure.
+
+### 2026-11-16 · gold mode · fix validity (`2b0555c2`, `9a52031f`)
+
+What changed: nothing in the system; the first `run_eval.py --fixes` on the dataset (PRD
+metric "fix validity"), with the shipped fix prompt (`fixes-v3`, Haiku 5.5, medium) and
+default checks (closures and second opinion off). The second run also counts valid fixes
+that change a stop some check couldn't judge. Violations are as in `c541a8a9`.
+
+| Run | Fixes valid | Problems with a valid fix | Valid, but a changed stop unverified |
+|---|---|---|---|
+| `2b0555c2` | 16 of 18 (89%) | 18 of 19 (95%) | not counted |
+| `9a52031f` | 16 of 18 (89%) | 18 of 19 (95%) | 6 of 16 |
+
+Reading: almost every problem gets a fix that clears it without a new blocker, and the
+two runs agree. "Valid" is the re-check's verdict, not a judgement of the fix's quality:
+6 of the 16 move or swap in a stop that a check couldn't judge (mostly a replacement with
+no OSM hours), shown on the page as "not verified". So 10 of 18 are verified by every
+check. A demo run showed the risk: a replacement museum that closed in 2022 but is still
+in OSM without hours. Fix quality needs the judge (another provider), not built.

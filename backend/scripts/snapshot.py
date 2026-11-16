@@ -40,6 +40,8 @@ VOLATILE = {"seconds", "input_tokens", "output_tokens", "fix_tokens"}
 NEEDS_KEY = {"closures", "second_opinion", "review"}
 # set only when the second opinion runs, which needs a key: always empty here
 SECOND_OPINION_ONLY = {"without_second_opinion", "tiers"}
+# set only when fixes run, which needs a key: always 0 here
+FIXES_ONLY = {"fixes_unverified"}
 
 
 async def take(deps) -> dict:
@@ -61,7 +63,11 @@ async def take(deps) -> dict:
         decisions=MatchDecisions.load(DECISIONS),  # read only: never saved here
     )
     gold = {
-        o.id: {k: v for k, v in asdict(o).items() if k not in VOLATILE | SECOND_OPINION_ONLY}
+        o.id: {
+            k: v
+            for k, v in asdict(o).items()
+            if k not in VOLATILE | SECOND_OPINION_ONLY | FIXES_ONLY
+        }
         for o in outcomes
     }
 
