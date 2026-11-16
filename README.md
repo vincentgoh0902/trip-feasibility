@@ -7,7 +7,9 @@ see them.
 
 **Live demo:** not hosted yet (it runs locally with one command, below).
 
-![A finished check: a bank holiday Monday in London, with two closed places, a holiday and two tight transfers, and three re-checked fixes](docs/images/results.png)
+![A demo run on a bank holiday Monday in London: the checks run live, two closed places are confirmed by a web search with their sources, and four fixes pass the re-check](docs/images/demo.gif)
+
+*A sample run, about 30 seconds. [Still screenshot](docs/images/results.png).*
 
 ## Why I built this
 
