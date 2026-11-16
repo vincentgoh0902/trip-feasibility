@@ -108,6 +108,18 @@ function Clipboard() {
   );
 }
 
+function Magnifier() {
+  return (
+    <>
+      <path d="M24 24l10 10" stroke="var(--charcoal)" strokeWidth="5" strokeLinecap="round" />
+      <circle cx="17" cy="18" r="12" fill="var(--wood-line)" />
+      <circle cx="17" cy="16" r="12" fill="var(--wood)" />
+      <circle cx="17" cy="16" r="8" fill="var(--paper)" />
+      <path d="M13 16l3 3 5-6" fill="none" stroke="var(--moss)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  );
+}
+
 const ICONS: Record<string, () => React.ReactNode> = {
   opening_hours: Clock,
   public_holidays: Calendar,
@@ -115,6 +127,7 @@ const ICONS: Record<string, () => React.ReactNode> = {
   daily_load: Footsteps,
   hotel_red_flags: Bed,
   closures: ClosedSign,
+  second_opinion: Magnifier,
   review: Clipboard,
 };
 

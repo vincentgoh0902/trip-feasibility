@@ -19,10 +19,13 @@ function statusText(state: RunState): string {
       return "Finding the places on the map";
     case "checks": {
       const left = state.checks.filter((name) => !state.results[name]);
-      // closures searches the web, so it's usually the last check by a while; the review
-      // runs after every check
+      // closures and the second opinion search the web, so they're usually the last by a
+      // while; the review runs after every check
       const tools = left.filter((name) => name !== "review");
-      if (tools.length === 1 && tools[0] === "closures") return "Still checking closures…";
+      const web = ["closures", "second_opinion"];
+      if (tools.length > 0 && tools.every((name) => web.includes(name))) {
+        return tools.includes("closures") ? "Still checking closures…" : "Getting a second opinion from the web…";
+      }
       if (left.length === 1 && left[0] === "review") return "Reviewing each day…";
       return `Checking: ${Object.keys(state.results).length} of ${state.checks.length} checks done`;
     }

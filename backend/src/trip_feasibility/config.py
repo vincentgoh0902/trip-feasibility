@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     closures_fetch_timeout_s: float = 10.0
     closures_fetch_max_bytes: int = 2_000_000
     cache_ttl_closures_days: int = 7
+    # The second opinion (agent/second_opinion.py, decision 97): one call with web search
+    # over the stops' opening hours, beside the checks. Its findings are cached like closures'.
+    second_opinion_model: str = "claude-haiku-5-5"
+    second_opinion_effort: str = "medium"
+    second_opinion_max_searches: int = 10
 
     # Sign-in (auth.py): the Next.js server signs a short-lived HS256 token for each API call
     # with this shared secret. Unset: every route that needs a user answers 503.

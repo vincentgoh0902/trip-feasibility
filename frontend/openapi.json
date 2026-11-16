@@ -710,6 +710,7 @@
                 "daily_load",
                 "hotel_red_flags",
                 "closures",
+                "second_opinion",
                 "review"
               ]
             },

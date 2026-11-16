@@ -1,7 +1,7 @@
 """The one way this app calls Claude: a structured-output request with the API's failures
-turned into coded errors. Used by extraction (parse step 1), fixes and the closures check
-(which also uses `search_web`); each caller keeps its own prompt, schema, retries and error
-class (a subclass of LLMError)."""
+turned into coded errors. Used by extraction (parse step 1), fixes, the review, the closures
+check (which also uses `search_web`) and the second opinion (`search_json`); each caller
+keeps its own prompt, schema, retries and error class (a subclass of LLMError)."""
 
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -145,4 +145,77 @@ async def search_web(
         searches=getattr(server_tools, "web_search_requests", 0) or 0,
         input_tokens=message.usage.input_tokens,
         output_tokens=message.usage.output_tokens,
+    )
+
+
+@dataclass
+class SearchedReply(Reply):
+    """A structured-output call that could search the web: the reply, plus every result
+    the searches returned (the only URLs a claim may cite) and the searches billed."""
+
+    results: list[SearchResult]
+    searches: int
+
+
+async def search_json(
+    client: MessagesClient,
+    error: type[LLMError],
+    *,
+    model: str,
+    max_tokens: int,
+    system: str,
+    user: str,
+    effort: str,
+    schema: dict[str, Any],
+    max_searches: int,
+    max_continuations: int = 3,
+) -> SearchedReply:
+    """One structured-output answer with Anthropic's web search tool available. A turn the
+    API pauses (`pause_turn`, its server-side loop limit) is resumed as is, at most
+    `max_continuations` times. A failed search raises `error("search_failed")`."""
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user}]
+    tools = [{"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": max_searches}]
+    output_config = {"effort": effort, "format": {"type": "json_schema", "schema": schema}}
+    results: list[SearchResult] = []
+    searches = input_tokens = output_tokens = 0
+    for _ in range(max_continuations + 1):
+        try:
+            message = await client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=tools,
+                output_config=output_config,
+            )
+        except anthropic.APIConnectionError as e:
+            raise error("unavailable", f"couldn't reach the model API: {e}") from e
+        except anthropic.RateLimitError as e:
+            raise error("unavailable", "the model API is rate-limiting us") from e
+        except anthropic.APIStatusError as e:
+            raise error("unavailable", f"the model API returned {e.status_code}") from e
+        input_tokens += message.usage.input_tokens
+        output_tokens += message.usage.output_tokens
+        server_tools = getattr(message.usage, "server_tool_use", None)
+        searches += getattr(server_tools, "web_search_requests", 0) or 0
+        for block in message.content:
+            if block.type != "web_search_tool_result":
+                continue
+            if not isinstance(block.content, list):  # an error object, e.g. max_uses_exceeded
+                if block.content.error_code == "max_uses_exceeded":
+                    continue  # the model answers from what it has
+                raise error("search_failed", f"web search failed: {block.content.error_code}")
+            results += [SearchResult(url=r.url, title=r.title) for r in block.content]
+        if message.stop_reason != "pause_turn":
+            break
+        # resume: the paused turn goes back as is, with no new user message
+        content = [b.model_dump() if hasattr(b, "model_dump") else b for b in message.content]
+        messages = [messages[0], {"role": "assistant", "content": content}]
+    return SearchedReply(
+        stop_reason=message.stop_reason,
+        text="".join(b.text for b in message.content if b.type == "text"),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        results=results,
+        searches=searches,
     )

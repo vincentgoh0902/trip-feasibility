@@ -5,7 +5,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, Reviewer, run_agent
+from trip_feasibility.agent.graph import (
+    CheckInput,
+    CheckReport,
+    Fixer,
+    Reviewer,
+    SecondOpinion,
+    run_agent,
+)
 from trip_feasibility.checks.config import CheckConfig
 from trip_feasibility.checks.deps import CheckDeps, Unavailable
 from trip_feasibility.config import Settings
@@ -16,6 +23,7 @@ from trip_feasibility.evals.align import align
 from trip_feasibility.evals.decisions import MatchDecisions
 from trip_feasibility.evals.score import (
     PARSE_FIELDS,
+    TIERS,
     Counts,
     ParseCounts,
     Where,
@@ -24,6 +32,7 @@ from trip_feasibility.evals.score import (
     findings,
     found_by_cause,
     gold_label,
+    hybrid_tiers,
     parse_counts,
 )
 from trip_feasibility.itinerary import Stop
@@ -62,6 +71,10 @@ class Outcome:
     # opening_hours labels found by cause: {"regular": [found, labelled], ...} (decision 88)
     opening_hours_by_cause: dict[str, list[int]] = field(default_factory=dict)
     gold: dict[str, str] = field(default_factory=dict)
+    # with the second opinion on (decision 97): the same run scored without it, and its
+    # opening-hours predictions by tier, {"confirmed": [tp, fp], ...}
+    without_second_opinion: dict[str, Counts] = field(default_factory=dict)
+    tiers: dict[str, list[int]] = field(default_factory=dict)
     undecided: int = 0  # uncertain name pairs still waiting for a human (evals/decisions.py)
 
 
@@ -114,6 +127,7 @@ async def evaluate_itinerary(
     client: MessagesClient | None = None,
     fixes: bool = False,
     decisions: MatchDecisions | None = None,
+    opinion: SecondOpinion | None = None,
 ) -> Outcome:
     out = Outcome(id=itin.id, city=itin.city)
     gold = gold_violations(itin, hotels)
@@ -152,6 +166,7 @@ async def evaluate_itinerary(
             CheckInput.for_city(city, stops, itin.preferences, config),
             fixer,
             reviewer,
+            opinion,
         )
         if fix_report is not None:
             out.fixes_proposed = len(fix_report.fixes)
@@ -175,6 +190,14 @@ async def evaluate_itinerary(
     where = Where(itin.id, itin.split, decisions) if decisions is not None else None
     out.counts = compare(predicted, gold, itin.unknowns, where)
     out.opening_hours_by_cause = found_by_cause(predicted, gold, where)
+    if "second_opinion" in report.results:
+        without = [v for v in report.violations if v.check_name != "second_opinion"]
+        alone = [f for f in findings(without, stops) if f.check != "hotel_red_flags"
+                 or not out.hotel_unlabelled]  # fmt: skip
+        out.without_second_opinion = compare(alone, gold, itin.unknowns, where)
+        for tier, predicted_tier in hybrid_tiers(report.violations, stops).items():
+            c = compare(predicted_tier, gold, itin.unknowns, where).get("opening_hours", Counts())
+            out.tiers[tier] = [c.tp, c.fp]
     if decisions is not None:
         out.undecided = sum(p.itinerary == itin.id for p in decisions.pending.values())
     out.statuses = {n: r.status for n, r in report.results.items()}
@@ -194,6 +217,7 @@ async def evaluate(
     client: MessagesClient | None = None,
     fixes: bool = False,
     decisions: MatchDecisions | None = None,
+    opinion: SecondOpinion | None = None,
     progress: Any = None,
 ) -> list[Outcome]:
     cities: dict[str, City | None] = {}
@@ -216,6 +240,7 @@ async def evaluate(
                 client=client,
                 fixes=fixes,
                 decisions=decisions,
+                opinion=opinion,
             )
         outcomes.append(outcome)
         if progress:
@@ -259,6 +284,13 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
     for o in outcomes:
         add_by_cause(by_cause, o.opening_hours_by_cause)
     summary["opening_hours_by_cause"] = by_cause
+    if any(o.tiers for o in outcomes):
+        without = [Outcome(id=o.id, city=o.city, counts=o.without_second_opinion)
+                   for o in outcomes]  # fmt: skip
+        summary["without_second_opinion"] = _check_metrics(without)["overall"]
+        summary["tiers"] = {
+            t: [sum(o.tiers.get(t, [0, 0])[i] for o in outcomes) for i in (0, 1)] for t in TIERS
+        }
 
     parses = [o.parse for o in outcomes if o.parse is not None]
     if parses:

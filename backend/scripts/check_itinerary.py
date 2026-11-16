@@ -24,7 +24,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trip_feasibility.agent.fixes import FixReport
-from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, run_agent
+from trip_feasibility.agent.graph import CheckInput, CheckReport, Fixer, SecondOpinion, run_agent
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
@@ -169,7 +169,15 @@ async def main() -> int:
                     effort=settings.fix_effort,
                     city=city,
                 )
-            report, fixes = await run_agent(deps, inp, fixer)
+            opinion = None
+            if settings.anthropic_api_key is not None:
+                opinion = SecondOpinion(
+                    make_client(settings),
+                    settings.second_opinion_model,
+                    settings.second_opinion_effort,
+                    settings.second_opinion_max_searches,
+                )
+            report, fixes = await run_agent(deps, inp, fixer, second_opinion=opinion)
     finally:
         await engine.dispose()
     print_report(report)

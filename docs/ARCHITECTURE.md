@@ -27,7 +27,8 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
                                                 │        ├─ travel_time       ✅ built
                                                 │        ├─ daily_load        ✅ built
                                                 │        ├─ hotel_red_flags   ✅ built
-                                                │        └─ closures          ✅ built (web search; not yet evaluated)
+                                                │        ├─ closures          ✅ built (web search)
+                                                │        └─ second opinion    ✅ built (web search, set against the checks; off by default)
                                                 └──► every external lookup is cached in Postgres
 ```
 
@@ -821,15 +822,16 @@ enabled check through the MCP tool server, in parallel, as a LangGraph graph:
 
 ```
 START ─► run_check(opening_hours) ─┐
-      ├► run_check(travel_time) ───┼─► review ─► fix ─► END   → CheckReport + FixReport
-      └► … one Send per enabled check
+      ├► run_check(travel_time) ───┤
+      ├► … one Send per enabled check ┼─► second_opinion ─► review ─► fix ─► END
+      └► look_up (web search) ──────┘                → CheckReport + FixReport
 ```
 
 - **No LLM decides which checks run.** It's configuration (FR-5): an LLM picking tools
   would add cost, latency and a way to silently skip a check, for nothing. The LLM's jobs in
   the agent are extraction (before), fixes (the `fix` node, below) and the closures check's
-  search and extraction (inside its tool, section 5), and the review (below; off by
-  default), under decision 92 (section 1).
+  search and extraction (inside its tool, section 5), the second opinion and the review
+  (below; both off by default), under decision 92 (section 1).
 - **In-process MCP:** `mcp.Client(create_server(deps))`. The caller's `CheckDeps` go into the
   server, so an eval run's cache-only mode reaches the tools.
 - **A failed tool never sinks the run:** a tool error, a broken call or a missing country
@@ -883,6 +885,47 @@ the right one a different labelled day each time. With two positives, precision 
 really be measured, and which days get flagged changes from run to run. What's missing is
 in the text ("maybe a second show"), visit lengths the stops don't carry, or a firmer
 standard than either model holds.
+
+### The second opinion (`agent/second_opinion.py`, the `look_up` and `second_opinion` nodes; decision 97)
+
+The hybrid. On dev our checks and the LLM-only baseline find mostly the same problems, and
+every problem both flagged was real (14 of 14, in both modes); each also finds a few the
+other misses (EVALS.md, 2026-11-03). So the system gets an independent second opinion and
+reports agreement: what both find is confirmed, what one finds is worth checking.
+
+- **Opening hours only.** That's where the two disagreed usefully: the baseline's finds we
+  missed were opening hours (OSM hours missing or wrong) bar one overloaded day, which is
+  the review's question. Holidays come from Nager.Date, which is complete; travel times
+  aren't published on pages, so there would be nothing to cite (decision 92).
+- **Look up** (`look_up` node, beside the checks, never seeing their results, so agreement
+  means something): one Claude call (`SECOND_OPINION_MODEL`, Haiku 5.5, medium) with
+  Anthropic's web search (`max_uses` `SECOND_OPINION_MAX_SEARCHES`, 10) and structured output
+  together (`llm.search_json`, which resumes a `pause_turn`). It sees each venue and meal
+  stop's id, date, planned times and name, like the fix prompt: no itinerary text, no areas,
+  no hotels. Per stop it found a source for: `closed` that day, or `open` with that day's
+  hours and last entry, and the URL that states it.
+- **Validate (code):** the stop is one we sent, the URL is one the search returned (a probe
+  on 2026-11-16 cited a URL its search never returned), hours are `HH:MM-HH:MM`; the rest is
+  dropped and counted. The validated findings are cached per request
+  (`second_opinion:<PROMPT_VERSION>:<model>:<hash>`, `CACHE_TTL_CLOSURES_DAYS`); eval mode
+  serves expired ones. Demo runs (`CheckInput.web_search=False`) use the cache only.
+- **Judge (code, `second_opinion` node, after the checks):** a closed day, a visit outside
+  the hours or a start after last entry is a problem, as in opening_hours. Against the
+  checks' opening_hours and closures warnings and blockers on the same stop: both → an
+  `info` "a web search agrees" (`agreement: confirms`); second opinion only → a `warning`,
+  "worth checking" (`only_second_opinion`); checks only, where the search found the place
+  open for the visit → an `info` "a web search found it open" (`disputes`). Messages are
+  code's; never a blocker on one web source. Stops without a source are `unknown`.
+- **Where it goes:** streamed after the checks, before the review; advisory (never sent to
+  the fixer, not re-run on re-checks: a fix could never be shown to clear it); its tokens
+  and searches count in the run's `Usage`. **Off by default** until the dev eval says the
+  hybrid helps. In the eval its warnings score as opening_hours, its `info` notes don't, and
+  `run_eval.py --second-opinion` also reports the same run without it and the opening-hours
+  predictions by tier (confirmed, disputed, checks unchecked, second opinion only).
+- **Injection surface:** search results reach this model, which answers with structured
+  claims, unlike the closures search step whose text is thrown away. The defences are
+  structural: URLs from the search only, statuses and hours only, code-written messages,
+  warnings at most. Not in the injection suite yet.
 
 ### Fixes (`agent/fixes.py`, the `fix` node)
 
@@ -1480,6 +1523,8 @@ Replaced or dropped:
 | 95 | A closures finding is official only if the OSM `website` tag is confirmed by Wikidata: the OSM `wikidata` item's official website (P856) is the same site; otherwise `web` (a warning). Applied after the findings cache (2026-11-15; section 5, `sources/wikidata.py`) | The injection suite showed a vandalised OSM `website` tag on a lookalike domain turning a fake closure into a blocker 3 of 3 times. Wikidata is edited and patrolled separately, so an attacker needs both; on dev, all 10 official findings stay official and 36 of 46 tagged places are confirmed. Alternatives were a second agreeing source (most official closures have none) or accepting it | 10 of 46 tagged dev places lose official: no Wikidata item or P856 (parks, a council page), or a domain changed in one database only (Parc Güell, Sainte-Chapelle, Royal Opera House); one Wikidata request per item (cached 30 days, `WIKIDATA_BASE_URL`, `CACHE_TTL_WIKIDATA_DAYS`); vandalising both still works |
 | 96 | The LLM review (Tier 1 step 3): a `review` node after the checks judges each day `fine` / `full` / `too_much` from the stops, legs, day numbers and daily_load's walking warnings, citing ids; code keeps cited `too_much` verdicts as warnings (estimated), never sends them to the fixer, scores them as daily_load; **off by default** (2026-11-15; section 6b) | Decision 81 left "is this day too much" to an LLM; judging from structured results keeps the pasted text and tools out (first slice). Shown other checks' findings it restated them, shown the pace limits it quoted them; both removed. Off by default because on dev it flags 3–7 days for 1 labelled one, and not the same days twice | Not shown to travellers yet; optional and "X or Y" slots, tools and visit lengths are not in it; two dev positives can't tell a better prompt from noise, so prompt work stops until there's more to measure against |
 
+| 97 | **The hybrid: a second opinion on opening hours.** Beside the checks, one Haiku call with web search (up to 10) and structured output reports each venue and meal stop's status on its date (closed, or open with hours and last entry) with a URL its search returned; code validates, caches and judges it, then sets it against the checks: both flag it → an info "a web search agrees" (confirmed); only the second opinion → a warning, "worth checking"; checks only, search found it open → an info "a web search found it open". Never a blocker, never sent to the fixer, not re-run on re-checks; off by default (2026-11-16; section 6b) | On dev the checks and the LLM-only baseline found mostly the same problems, all 14 shared flags real, each finding a few the other missed (EVALS.md 2026-11-03). An independent pass that never sees the checks' results makes agreement a confidence signal. Opening hours only: the baseline's extra finds were opening hours (bar one overloaded day, the review's job); holidays are complete in Nager.Date and travel times have no page to cite. On dev (EVALS.md 2026-11-16) it adds 3 real problems in each mode for 3–4 false alarms; confirmed flags are right 15 of 17 times, second-opinion-only ones about half | Search results reach a model whose answer is used (unlike the closures search step), a new injection surface that decision 92's "page text only to a tool-less extractor" doesn't cover; defended structurally (search URLs only, statuses and hours only, code-written messages, warnings at most) but not in the injection suite yet. About 5 searches per itinerary ($0.05) plus tokens. Precision drops (parsed 80% → 70% on the four checks) unless the UI separates the tiers. Its parsed stops share the parser's misses |
+
 Replaced or dropped:
 - **"The LLM interprets and proposes; code decides"** (from the start until 2026-11-11): every fact from structured data, LLMs only for extraction and fixes. Kept everything it got right (no coordinates from a model, fixes as operations, code deciding what's shown) but left web-only facts and fuzzy judgements as misses (decision 92).
 
@@ -1623,7 +1668,12 @@ Replaced or dropped:
 
 ## 13. Known gaps and next steps
 
-- **End to end, the pipeline trails a plain LLM with web search slightly.** With
+- **The hybrid (decision 97) is ahead of a plain LLM on recall, behind on precision.** End
+  to end on dev, checks plus the second opinion find 19 of 30 at 70% precision, the
+  baseline 18 of 30 at 78%; confirmed flags are right 15 of 17 times. Off by default until
+  Vincent decides; the tiers aren't separated in the UI yet beyond the evidence row; the
+  second opinion isn't in the injection suite.
+- **Without the second opinion, the pipeline trails a plain LLM with web search slightly.** With
   `extract-v11` at medium effort (three dev runs) it finds 16–17 of 30 problems at 71–80%
   precision; the baseline 18 of 30 at 78%; the checks on gold stops 19 of 30 at 86%.
   Extraction now finds 89% of the gold stops, so most of the remaining gap is in what the

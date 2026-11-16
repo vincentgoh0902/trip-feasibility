@@ -7,6 +7,7 @@ export const CHECK_LABELS: Record<string, string> = {
   daily_load: "Daily load",
   hotel_red_flags: "Hotel red flags",
   closures: "Closures",
+  second_opinion: "Second opinion",
   review: "Day review",
 };
 

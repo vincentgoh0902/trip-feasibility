@@ -32,7 +32,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from trip_feasibility import paths
 from trip_feasibility.agent.fixes import FIX_PROMPT_VERSION
+from trip_feasibility.agent.graph import SecondOpinion
 from trip_feasibility.agent.review import REVIEW_PROMPT_VERSION
+from trip_feasibility.agent.second_opinion import PROMPT_VERSION as SECOND_OPINION_PROMPT_VERSION
 from trip_feasibility.checks.config import CHECK_NAMES, CheckConfig
 from trip_feasibility.checks.deps import make_check_deps, make_http_client
 from trip_feasibility.config import get_settings
@@ -106,6 +108,11 @@ async def main() -> int:
     parser.add_argument(
         "--review", action="store_true", help="also run the LLM review (one model call each)"
     )
+    parser.add_argument(
+        "--second-opinion",
+        action="store_true",
+        help="also run the second opinion (web searches on a cache miss; costs money)",
+    )
     parser.add_argument("--dir", type=Path, default=DATASET)
     args = parser.parse_args()
     if args.split == "test" and not args.final:
@@ -141,14 +148,20 @@ async def main() -> int:
     settings = get_settings()
     modes = ["gold", "parsed"] if args.mode == "both" else [args.mode]
     needs_key = "parsed" in modes or args.fixes or args.closures or args.review
-    if needs_key and settings.anthropic_api_key is None:
+    if (needs_key or args.second_opinion) and settings.anthropic_api_key is None:
         print(
-            "Parsed mode, --fixes, --closures and --review need ANTHROPIC_API_KEY (.env).",
+            "Parsed mode, --fixes, --closures, --review and --second-opinion need "
+            "ANTHROPIC_API_KEY (.env).",
             file=sys.stderr,
         )
         return 1
     hotels = {h.key: h for h in report.hotels}
-    off = {n for n, on in (("closures", args.closures), ("review", args.review)) if not on}
+    optional = (
+        ("closures", args.closures),
+        ("second_opinion", args.second_opinion),
+        ("review", args.review),
+    )
+    off = {n for n, on in optional if not on}
     config = CheckConfig(enabled=[n for n in CHECK_NAMES if n not in off])
     engine = make_engine(settings.database_url)
     sessionmaker = async_sessionmaker(engine)
@@ -165,6 +178,15 @@ async def main() -> int:
             if args.closures:
                 # its findings are cached per place and month: reruns make no calls
                 deps.llm = make_client(settings)
+            opinion = None
+            if args.second_opinion:
+                # its findings are cached per request: reruns on the same stops make no calls
+                opinion = SecondOpinion(
+                    make_client(settings),
+                    settings.second_opinion_model,
+                    settings.second_opinion_effort,
+                    settings.second_opinion_max_searches,
+                )
             for mode in modes:
                 print(f"\n{mode} stops")
                 # gold stops are dev only (parser debugging), so not every file has them
@@ -181,6 +203,7 @@ async def main() -> int:
                     client=client if mode == "parsed" or args.fixes or args.review else None,
                     fixes=args.fixes,
                     decisions=decisions,
+                    opinion=opinion,
                     progress=progress(args.split),
                 )
                 decisions.save()
@@ -194,6 +217,12 @@ async def main() -> int:
                     "fix_prompt_version": FIX_PROMPT_VERSION if args.fixes else None,
                     "review_model": settings.review_model if args.review else None,
                     "review_prompt_version": REVIEW_PROMPT_VERSION if args.review else None,
+                    "second_opinion_model": (
+                        settings.second_opinion_model if args.second_opinion else None
+                    ),
+                    "second_opinion_prompt_version": (
+                        SECOND_OPINION_PROMPT_VERSION if args.second_opinion else None
+                    ),
                     "clean_version": CLEAN_VERSION if mode == "parsed" else None,
                     "match_decisions_version": decisions.version(),
                     "replay": (
@@ -249,6 +278,13 @@ async def main() -> int:
                     valid = _of(fx["valid"], fx["proposed"])
                     fixed = _of(fx["violations_fixed"], fx["violations"])
                     print(f"  fixes: {valid} valid; {fixed} violations got one")
+                if "tiers" in summary:
+                    w = summary["without_second_opinion"]
+                    precision = _of(w["tp"], w["tp"] + w["fp"])
+                    recall = _of(w["tp"], w["tp"] + w["fn"])
+                    print(f"  without the second opinion: precision {precision}, recall {recall}")
+                    parts = [f"{t} {_of(tp, tp + fp)}" for t, (tp, fp) in summary["tiers"].items()]
+                    print(f"  opening hours by tier (precision): {', '.join(parts)}")
                 if by_cause := summary["opening_hours_by_cause"]:
                     parts = [f"{c} {_of(f, n)}" for c, (f, n) in sorted(by_cause.items())]
                     print(f"  opening hours found, by cause: {', '.join(parts)}")

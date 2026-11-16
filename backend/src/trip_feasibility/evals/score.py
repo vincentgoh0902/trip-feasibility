@@ -66,7 +66,9 @@ def findings(violations: list[Violation], stops: list[Stop]) -> list[Finding]:
             case "opening_hours":
                 for s in named:
                     add(Finding(v.check_name, v.severity, s.day, s.place_name))
-            case "closures":  # scored as opening_hours, like its labels (decision 88)
+            # scored as opening_hours, like their labels (decisions 88, 97); the second
+            # opinion's info notes (agreeing or disagreeing with a check) aren't predictions
+            case "closures" | "second_opinion":
                 for s in named:
                     add(Finding("opening_hours", v.severity, s.day, s.place_name))
             case "travel_time":
@@ -80,6 +82,32 @@ def findings(violations: list[Violation], stops: list[Stop]) -> list[Finding]:
             case "hotel_red_flags":
                 add(Finding(v.check_name, v.severity, None, named[0].place_name))
     return list(out.values())
+
+
+# The hybrid's tiers (decision 97): an opening-hours problem both the checks and the second
+# opinion report, one the second opinion found open, one it couldn't check, one it alone found.
+TIERS = ("confirmed", "disputed", "checks_unchecked", "second_opinion_only")
+
+
+def hybrid_tiers(violations: list[Violation], stops: list[Stop]) -> dict[str, list[Finding]]:
+    """The opening-hours predictions split by tier, from the second opinion's notes."""
+    said: dict[str, str] = {}  # stop id -> confirms | disputes | only_second_opinion
+    for v in violations:
+        if v.check_name == "second_opinion":
+            for sid in v.stop_ids:
+                said[sid] = v.evidence.get("agreement", "")
+    checks = [v for v in violations if v.check_name in ("opening_hours", "closures")]
+    tiers: dict[str, list[Violation]] = {t: [] for t in TIERS}
+    for v in checks:
+        for sid in v.stop_ids:
+            tier = {"confirms": "confirmed", "disputes": "disputed"}.get(
+                said.get(sid, ""), "checks_unchecked"
+            )
+            tiers[tier].append(v.model_copy(update={"stop_ids": [sid]}))
+    tiers["second_opinion_only"] = [
+        v for v in violations if v.check_name == "second_opinion" and v.severity != "info"
+    ]
+    return {t: findings(vs, stops) for t, vs in tiers.items()}
 
 
 def place_score(a: str | None, b: str | None) -> float:

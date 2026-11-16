@@ -453,3 +453,52 @@ days change between runs, so the review is off by default. The two labelled days
 the stops don't hold: "maybe a second show" is in the text, and "Versailles recommends a
 whole afternoon for Trianon" is a visit length. Two positives can't separate a better
 prompt from noise, so prompt work stops here.
+
+### 2026-11-16 · gold + parsed · second opinion, first dev runs (`270d22c4`, `b6881728`)
+
+What changed: the second opinion (decision 97), `run_eval.py --mode both --replay
+--second-opinion`: one Haiku 5.5 call per itinerary with web search (up to 10), set against
+the checks' opening-hours results. Parsed mode replays `9961761f`'s extractions (15 of 15
+reused), so its "without" column is the same stops with and without the second opinion.
+Closures and review off. Same dataset (`sha256:50ab3afeda14`).
+
+| Run | Opening hours | All (incl. hotels): precision | All: recall |
+|---|---|---|---|
+| Gold stops, checks alone (same run) | 10 of 12 / 10 of 17 | 20 of 23 (87%) | 20 of 32 (62%) |
+| Gold stops, hybrid `270d22c4` | 13 of 18 / 13 of 17 | 23 of 29 (79%) | 23 of 32 (72%) |
+| Parsed, checks alone (same run) | 8 of 10 / 8 of 17 | 17 of 21 (81%) | 17 of 32 (53%) |
+| Parsed, hybrid `b6881728` | 11 of 17 / 11 of 17 | 20 of 28 (71%) | 20 of 32 (62%) |
+
+On the four checks the baseline is scored on (hotels left out), against `baseline-v4`:
+
+| | Precision | Recall |
+|---|---|---|
+| Hybrid, parsed `b6881728` | 19 of 27 (70%) | 19 of 30 (63%) |
+| Hybrid, gold stops `270d22c4` | 22 of 28 (79%) | 22 of 30 (73%) |
+| Checks alone, parsed (same run) | 16 of 20 (80%) | 16 of 30 (53%) |
+| Baseline `baseline-v4` | 18 of 23 (78%) | 18 of 30 (60%) |
+
+Opening-hours predictions by tier (precision):
+
+| Tier | Gold stops | Parsed |
+|---|---|---|
+| Confirmed (checks and second opinion) | 8 of 9 (89%) | 7 of 8 (88%) |
+| Checks only, second opinion found no source | 2 of 2 | 1 of 2 |
+| Checks only, second opinion found it open (disputed) | 0 of 1 | none |
+| Second opinion only | 3 of 6 (50%) | 3 of 7 (43%) |
+
+Lookups: 30 calls (15 per mode), 151 web searches ($1.51; about 5 per itinerary, under the
+cap of 10), 152 validated findings, 4 rejected (no valid source or hours). Tokens aren't
+logged by the eval runner yet.
+
+Reading: the second opinion adds 3 real problems in each mode (the Tower of London in both,
+Tibidabo in parsed mode, among them: places whose OSM hours the checks lack or misread) for
+3–4 more false alarms. End to end the
+hybrid now finds more than the plain LLM (19 against 18 of 30) at lower precision (70%
+against 78%), and on gold stops it's ahead on both. Agreement is the strong signal: what both
+flag is right 15 of 17 times over the two modes, what only the second opinion flags about
+half the time, and its one dispute was right (the check's flag was false). So the tiers
+belong in the UI: confirmed as found, single-source as "worth checking". The differences
+are 1–4 labels on 15 itineraries, and the tiers were read on the same dev set: a
+direction to confirm on the test split, not a result. Still missed: the two `special`
+labels, Bar Cañete, Musée Rodin in parsed mode (extraction), the overloaded days.

@@ -121,6 +121,14 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       `--closures` (EVALS.md, 2026-11-14): no false alarms after decision 94 (areas not
       looked up, special hours without hours ignored), 0 of 2 `special` labels found;
       the demo uses cached findings only (decision 94)
+- [x] The hybrid (decision 97, 2026-11-16): a second opinion on opening hours from one
+      web-search call beside the checks, set against them (confirmed / worth checking /
+      disputed); `run_eval.py --second-opinion` reports the run with and without it and by
+      tier. On dev (EVALS.md): +3 real problems in each mode for 3–4 false alarms; end to
+      end 19 of 30 at 70% against the baseline's 18 of 30 at 78%; confirmed flags right 15
+      of 17. Off by default; frontend label, icon and evidence row added
+- [ ] Second opinion: web-search-result attacks in the injection suite; show the tiers in
+      the results page (confirmed vs worth checking); log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
 
@@ -313,6 +321,10 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
   per check" means parse + run, and if so carry the parse usage into the saved version.
 - Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.
+- The second opinion (decision 97): on by default for live checks? On dev it raises recall
+  (53% → 63% end to end) and lowers precision (80% → 70%); the tiers make the difference
+  visible (confirmed 88–89%, second opinion only ~50%). Vincent decides, ideally after the
+  injection cases and the tier display; the final test run should use whichever is chosen.
 - The LLM review (decision 96): off by default, as no version beats the counts on dev. To
   decide (Vincent): whether to rate its flagged days by hand (across the runs; ratings
   only, not labels, as two positives can't measure it), to give it the itinerary text

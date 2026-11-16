@@ -25,6 +25,9 @@ Measured on dev (`docs/EVALS.md`): on gold stops 19 of 22 / 19 of 30; end to end
 parser work, 16–17 of 30 at 71–80% precision over three runs (stop recall 89%), against an
 LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks can't see
 (closures, missing OSM hours, overloaded days); flags both systems raise were all real.
+The hybrid (decision 97, 2026-11-16: a web-search second opinion on opening hours set
+against the checks) gets 19 of 30 end to end at 70% precision; confirmed flags right 15 of
+17; off by default, Vincent to decide (PLAN.md "Open").
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
 and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; injection
@@ -74,7 +77,10 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
     parse/                      pipeline.py end to end; clean.py (step 0: chat debris out,
                                 length limits), extract.py (Claude), schema.py,
                                 normalise.py, geocode.py
-    agent/                      graph.py (LangGraph: checks in parallel, review, then fixes),
+    agent/                      graph.py (LangGraph: checks and the second opinion's search in
+                                parallel, second opinion, review, then fixes),
+                                second_opinion.py (web-search hours set against the checks:
+                                agreement confirms; off by default, decision 97),
                                 review.py (LLM day review, off by default, decision 96),
                                 fixes.py (propose → apply → re-check → retry), models.py
     dataset/                    annotation format (models.py), split rules, validation + gold labels,
@@ -160,7 +166,10 @@ Planned: `train/` (Tier 2, Mac only).
   opening-hours comments are filtered by `agent.fixes.safe_evidence`. Changing what the fix
   prompt sees bumps `FIX_PROMPT_VERSION`; the injection suite measures it. Fetched web page
   text goes only to a tool-less extractor (no tools, structured output); only its validated
-  findings, never page text, reach the agent, review or fix prompt (decision 92).
+  findings, never page text, reach the agent, review or fix prompt (decision 92). The one
+  exception is the second opinion (decision 97): its model reads search results and answers
+  with statuses, hours and a search-result URL only; code writes its messages and caps it
+  at warning.
 - **Evals:** eval mode (`make_check_deps(..., eval_mode=True)`) serves expired cache entries,
   so reruns make no external calls. Every run writes model ID, prompt version, config and
   dataset version to `eval_runs`; every run worth keeping also goes in `docs/EVALS.md` with
@@ -202,7 +211,8 @@ Planned: `train/` (Tier 2, Mac only).
   (medium), `REVIEW_MODEL` (claude-haiku-5-5), `REVIEW_EFFORT` (medium), `CLOSURES_MODEL` (claude-haiku-5-5), `CLOSURES_SEARCH_EFFORT` (low),
   `CLOSURES_EFFORT` (medium), `CLOSURES_MAX_PLACES` (12), `CLOSURES_PAGES_PER_PLACE` (3),
   `CLOSURES_FETCH_TIMEOUT_S` (10), `CLOSURES_FETCH_MAX_BYTES` (2000000),
-  `CACHE_TTL_CLOSURES_DAYS` (7), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
+  `CACHE_TTL_CLOSURES_DAYS` (7), `SECOND_OPINION_MODEL` (claude-haiku-5-5),
+  `SECOND_OPINION_EFFORT` (medium), `SECOND_OPINION_MAX_SEARCHES` (10), `API_JWT_SECRET` (secret, shared with the Next.js server), `API_JWT_ISSUER`,
   `API_JWT_AUDIENCE`, `RATE_LIMIT_CHECKS_PER_HOUR` (20), `RATE_LIMIT_PARSES_PER_HOUR` (20),
   `RATE_LIMIT_DEMO_PER_HOUR` (10), `MAX_CONCURRENT_RUNS` (4), `DEMO_RUN_TTL_S` (3600),
   `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (secret; tracing off without both),
@@ -245,6 +255,7 @@ uv run python scripts/run_eval.py [--mode gold|parsed|both] [--fixes]   # dev sp
 uv run python scripts/run_eval.py --mode parsed --replay   # reuse saved model replies (A/B)
 uv run python scripts/run_eval.py --mode gold --closures  # + closures (web searches on a cache miss: costs money)
 uv run python scripts/run_eval.py --mode gold --review    # + the LLM review (off by default; one call each)
+uv run python scripts/run_eval.py --mode both --replay --second-opinion   # + the hybrid (web searches on a cache miss)
 uv run python scripts/diagnose_parse.py [--ids ...] [--samples N] [--summary]   # parser misses (dev)
 uv run python scripts/run_eval.py --split test --final  # reported results only
 uv run python scripts/match_decisions.py [--from-baseline] [--ask]   # uncertain name matches

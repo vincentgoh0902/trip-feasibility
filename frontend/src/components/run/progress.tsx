@@ -50,7 +50,7 @@ export function Progress({ state }: { state: RunState }) {
             : r.violations === 0
               ? "no problems"
               : `${r.violations} problem${r.violations === 1 ? "" : "s"}`
-          : name === "closures" && !finished
+          : (name === "closures" || name === "second_opinion") && !finished
             ? "searching the web, takes a little longer"
             : name === "review" && !finished
               ? "judging each day once the checks are in"

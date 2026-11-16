@@ -37,6 +37,9 @@ DATASET = paths.DATASET
 DECISIONS = paths.MATCH_DECISIONS
 SNAPSHOT = paths.SNAPSHOT
 VOLATILE = {"seconds", "input_tokens", "output_tokens", "fix_tokens"}
+NEEDS_KEY = {"closures", "second_opinion", "review"}
+# set only when the second opinion runs, which needs a key: always empty here
+SECOND_OPINION_ONLY = {"without_second_opinion", "tiers"}
 
 
 async def take(deps) -> dict:
@@ -51,12 +54,16 @@ async def take(deps) -> dict:
         dev,
         {h.key: h for h in report.hotels},
         mode="gold",
-        # no closures or review: they need the model API, and the gate must run without a key
-        config=CheckConfig(enabled=[n for n in CHECK_NAMES if n not in ("closures", "review")]),
+        # no closures, second opinion or review: they need the model API, and the gate must
+        # run without a key
+        config=CheckConfig(enabled=[n for n in CHECK_NAMES if n not in NEEDS_KEY]),
         settings=get_settings(),
         decisions=MatchDecisions.load(DECISIONS),  # read only: never saved here
     )
-    gold = {o.id: {k: v for k, v in asdict(o).items() if k not in VOLATILE} for o in outcomes}
+    gold = {
+        o.id: {k: v for k, v in asdict(o).items() if k not in VOLATILE | SECOND_OPINION_ONLY}
+        for o in outcomes
+    }
 
     example = load_example()
     city = await locate_city(deps, example.city)
@@ -66,9 +73,7 @@ async def take(deps) -> dict:
         city,
         stops,
         example.preferences,
-        CheckConfig(
-            enabled=[n for n in CHECK_NAMES if n not in ("hotel_red_flags", "closures", "review")]
-        ),
+        CheckConfig(enabled=[n for n in CHECK_NAMES if n not in {"hotel_red_flags", *NEEDS_KEY}]),
     )
     example, _ = await run_agent(deps, inp, None)
     return {

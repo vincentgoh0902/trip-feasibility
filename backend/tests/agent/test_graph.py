@@ -256,7 +256,7 @@ async def test_the_review_judges_the_checks_results_and_streams_last(check_deps)
         e async for e in stream_agent(mcp, check_deps, inp, None, Reviewer(client, "m", "low"))
     ]
     checks = [value.check_name for kind, value in events if kind == "check"]
-    assert checks[-1] == "review" and len(checks) == 7
+    assert checks[-2:] == ["second_opinion", "review"] and len(checks) == 8
     assert events[-1] == ("fixes", None)
     assert "v1 | warning | daily_load | m" in client.calls[0]["messages"][0]["content"]
     [v] = next(

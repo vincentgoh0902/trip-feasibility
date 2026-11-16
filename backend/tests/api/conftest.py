@@ -62,8 +62,10 @@ def fake_stream(violations_by_check=None, fixes=None):
     violations_by_check = violations_by_check or {}
     calls = []
 
-    async def stream(mcp, deps, inp, fixer, reviewer=None):
-        calls.append({"input": inp, "fixer": fixer, "reviewer": reviewer})
+    async def stream(mcp, deps, inp, fixer, reviewer=None, second_opinion=None):
+        calls.append(
+            {"input": inp, "fixer": fixer, "reviewer": reviewer, "second_opinion": second_opinion}
+        )
         for name in inp.config.enabled:
             yield ("check", CheckResult(check_name=name, status="ok",
                                         violations=violations_by_check.get(name, []),

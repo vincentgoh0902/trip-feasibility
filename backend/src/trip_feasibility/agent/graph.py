@@ -1,13 +1,18 @@
 """The agent graph (LangGraph): one branch per enabled check, run in parallel through the
-in-process MCP tool server, then the review, then fixes.
+in-process MCP tool server, plus the second opinion's web search beside them; then the
+second opinion is set against the checks, then the review, then fixes.
 
     START ─► run_check (opening_hours) ─┐
-          ├► run_check (travel_time) ───┼─► review ─► fix ─► END
-          └► ... one per enabled check ─┘
+          ├► run_check (travel_time) ───┤
+          ├► ... one per enabled check ─┼─► second_opinion ─► review ─► fix ─► END
+          └► look_up (web search) ──────┘
 
 Each branch calls one MCP tool and stores its CheckResult. A tool error or a broken call
 becomes an "unavailable" result for that check, so the run always finishes (PRD:
-reliability). Which checks run is configuration, not a model's choice. The review node
+reliability). Which checks run is configuration, not a model's choice. The second opinion
+(agent/second_opinion.py, decision 97) looks the stops' opening hours up on the web without
+seeing the checks' results, then is judged against them when "second_opinion" is enabled;
+like the review, it never goes to the fixer and isn't re-run on fix re-checks. The review node
 (agent/review.py, decision 96) judges each day from the checks' results when "review" is
 enabled; it never goes to the fixer and isn't re-run on fix re-checks. The fix node
 (agent/fixes.py) is where the LLM comes in: it proposes fixes, and code re-checks them. It's
@@ -29,6 +34,7 @@ from mcp import Client
 from trip_feasibility.agent.fixes import FixReport, propose_fixes
 from trip_feasibility.agent.models import CheckInput, CheckReport
 from trip_feasibility.agent.review import Reviewer, review
+from trip_feasibility.agent.second_opinion import SecondOpinion, judge, look_up
 from trip_feasibility.checks.config import TOOL_CHECKS, CheckName
 from trip_feasibility.checks.deps import CheckDeps
 from trip_feasibility.checks.models import CheckResult
@@ -36,12 +42,21 @@ from trip_feasibility.llm import MessagesClient
 from trip_feasibility.mcp_server import create_server
 from trip_feasibility.parse.geocode import City
 
-__all__ = ["CheckInput", "CheckReport", "Reviewer", "run_checks", "run_agent", "stream_agent"]
+__all__ = [
+    "CheckInput",
+    "CheckReport",
+    "Reviewer",
+    "SecondOpinion",
+    "run_checks",
+    "run_agent",
+    "stream_agent",
+]
 
 
 class CheckState(TypedDict, total=False):
     input: CheckInput
     results: Annotated[dict[str, CheckResult], operator.or_]
+    opinion: dict[str, Any] | str  # the second opinion's look-up (second_opinion.look_up)
     fixes: FixReport | None
 
 
@@ -66,6 +81,7 @@ class AgentContext:
     deps: CheckDeps | None = None
     fixer: Fixer | None = None
     reviewer: Reviewer | None = None
+    second_opinion: SecondOpinion | None = None
 
 
 def tool_arguments(
@@ -122,16 +138,34 @@ async def check_all(mcp: Client, inp: CheckInput) -> CheckReport:
 
 def fan_out(state: CheckState) -> list[Send]:
     enabled = state["input"].config.enabled
-    return [
+    sends = [
         Send("run_check", CheckTask(input=state["input"], check=name))
         for name in TOOL_CHECKS
         if name in enabled
     ]
+    if "second_opinion" in enabled:
+        sends.append(Send("look_up", {"input": state["input"]}))
+    return sends
 
 
 async def run_check(task: CheckTask, runtime: Runtime[AgentContext]) -> dict:
     name = task["check"]
     return {"results": {name: await call_check(runtime.context.mcp, name, task["input"])}}
+
+
+async def look_up_node(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
+    ctx = runtime.context
+    if ctx.deps is None:
+        return {"opinion": "the second opinion needs the check dependencies"}
+    return {"opinion": await look_up(ctx.deps, ctx.second_opinion, state["input"])}
+
+
+async def second_opinion_node(state: CheckState) -> dict:
+    inp = state["input"]
+    if "second_opinion" not in inp.config.enabled:
+        return {"results": {}}
+    opinion = state.get("opinion", "the second opinion didn't run")
+    return {"results": {"second_opinion": judge(inp, opinion, state["results"])}}
 
 
 async def review_node(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
@@ -168,10 +202,14 @@ async def fix(state: CheckState, runtime: Runtime[AgentContext]) -> dict:
 def build_graph() -> CompiledStateGraph:
     graph = StateGraph(CheckState, context_schema=AgentContext)
     graph.add_node("run_check", run_check)
+    graph.add_node("look_up", look_up_node)
+    graph.add_node("second_opinion", second_opinion_node)
     graph.add_node("review", review_node)
     graph.add_node("fix", fix)
-    graph.add_conditional_edges(START, fan_out, ["run_check"])
-    graph.add_edge("run_check", "review")
+    graph.add_conditional_edges(START, fan_out, ["run_check", "look_up"])
+    graph.add_edge("run_check", "second_opinion")
+    graph.add_edge("look_up", "second_opinion")
+    graph.add_edge("second_opinion", "review")
     graph.add_edge("review", "fix")
     graph.add_edge("fix", END)
     return graph.compile()
@@ -181,13 +219,17 @@ GRAPH = build_graph()
 
 
 async def run_agent(
-    deps: CheckDeps, inp: CheckInput, fixer: Fixer | None = None, reviewer: Reviewer | None = None
+    deps: CheckDeps,
+    inp: CheckInput,
+    fixer: Fixer | None = None,
+    reviewer: Reviewer | None = None,
+    second_opinion: SecondOpinion | None = None,
 ) -> tuple[CheckReport, FixReport | None]:
     async with Client(create_server(deps)) as client:
-        state = await GRAPH.ainvoke(
-            {"input": inp, "results": {}},
-            context=AgentContext(mcp=client, deps=deps, fixer=fixer, reviewer=reviewer),
+        context = AgentContext(
+            mcp=client, deps=deps, fixer=fixer, reviewer=reviewer, second_opinion=second_opinion
         )
+        state = await GRAPH.ainvoke({"input": inp, "results": {}}, context=context)
     return CheckReport.from_results(inp, state["results"]), state.get("fixes")
 
 
@@ -201,16 +243,19 @@ async def stream_agent(
     inp: CheckInput,
     fixer: Fixer | None = None,
     reviewer: Reviewer | None = None,
+    second_opinion: SecondOpinion | None = None,
 ) -> AsyncIterator[CheckDone | FixesDone]:
     """The graph's progress as it happens, for the API's live feed: each check's result as it
-    finishes (the review last), then the fixes (None when skipped). `mcp` is a connected
-    client, so the caller can wrap it (tracing)."""
-    context = AgentContext(mcp=mcp, deps=deps, fixer=fixer, reviewer=reviewer)
+    finishes (the second opinion after them, the review last), then the fixes (None when
+    skipped). `mcp` is a connected client, so the caller can wrap it (tracing)."""
+    context = AgentContext(
+        mcp=mcp, deps=deps, fixer=fixer, reviewer=reviewer, second_opinion=second_opinion
+    )
     async for update in GRAPH.astream(
         {"input": inp, "results": {}}, context=context, stream_mode="updates"
     ):
         for node, value in update.items():
-            if node in ("run_check", "review"):
+            if node in ("run_check", "second_opinion", "review"):
                 for result in value["results"].values():
                     yield ("check", result)
             elif node == "fix":

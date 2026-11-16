@@ -135,6 +135,31 @@ function Closures({ e }: { e: Data }) {
   );
 }
 
+const AGREEMENT: Record<string, string> = {
+  confirms: "agrees with the opening-hours check: confirmed",
+  disputes: "disagrees with the opening-hours check: worth checking",
+  only_second_opinion: "only this web search found it: worth checking",
+};
+
+function SecondOpinion({ e }: { e: Data }) {
+  const hours = Array.isArray(e.hours) ? (e.hours as string[]) : [];
+  const url = str(e.source_url);
+  return (
+    <>
+      <Row label="Found">{e.status === "closed" ? "closed that day" : `open ${hours.join(", ")}`}</Row>
+      {str(e.last_entry) && <Row label="Last entry">{str(e.last_entry)}</Row>}
+      <Row label="Agreement">{AGREEMENT[str(e.agreement) ?? ""] ?? "—"}</Row>
+      {url && (
+        <Row label="Source">
+          <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="underline">
+            {new URL(url).host}
+          </a>
+        </Row>
+      )}
+    </>
+  );
+}
+
 function Review({ e }: { e: Data }) {
   const cited = Object.values(obj(e.cited_findings) ?? {}).filter((m): m is string => typeof m === "string");
   return (
@@ -168,6 +193,7 @@ const VIEWS: Record<string, (props: { e: Data }) => React.ReactNode> = {
   public_holidays: PublicHolidays,
   hotel_red_flags: HotelRedFlags,
   closures: Closures,
+  second_opinion: SecondOpinion,
   review: Review,
 };
 
