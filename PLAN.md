@@ -153,7 +153,7 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       + `baseline-v4`, EVALS.md: the baseline wins, 33 against 24 of 47 at 80% against
       44% precision; confirmed tier 7 of 8; travel time and daily load lost it)
 - [ ] Tune travel time and daily load on dev (untuned constants; marked in the README as
-      done after the test results were seen)
+      done after the test results were seen); deferred by Vincent (2026-11-17)
       **How (Vincent's terminal, from `backend/`, once; nothing changes after it):**
       1. Decide the configuration first (second opinion on or off, PLAN "Open"); commit, so
          the run is tied to a commit.
