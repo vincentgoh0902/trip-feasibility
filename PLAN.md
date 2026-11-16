@@ -150,10 +150,8 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
 - [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [x] Final test-set run on the pinned model; results in README (2026-11-16, `d269706a`
-      + `baseline-v4`, EVALS.md: the baseline wins, 31 against 24 of 47 at 76% against
+      + `baseline-v4`, EVALS.md: the baseline wins, 33 against 24 of 47 at 80% against
       44% precision; confirmed tier 7 of 8; travel time and daily load lost it)
-- [ ] **Vincent:** `match_decisions.py --from-baseline --ask --final` (2 baseline pairs
-      left; then rerun `score_baseline.py --split test --final` and give Claude the totals)
 - [ ] Tune travel time and daily load on dev (untuned constants; marked in the README as
       done after the test results were seen)
       **How (Vincent's terminal, from `backend/`, once; nothing changes after it):**

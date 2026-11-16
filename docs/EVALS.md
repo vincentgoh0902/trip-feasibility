@@ -584,33 +584,34 @@ Against the baseline, on the four checks it's scored on (hotels left out):
 | | Precision | Recall | Seen cities: P / R | Vienna: P / R |
 |---|---|---|---|---|
 | Hybrid `d269706a` | 24 of 54 (44%) | 24 of 47 (51%) | 12 of 31 / 12 of 23 | 12 of 23 / 12 of 24 |
-| Baseline `baseline-v4` | 31 of 41 (76%) | 31 of 47 (66%) | 17 of 24 / 17 of 23 | 14 of 17 / 14 of 24 |
+| Baseline `baseline-v4` | 33 of 41 (80%) | 33 of 47 (70%) | 19 of 24 / 19 of 23 | 14 of 17 / 14 of 24 |
 
-The baseline's numbers are provisional by at most 2: two of its place-name pairs await
-Vincent's decision (`match_decisions.py --from-baseline --ask --final`).
+The baseline's numbers include Vincent's decisions on its two uncertain place-name pairs
+(`match_decisions.py --from-baseline --ask --final`, the next day); both matched.
 
 | Check | Hybrid: P / R | Baseline: P / R |
 |---|---|---|
-| opening_hours | 12 of 23 / 12 of 20 | 12 of 14 / 12 of 20 |
+| opening_hours | 12 of 23 / 12 of 20 | 13 of 14 / 13 of 20 |
 | public_holidays | 11 of 11 / 11 of 11 | 11 of 11 / 11 of 11 |
-| travel_time | 1 of 20 / 1 of 10 | 3 of 9 / 3 of 10 |
+| travel_time | 1 of 20 / 1 of 10 | 4 of 9 / 4 of 10 |
 | daily_load | none / 0 of 6 | 5 of 7 / 5 of 6 |
 
 Opening-hours predictions by tier (precision): confirmed 7 of 8 (88%); disputed (the
 checks flag it, the search found it open) 1 of 8 (12%); second opinion only 4 of 7 (57%).
-By cause: regular 11 of 15, special 1 of 5 (baseline: 10 of 15, 2 of 5).
+By cause: regular 11 of 15, special 1 of 5 (baseline: 11 of 15, 2 of 5).
 
 Fixes: 36 of 43 valid (84%), 39 of 40 problems got one; 19 of the 36 change a stop some
 check couldn't judge (the run includes decision 99).
 
 Reading:
-- **On held-out data the plain LLM wins.** 31 against 24 problems found, at 76% against 44%
+- **On held-out data the plain LLM wins.** 33 against 24 problems found, at 80% against 44%
   precision. The dev-set lead (19 against 18 of 30) didn't hold; the dev numbers were the
   set the design was tuned on, and this is the reason the test set was kept apart.
 - **Where it lost:** travel time (19 false alarms, 1 of 10 found) and daily load (the
   check raised nothing; the LLM found 5 of 6). Both use untuned constants (transit and taxi
-  estimates, pace limits) that were left for "tune on dev" and never were. Opening hours and
-  holidays tie on what's found; the baseline is far more precise on hours.
+  estimates, pace limits) that were left for "tune on dev" and never were. Holidays tie (11 of 11
+  each); on opening hours the baseline finds one more (13 against 12 of 20) and is far more
+  precise (93% against 52%).
 - **What replicated:** agreement. Confirmed opening-hours flags were right 7 of 8, the same
   88% as on dev (15 of 17 over both dev modes): the tier is a signal a user can trust. The
   second opinion again added real problems (27 against 23 found). Disputed flags were

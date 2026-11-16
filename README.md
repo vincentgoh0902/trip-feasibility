@@ -52,7 +52,7 @@ problems both systems are scored on):
 
 | | Problems found | Flags that were right |
 |---|---|---|
-| Plain LLM with web search (Claude Haiku 5.5, given the same rules) | **31 of 47 (66%)** | **76%** |
+| Plain LLM with web search (Claude Haiku 5.5, given the same rules) | **33 of 47 (70%)** | **80%** |
 | Checks + second opinion (the hybrid) | 24 of 47 (51%) | 44% |
 
 On the development set the hybrid had edged ahead (19 against 18 of 30). **On held-out
@@ -60,8 +60,8 @@ data it didn't: the plain LLM wins.** What the numbers say:
 
 - **Where it lost:** travel time (19 false alarms) and overloaded days (none raised; the
   LLM found 5 of 6). Both rest on constants (transit estimates, pace limits) I never tuned.
-  On opening hours and public holidays both found the same number of problems (12 of 20,
-  11 of 11), the LLM with fewer false alarms.
+  Both found all 11 public holidays; on opening hours the LLM found one more (13 against
+  12 of 20) with far fewer false alarms.
 - **What held up:** agreement. When the checks and the web-search second opinion both
   flagged a closed venue, they were right 7 of 8 times, the same 88% as on the dev set; when
   they disagreed, the check was usually the one that was wrong. That's why the results page

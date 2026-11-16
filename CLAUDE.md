@@ -29,7 +29,7 @@ The hybrid (decision 97, 2026-11-16: a web-search second opinion on opening hour
 against the checks) gets 19 of 30 end to end at 70% precision; confirmed flags right 15 of
 17; on by default since 2026-11-16 (decision 98).
 **Final test run (2026-11-16, `d269706a`, EVALS.md):** the LLM-only baseline wins on
-held-out data (31 against 24 of 47 found; 76% against 44% precision); confirmed flags 7 of 8;
+held-out data (33 against 24 of 47 found; 80% against 44% precision); confirmed flags 7 of 8;
 Vienna as good as the seen cities; fixes 36 of 43 valid. Test results are now seen: any
 later change is marked as tuned after them, and Vienna no longer counts as unseen.
 
