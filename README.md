@@ -66,8 +66,8 @@ End to end from the raw text, on the 30 labelled problems:
   announced) and judgement calls (is this day too much?), where an LLM review was tried and
   [didn't beat simple counts](docs/EVALS.md), so it's off.
 - **Fixes:** 16 of 18 proposed fixes passed every re-check, and 18 of 19 problems got one.
-  6 of the 16 change a stop that a check couldn't verify (no hours in OpenStreetMap), so the
-  page marks them "not verified".
+  6 of the 16 changed a stop that a check couldn't verify (no hours in OpenStreetMap); since
+  then, a fix that swaps in a place whose hours can't be checked isn't shown at all.
 - **Prompt injection:** 36 attacks of our own hidden in pasted text, OpenStreetMap tags,
   opening-hours comments, hotel reviews, web pages and search results: all 36 resisted with
   the shipped defences. The defences that matter are structural (no free text from third
@@ -171,7 +171,7 @@ After changing `src/trip_feasibility/models.py`:
 | `FIX_EFFORT` | `medium` | Effort level for fix proposals |
 | `REVIEW_MODEL` | `claude-haiku-5-5` | Claude model for the day review (off by default) |
 | `REVIEW_EFFORT` | `medium` | Effort level for the day review |
-| `SECOND_OPINION_MODEL` | `claude-haiku-5-5` | Claude model for the second opinion (off by default) |
+| `SECOND_OPINION_MODEL` | `claude-haiku-5-5` | Claude model for the second opinion |
 | `SECOND_OPINION_MAX_SEARCHES` | `10` | Web searches the second opinion may make per check |
 | `TEST_DATABASE_URL` | `DATABASE_URL` + `_test` | Database the tests use (created if missing; must end in `_test`) |
 

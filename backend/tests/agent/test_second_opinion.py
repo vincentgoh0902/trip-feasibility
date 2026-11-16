@@ -2,12 +2,14 @@
 findings are set against the checks', and how the eval scores the hybrid (decision 97)."""
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from tests.factories import stop
 from trip_feasibility.agent.models import CheckInput
 from trip_feasibility.agent.second_opinion import (
+    NOT_LOOKED_UP,
+    NOT_LOOKED_UP_REASON,
     SecondOpinion,
     cache_key,
     judge,
@@ -119,7 +121,22 @@ async def test_look_up_searches_once_then_serves_the_cache(check_deps):
     # the demo makes no searches: cached findings only
     other = inp(web_search=False)
     other.stops[0].place_name = "Louvre Museum"
-    assert "no web searches" in await look_up(check_deps, opinion(FakeClient()), other)
+    missed = await look_up(check_deps, opinion(FakeClient()), other)
+    assert missed == NOT_LOOKED_UP
+    judged = judge(other, missed, {})
+    assert judged.status == "ok" and judged.violations == []
+    assert {u.reason for u in judged.unknown} == {NOT_LOOKED_UP_REASON}
+
+
+async def test_the_demo_uses_earlier_lookups_of_any_age(check_deps):
+    message = user_message(inp(), [s for s in stops() if s.type != "hotel"])
+    found = {"findings": [place("s1", "closed", LOUVRE)], "rejected": 0, "searches": 1}
+    await check_deps.cache.put("second_opinion", cache_key("m", message), found, timedelta(-1))
+    # expired: a run that searches looks it up again; the demo uses it
+    assert await look_up(check_deps, opinion(FakeClient()), inp(web_search=False)) == found
+    client = FakeClient(search_reply([], []))
+    await look_up(check_deps, opinion(client), inp())
+    assert len(client.calls) == 1
 
 
 async def test_a_paused_turn_is_resumed(check_deps):

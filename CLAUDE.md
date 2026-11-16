@@ -27,7 +27,7 @@ LLM-only baseline at 18 of 23 / 18 of 30. The rest of the gap is what the checks
 (closures, missing OSM hours, overloaded days); flags both systems raise were all real.
 The hybrid (decision 97, 2026-11-16: a web-search second opinion on opening hours set
 against the checks) gets 19 of 30 end to end at 70% precision; confirmed flags right 15 of
-17; off by default, Vincent to decide (PLAN.md "Open").
+17; on by default since 2026-11-16 (decision 98).
 
 Next (Claude): the Tier 1 plan in PLAN.md (new core rule done, decision 92; closures built
 and evaluated on dev, decisions 93–94: no false alarms, 0 of 2 special labels; injection
@@ -100,7 +100,7 @@ frontend/                       Next.js (npm); Dockerfile (standalone); openapi.
   src/lib/                      api/ (generated schema.d.ts, clients, SSE event types), run/
                                 (state reducer, timeline layout), format.ts, config.ts
 e2e/run.sh                      the pre-commit gate (lint, tests, snapshot, full stack + Playwright)
-docs/                           PRD, ARCHITECTURE, ANNOTATION, EVALS (results log),
+docs/                           PRD, ARCHITECTURE, ANNOTATION, EVALS (results log), DEPLOY,
                                 TEST_CITIES; annotation/ holds
                                 the template, worked example and unlabelled hotels.yaml
 data/  (gitignored)             postgres/ volume; raw/hotel-reviews/Hotel_Reviews.csv (Kaggle,
@@ -265,6 +265,7 @@ uv run python scripts/run_injection_suite.py          # needs the key; --defende
 uv run python scripts/smoke_checks.py                 # each check once against the real APIs
 uv run python scripts/smoke_parse.py                  # live geocoding (+ extraction with key)
 uv run python scripts/snapshot.py [--save]            # behaviour snapshot: dev gold eval + example
+uv run python -m trip_feasibility.demo.warm           # look the demo samples up (web searches, ~$0.30)
 
 # before committing (repo root): lint, tests, snapshot, frontend checks, full stack + Playwright
 e2e/run.sh [--no-browser]                             # record the snapshot first (--save) if missing
@@ -403,6 +404,8 @@ GitHub: https://github.com/vincentgoh0902/trip-feasibility (public, default bran
 Not yet a homelab project. Two images: `backend/Dockerfile` (API, port 8000) and
 `frontend/Dockerfile` (Next.js, port 3000, proxies `/api` to `API_INTERNAL_URL`), plus
 Postgres with pgvector; `compose.yaml` runs all three. The hosting shape (multi-container
-project, or one combined image) is still to settle; ARCHITECTURE section 11. The
+project, or one combined image) is for the server session; everything it needs (services,
+env, the review-data dump in `data/deploy/`, warming the demo with
+`python -m trip_feasibility.demo.warm`) is in `docs/DEPLOY.md`. The
 server session adds it with `new-project.sh`. Ship a change: commit and push, then (after
 asking me) `ssh homelab '~/homelab/scripts/deploy.sh trip-feasibility'`.

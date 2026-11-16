@@ -106,6 +106,7 @@ async def test_replace_geocodes_the_new_place(check_deps, respx_mock):
     applied = await apply_fix(
         check_deps, INP, fix(op("replace", stop_id="s1", place_name="Musée Rodin")), CITY
     )
+    assert applied.replaced == {"s1"}
     new = applied.stops[0]
     assert (new.id, new.place_name, new.osm.id, new.start_time) == (
         "s1",
@@ -173,6 +174,16 @@ def test_judge():
     assert warnings == ["tight"] and unverified == ["s1 (opening_hours: no hours)"]
     problems, _, _ = judge(BEFORE, [CLOSED], after(status="unavailable"), APPLIED)
     assert problems[0].startswith("couldn't re-check opening_hours")
+
+
+def test_a_replacement_whose_hours_cant_be_checked_isnt_offered():
+    replaced = Applied(stops=STOPS, transport_modes=["walk"], changed={"s1"}, replaced={"s1"})
+    problems, _, unverified = judge(BEFORE, [CLOSED], after(unknown=["s1"]), replaced)
+    place = STOPS[0].place_name
+    assert problems == [f"{place}'s opening hours can't be checked (no hours)"]
+    assert unverified == ["s1 (opening_hours: no hours)"]
+    # a moved stop with unknown hours is still offered, marked "not verified"
+    assert judge(BEFORE, [CLOSED], after(unknown=["s1"]), APPLIED)[0] == []
 
 
 # --- the loop: propose, re-check, retry ---

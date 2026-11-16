@@ -28,7 +28,7 @@ of **checks** over them, and reports **violations** (with evidence) plus propose
                                                 │        ├─ daily_load        ✅ built
                                                 │        ├─ hotel_red_flags   ✅ built
                                                 │        ├─ closures          ✅ built (web search)
-                                                │        └─ second opinion    ✅ built (web search, set against the checks; off by default)
+                                                │        └─ second opinion    ✅ built (web search, set against the checks; on, decision 98)
                                                 └──► every external lookup is cached in Postgres
 ```
 
@@ -918,8 +918,9 @@ reports agreement: what both find is confirmed, what one finds is worth checking
   code's; never a blocker on one web source. Stops without a source are `unknown`.
 - **Where it goes:** streamed after the checks, before the review; advisory (never sent to
   the fixer, not re-run on re-checks: a fix could never be shown to clear it); its tokens
-  and searches count in the run's `Usage`. **Off by default** until the dev eval says the
-  hybrid helps. In the eval its warnings score as opening_hours, its `info` notes don't, and
+  and searches count in the run's `Usage`. **On by default** since 2026-11-16 (decision
+  98). Demo runs never search: they use earlier lookups of any age (`demo.warm` makes them
+  for the samples), and a stop never looked up is "not looked up". In the eval its warnings score as opening_hours, its `info` notes don't, and
   `run_eval.py --second-opinion` also reports the same run without it and the opening-hours
   predictions by tier (confirmed, disputed, checks unchecked, second opinion only).
 - **Injection surface:** search results reach this model, which answers with structured
@@ -966,8 +967,11 @@ declared data. The injection suite (6d) measures how well this holds.
 get one, the same over two runs; 6 of the 16 change a stop a check couldn't judge (a
 replacement with no OSM hours, say), so 10 of 18 are verified by every check. A
 replacement the checks can't verify can still be a bad one (the London demo once offered
-the Museum of London, closed since 2022, which OSM still maps without hours). Model and
-effort are settings, tuned once the fix-quality judge exists.
+the Museum of London, closed since 2022, which OSM still maps without hours), so since
+decision 99 a replacement whose opening hours the opening_hours check can't judge makes
+the fix invalid; the retry is told why. Moved stops with unknown hours are still offered,
+marked "not verified". Validity under that rule isn't measured yet (the API credits ran
+out). Model and effort are settings, tuned once the fix-quality judge exists.
 
 ## 6c. The API (`api/`, `runs.py`, `auth.py`)
 
@@ -1574,6 +1578,8 @@ Replaced or dropped:
 
 | 97 | **The hybrid: a second opinion on opening hours.** Beside the checks, one Haiku call with web search (up to 10) and structured output reports each venue and meal stop's status on its date (closed, or open with hours and last entry) with a URL its search returned; code validates, caches and judges it, then sets it against the checks: both flag it → an info "a web search agrees" (confirmed); only the second opinion → a warning, "worth checking"; checks only, search found it open → an info "a web search found it open". Never a blocker, never sent to the fixer, not re-run on re-checks; off by default (2026-11-16; section 6b) | On dev the checks and the LLM-only baseline found mostly the same problems, all 14 shared flags real, each finding a few the other missed (EVALS.md 2026-11-03). An independent pass that never sees the checks' results makes agreement a confidence signal. Opening hours only: the baseline's extra finds were opening hours (bar one overloaded day, the review's job); holidays are complete in Nager.Date and travel times have no page to cite. On dev (EVALS.md 2026-11-16) it adds 3 real problems in each mode for 3–4 false alarms; confirmed flags are right 15 of 17 times, second-opinion-only ones about half | Search results reach a model whose answer is used (unlike the closures search step), a new injection surface that decision 92's "page text only to a tool-less extractor" doesn't cover; defended structurally (search URLs only, statuses and hours only, code-written messages, warnings at most); the injection suite's six search-result attacks were all resisted (`injection-v4`), but a false closure stated on what looks like the place's own site is believed and shown as "worth checking". About 5 searches per itinerary ($0.05) plus tokens. Precision drops (parsed 80% → 70% on the four checks) unless the UI separates the tiers. Its parsed stops share the parser's misses |
 
+| 98 | The second opinion **on by default** (Vincent, 2026-11-16, after its dev eval and the tier display). Demo runs and fix re-checks, which never search, read closures' and the second opinion's earlier lookups at any age (`ResponseCache.get(..., any_age=True)`); `python -m trip_feasibility.demo.warm` looks the samples up once; a stop never looked up is "not looked up", not an unavailable check (section 6b) | Recall up 16 → 19 of 30 end to end, precision 80% → 70%, with the tiers telling the two apart on the page. The demo is public and unauthenticated, so it must not search per visitor (decision 94), and a 7-day expiry left samples with nothing after a week; sample dates are fixed and made up, so an old lookup is as good as a new one | Live checks cost about $0.05 more (≈5 searches); demo findings can be months old; warming the demo is a step after each deploy and sample change |
+
 Replaced or dropped:
 - **"The LLM interprets and proposes; code decides"** (from the start until 2026-11-11): every fact from structured data, LLMs only for extraction and fixes. Kept everything it got right (no coordinates from a model, fixes as operations, code deciding what's shown) but left web-only facts and fuzzy judgements as misses (decision 92).
 
@@ -1658,6 +1664,7 @@ Replaced or dropped:
 | 49, 50 | Fixes are operations (move, remove, replace, add_transport_mode) applied by code; every enabled check re-runs on each fix; one retry for violations still unfixed | Small, checkable changes with no invented coordinates; moving a stop can break another check; a retry with the reasons recovers many failures cheaply | Only four kinds of change; at most two LLM calls per run |
 | 51, 62 | Third-party free text never reaches a prompt (review excerpts, free-text OSM tags, opening-hours comments: `safe_evidence`); the injection suite judges in code, on the demo sample (2026-10-25) | It's untrusted content; judging in code is deterministic and exposes no dataset or Vienna; the suite's design exposed the OSM gap | The model can't quote reviews; the payloads are ours, not collected from the wild |
 | 75 | Public-holiday warnings are advisory: shown, never sent to the fixer (`ADVISORY_CHECKS`) (2026-10-29) | A holiday is a fact about the date; a real closure is an opening-hours violation, which does get fixed | A closure missing from OSM gets only the holiday warning |
+| 99 | A fix that replaces a stop with a place whose opening hours the opening_hours check can't judge is **invalid** (not shown; the retry gets the reason). Moves of existing stops with unknown hours are still shown, "not verified" (Vincent, 2026-11-16; section 6b) | The fix model names replacements from its own knowledge; a place that has since closed but is still in OSM without hours passed every re-check (the Museum of London, closed 2022, offered on the London demo). Nothing else would catch it | Fewer replacements offered (many cafés and small venues have no OSM hours); fix validity on dev drops by up to 6 of 18 until the model learns from the retry reason; not re-measured yet |
 
 Fix prompt versions: `fixes-v1` (2026-10-24); `fixes-v2` (2026-10-25: free-text OSM tags and
 opening-hours comments filtered out, decision 62); `fixes-v3` (2026-10-29: advisory checks
@@ -1748,8 +1755,8 @@ Replaced or dropped:
 - API runs, live feeds, rate-limit counters and demo runs live in one process's memory; more
   than one API container would need them in Postgres (section 6c).
 - Parse cost isn't tied to the check run that follows it (section 6c).
-- Not yet measured: fix quality (needs the judge). Fix validity is 16 of 18 on dev, but 6
-  of the 16 rest on a stop some check couldn't judge. The injection suite's attacks are ours
+- Not yet measured: fix quality (needs the judge), and fix validity under decision 99
+  (before it: 16 of 18 on dev, 6 of the 16 resting on a stop some check couldn't judge). The injection suite's attacks are ours
   and few (36); the only one followed, a vandalised OSM `website` tag, is closed by decision
   95 (section 6d).
 - Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; its Dockerfile exists

@@ -22,7 +22,8 @@ checking") if web. Special hours: a warning unless the visit fits inside them; s
 hours a page doesn't give count for nothing. Areas (neighbourhoods) aren't looked up. The
 validated findings, never page text, are cached per place and month for every user; eval
 mode serves expired entries, so reruns make no calls. `search=False` (fix re-checks, demo
-runs) uses cached findings only: a place not looked up before is "not verified".
+runs) uses cached findings only, of any age: a place not looked up before is "not
+verified". `demo.warm` looks the demo samples up.
 """
 
 import asyncio
@@ -391,7 +392,8 @@ async def check_closures(
             for s in t.stops
         ]
 
-    cached = await deps.cache.get_many([t.key for t in chosen])
+    # without searching (demo runs, fix re-checks), earlier findings of any age
+    cached = await deps.cache.get_many([t.key for t in chosen], any_age=not search)
     to_look_up = [t for t in chosen if t.key not in cached]
     if search and to_look_up and deps.llm is None and not cached:
         return CheckResult.unavailable(CHECK_NAME, "closures need the model API (no key set)")

@@ -74,7 +74,7 @@ async def test_demo_run_streams_and_saves_nothing(api, services, nominatim):
     got = await events(api, run)
     types = [e["type"] for e in got]
     assert types[0] == "step_started" and got[0]["step"] == "geocode"  # samples have no coords
-    assert types.count("tool_result") == 6
+    assert types.count("tool_result") == 7
     [checks_step] = [e for e in got if e["type"] == "step_started" and e["step"] == "checks"]
     assert [s["id"] for s in checks_step["stops"]] == [s["id"] for s in got[-1]["run"]["stops"]]
     assert all(s["lat"] for s in checks_step["stops"])  # located before the checks run
@@ -96,7 +96,7 @@ async def test_demo_uses_the_samples_preferences_and_default_checks(api, service
     await events(api, await start(api, {"sample_id": "paris-one-day"}))
     inp = stream.calls[0]["input"]
     assert inp.country_code == "FR" and inp.city == "Paris"
-    assert len(inp.config.enabled) == 6  # the review is off by default (decision 96)
+    assert len(inp.config.enabled) == 7  # the review is off by default (decision 96)
     assert inp.preferences.transport_modes == ["walk", "transit"]
     assert inp.web_search is False  # closures from earlier lookups only
 

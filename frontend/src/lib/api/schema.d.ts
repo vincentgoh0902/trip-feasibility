@@ -274,7 +274,8 @@ export interface components {
              *       "travel_time",
              *       "daily_load",
              *       "hotel_red_flags",
-             *       "closures"
+             *       "closures",
+             *       "second_opinion"
              *     ]
              */
             enabled: ("opening_hours" | "public_holidays" | "travel_time" | "daily_load" | "hotel_red_flags" | "closures" | "second_opinion" | "review")[];

@@ -732,7 +732,7 @@ class _PagesAsSearch:
 
 
 class _NoCache:
-    async def get(self, _: str) -> None:
+    async def get(self, _: str, **__: Any) -> None:
         return None
 
     async def put(self, *_: Any) -> None:

@@ -722,7 +722,8 @@
               "travel_time",
               "daily_load",
               "hotel_red_flags",
-              "closures"
+              "closures",
+              "second_opinion"
             ]
           },
           "travel_buffer_min": {

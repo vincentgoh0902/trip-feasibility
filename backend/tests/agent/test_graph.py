@@ -71,8 +71,10 @@ async def test_every_enabled_check_runs_with_its_settings():
         "daily_load",
         "hotel_red_flags",
         "closures",
+        "second_opinion",
     ]  # not the review: off by default (decision 96)
-    assert all(r.status == "ok" for r in report.results.values())
+    # every tool ran; the second opinion has no model here (run() passes none)
+    assert all(r.status == "ok" for n, r in report.results.items() if n != "second_opinion")
     assert mcp.calls["travel_time"]["buffer_min"] == 20
     assert mcp.calls["travel_time"]["preferences"]["pace"] == "relaxed"
     assert mcp.calls["hotel_red_flags"] == {
@@ -118,6 +120,7 @@ async def test_failures_become_unavailable_and_the_run_finishes():
         "daily_load": "ok",
         "hotel_red_flags": "ok",
         "closures": "ok",
+        "second_opinion": "unavailable",  # no model given
     }
     assert report.results["opening_hours"].error == "bad input"
     assert "country is unknown" in report.results["public_holidays"].error

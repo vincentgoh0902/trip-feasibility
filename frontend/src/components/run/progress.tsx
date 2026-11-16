@@ -26,6 +26,19 @@ function Item({ state, label, detail }: { state: ItemState; label: string; detai
   );
 }
 
+/** The second opinion's notes agree or disagree with other checks; only its own finds are
+ * problems (lib/run/tiers.ts). */
+function opinionDetail(state: RunState): string {
+  const mine = state.violations.filter((v) => v.check_name === "second_opinion");
+  const count = (agreement: string) => mine.filter((v) => v.evidence.agreement === agreement).length;
+  const parts = [
+    count("confirms") && `${count("confirms")} confirmed`,
+    count("disputes") && `${count("disputes")} disputed`,
+    count("only_second_opinion") && `${count("only_second_opinion")} to check`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(", ") : "nothing to add";
+}
+
 export function Progress({ state }: { state: RunState }) {
   const finished = state.phase === "done" || state.phase === "error";
   const checksStarted = state.checks.length > 0;
@@ -47,9 +60,11 @@ export function Progress({ state }: { state: RunState }) {
         const detail = r
           ? r.status === "unavailable"
             ? "unavailable right now"
-            : r.violations === 0
-              ? "no problems"
-              : `${r.violations} problem${r.violations === 1 ? "" : "s"}`
+            : name === "second_opinion"
+              ? opinionDetail(state)
+              : r.violations === 0
+                ? "no problems"
+                : `${r.violations} problem${r.violations === 1 ? "" : "s"}`
           : (name === "closures" || name === "second_opinion") && !finished
             ? "searching the web, takes a little longer"
             : name === "review" && !finished

@@ -41,11 +41,9 @@ ADVISORY_CHECKS: frozenset[CheckName] = frozenset({"public_holidays", "second_op
 
 
 # Off unless asked for: on dev the review flags more fine days than overloaded ones
-# (decision 96), so it isn't shown to travellers until it beats that; the second opinion
-# makes paid web searches and waits for its dev eval (decision 97).
-DEFAULT_ENABLED: tuple[CheckName, ...] = tuple(
-    n for n in CHECK_NAMES if n not in ("second_opinion", "review")
-)
+# (decision 96), so it isn't shown to travellers until it beats that. The second opinion is
+# on (decision 97, turned on 2026-11-16).
+DEFAULT_ENABLED: tuple[CheckName, ...] = tuple(n for n in CHECK_NAMES if n != "review")
 
 
 class CheckConfig(BaseModel):

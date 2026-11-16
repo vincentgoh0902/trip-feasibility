@@ -29,7 +29,9 @@ complete, and travel times aren't published on pages, so there's nothing to cite
    Code writes every message. Severity is never above warning: one web source isn't enough
    for a blocker (as with closures from unconfirmed sites, decision 95).
 
-Off by default (checks.config.DEFAULT_ENABLED) until the dev eval says the hybrid helps.
+On by default since 2026-11-16 (Vincent's call after the dev eval: recall up, precision
+down, and the results page separates the tiers). Runs that make no web searches (the public
+demo) use earlier lookups of any age, and a stop never looked up is "not looked up".
 Advisory: not sent to the fixer and not re-run on fix re-checks (it makes a paid search).
 Search results reach the model, so a page could try to steer it: the defences are
 structural (URLs from the search only, statuses and hours only, code-written messages,
@@ -99,6 +101,11 @@ SCHEMA: dict[str, Any] = {
         }
     },
 }
+
+
+# A run without web searches (the demo) and no earlier lookup of these stops
+NOT_LOOKED_UP: dict[str, Any] = {"findings": [], "rejected": 0, "searches": 0, "looked_up": False}
+NOT_LOOKED_UP_REASON = "not looked up: demo runs make no web searches"
 
 
 class SecondOpinionError(LLMError):
@@ -192,7 +199,8 @@ async def look_up(
     deps: CheckDeps, opinion: SecondOpinion | None, inp: CheckInput
 ) -> dict[str, Any] | str:
     """The validated findings ({"findings", "rejected", "searches"}), or why there are
-    none. Cached per request; `inp.web_search` off (the demo) uses the cache only."""
+    none. Cached per request; `inp.web_search` off (the demo) uses the cache only, at any
+    age, and a miss is NOT_LOOKED_UP (every stop unknown), not a failure."""
     stops = eligible(inp.stops)
     if not stops:
         return {"findings": [], "rejected": 0, "searches": 0}
@@ -200,10 +208,10 @@ async def look_up(
         return "the second opinion needs the model API (no key set)"
     message = user_message(inp, stops)
     key = cache_key(opinion.model, message)
-    if (hit := await deps.cache.get(key)) is not None:
+    if (hit := await deps.cache.get(key, any_age=not inp.web_search)) is not None:
         return hit
     if not inp.web_search:
-        return "not looked up: this run makes no web searches"
+        return NOT_LOOKED_UP
     try:
         reply = await search_json(
             opinion.client,
@@ -326,11 +334,12 @@ def judge(
         n = looked_up["rejected"]
         notes.append(f"{n} finding(s) dropped: no valid source or hours")
     done = set(checked)
-    unknown = [
-        UnknownStop(stop_id=s.id, reason="the web search found no source for this date")
-        for s in stops
-        if s.id not in done
-    ]
+    reason = (
+        "the web search found no source for this date"
+        if looked_up.get("looked_up", True)
+        else NOT_LOOKED_UP_REASON
+    )
+    unknown = [UnknownStop(stop_id=s.id, reason=reason) for s in stops if s.id not in done]
     return CheckResult(
         check_name=CHECK_NAME,
         status="ok",

@@ -2,16 +2,18 @@
 
 import json
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 import httpx
 import pytest
+from sqlalchemy import update
 
 from tests.factories import stop
 from trip_feasibility.checks import closures
 from trip_feasibility.checks.closures import Target, check_closures, validate_findings
 from trip_feasibility.itinerary import OsmRef
+from trip_feasibility.models import ApiCache
 from trip_feasibility.sources import web
 from trip_feasibility.sources.web import FetchError, check_url, html_text, same_site
 
@@ -304,6 +306,19 @@ async def test_findings_are_cached_per_place_and_month(check_deps, respx_mock, e
     again = await run(deps, [stop("c", JAN_08)])
     assert len(client.calls) == 2  # served from the cache
     assert [v.severity for v in again.violations] == ["blocker"]
+
+
+async def test_without_searching_earlier_findings_of_any_age_count(check_deps, respx_mock, eye):
+    pages(respx_mock, OWN)
+    client = FakeClient([search_reply(OWN)], [extract_reply(closed())])
+    deps = with_llm(check_deps, client)
+    await run(deps, [stop("a", JAN_08)])
+    async with check_deps.db() as session:  # the findings expire
+        await session.execute(update(ApiCache).values(expires_at=datetime.now(UTC) - timedelta(1)))
+        await session.commit()
+    # the demo and fix re-checks don't search, so they use them anyway (decision 97)
+    again = await run(deps, [stop("b", JAN_08)], search=False)
+    assert len(client.calls) == 2 and [v.severity for v in again.violations] == ["blocker"]
 
 
 async def test_rechecks_use_the_cache_only(check_deps, respx_mock, eye):

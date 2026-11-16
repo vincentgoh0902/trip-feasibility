@@ -300,12 +300,15 @@ async def _call(
 
 # --- applying a fix ---
 
+HOURS_CHECK = "opening_hours"
+
 
 @dataclass
 class Applied:
     stops: list[Stop]
     transport_modes: list[TransportMode]
     changed: set[str] = field(default_factory=set)  # stop ids moved or replaced
+    replaced: set[str] = field(default_factory=set)  # stop ids now another place
 
 
 async def apply_fix(
@@ -317,6 +320,7 @@ async def apply_fix(
     modes = list(inp.preferences.transport_modes)
     days = {s.day for s in inp.stops}
     changed: set[str] = set()
+    replaced: set[str] = set()
     for op in fix.operations:
         if op.op == "add_transport_mode":
             if op.mode is None:
@@ -367,13 +371,14 @@ async def apply_fix(
                 }
             )
             changed.add(stop.id)
+            replaced.add(stop.id)
     position = {sid: i for i, sid in enumerate(order)}
 
     def key(s: Stop) -> tuple:
         # by day, then start time; stops without a time keep their place among the others
         return (s.day, s.start_time or time.max, position[s.id])
 
-    return Applied(sorted(stops.values(), key=key), modes, changed)
+    return Applied(sorted(stops.values(), key=key), modes, changed, replaced & set(stops))
 
 
 # --- re-checking ---
@@ -402,6 +407,14 @@ def judge(
     for name, r in after.results.items():
         if r.status == "unavailable":
             problems.append(f"couldn't re-check {name}: {r.error}")
+    # A replacement whose opening hours can't be checked isn't offered: the model may know a
+    # place that has since closed (the Museum of London, closed 2022, is still in OSM with no
+    # hours), and nothing would catch it.
+    if HOURS_CHECK in after.results:
+        for u in after.results[HOURS_CHECK].unknown:
+            if u.stop_id in applied.replaced:
+                place = new_stops[u.stop_id].place_name
+                problems.append(f"{place}'s opening hours can't be checked ({u.reason})")
     remaining = {violation_key(v, new_stops) for v in after.violations if v.severity != "info"}
     for v in targets:
         if v.stop_ids and not all(s in new_stops for s in v.stop_ids):

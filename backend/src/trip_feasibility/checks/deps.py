@@ -25,7 +25,8 @@ class ResponseCache:
     """api_cache table. Values are wrapped as {"body": ...} so lists and nulls can be cached.
 
     ignore_expiry=True (eval runs) serves expired entries too, so re-running an eval makes no
-    new external calls and sees the same data as the first run.
+    new external calls and sees the same data as the first run. `any_age=True` does the same
+    for one read (the second opinion on demo runs, which never look anything up).
     """
 
     def __init__(
@@ -34,18 +35,18 @@ class ResponseCache:
         self._sessionmaker = sessionmaker
         self._ignore_expiry = ignore_expiry
 
-    async def get_many(self, keys: list[str]) -> dict[str, Any]:
+    async def get_many(self, keys: list[str], *, any_age: bool = False) -> dict[str, Any]:
         if not keys:
             return {}
         query = select(ApiCache.key, ApiCache.response).where(ApiCache.key.in_(keys))
-        if not self._ignore_expiry:
+        if not (self._ignore_expiry or any_age):
             query = query.where(ApiCache.expires_at > datetime.now(UTC))
         async with self._sessionmaker() as session:
             rows = await session.execute(query)
             return {key: response["body"] for key, response in rows}
 
-    async def get(self, key: str) -> Any | None:
-        return (await self.get_many([key])).get(key)
+    async def get(self, key: str, *, any_age: bool = False) -> Any | None:
+        return (await self.get_many([key], any_age=any_age)).get(key)
 
     async def put_many(self, source: str, items: dict[str, Any], ttl: timedelta) -> None:
         if not items:

@@ -138,6 +138,15 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       closed places, a holiday and tight transfers
 - [x] `score_baseline.py --split test --final`: the baseline on the test split, aggregates
       only, seen and unseen city apart
+- [x] Decided 2026-11-16 (Vincent): the second opinion is **on by default** (decision 98;
+      demo reads lookups of any age, warmed by `python -m trip_feasibility.demo.warm`), and a
+      fix replacing a stop with a place whose hours can't be checked is **hidden** (decision
+      99). Fix validity under 99 not re-measured: the API credits ran out
+- [x] Deployment handoff for the server session: `docs/DEPLOY.md` (three containers, env,
+      the review-data dump in `data/deploy/reviews.dump`, restore tested, demo warm-up)
+- [ ] **Vincent:** top up Anthropic credits (auto-reload is off), then re-run
+      `run_eval.py --mode gold --fixes` for validity under decision 99
+- [ ] **Vincent:** the server session follows `docs/DEPLOY.md`
 - [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
@@ -348,10 +357,6 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
   per check" means parse + run, and if so carry the parse usage into the saved version.
 - Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.
-- The second opinion (decision 97): on by default for live checks? On dev it raises recall
-  (53% → 63% end to end) and lowers precision (80% → 70%); the tiers make the difference
-  visible (confirmed 88–89%, second opinion only ~50%). Vincent decides, ideally after the
-  injection cases and the tier display; the final test run should use whichever is chosen.
 - The LLM review (decision 96): off by default, as no version beats the counts on dev. To
   decide (Vincent): whether to rate its flagged days by hand (across the runs; ratings
   only, not labels, as two positives can't measure it), to give it the itinerary text
@@ -361,9 +366,6 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
   official findings (the only blockers) are rare. Options, none chosen: more pages per
   place, a search domain filter for the OSM website. Not a browser User-Agent: we identify
   ourselves.
-- Demo closures come from the cache (7-day TTL): a sample shows none unless a live run looked
-  its places up within the week. Decide whether to warm the samples or let the demo serve
-  expired findings.
 - Chatbot replies with interactive widgets (e.g. day tabs) paste incomplete. Planned for the
   paste box: a copyable "rewrite that as plain text" follow-up hint, and a warning when the
   parsed days don't cover the trip. Screenshot upload is a possible later addition.
