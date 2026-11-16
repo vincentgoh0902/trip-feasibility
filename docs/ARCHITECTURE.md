@@ -1488,6 +1488,13 @@ gate (fail a PR if precision or recall drops).
 - **Memory:** the API idles around 145 MB since the routes import the agent stack (LangGraph,
   MCP, the Anthropic SDK) at startup; 152 MB after five demo runs (Oct 25). Under the 256 MB
   default, with less headroom than the ~60 MB the bare app used.
+- **The frontend** (`frontend/Dockerfile`, 2026-11-16): Next.js `output: "standalone"`, built
+  on `node:22-slim`, run as the `node` user with `node server.js` on `PORT` (3000) and
+  `HOSTNAME=0.0.0.0`; no `node_modules` at runtime (418 MB image, mostly Node; 46 MB of
+  memory idle). `API_INTERNAL_URL` points it at the API. Compose runs it as `web`
+  (`docker compose up -d --build`: db, api, web), published on 127.0.0.1:3020
+  (`WEB_HOST_PORT`), with `API_INTERNAL_URL=http://api:8000`. Checked by running the London
+  demo through it end to end (screenshots in `docs/images/`).
 
 ## 11. Hosting: the unresolved part
 
@@ -1496,7 +1503,10 @@ Postgres. What to settle before the first deploy:
 
 1. **Two app services.** Auth.js needs a running Next.js server, so FastAPI can't just serve
    static files. Either one image runs Next.js on `PORT` and proxies `/api` to FastAPI on
-   localhost, or the server gets a multi-container project type.
+   localhost, or the server gets a multi-container project type. Both images exist now
+   (`backend/Dockerfile`, `frontend/Dockerfile`) and run together in Compose, which is the
+   multi-container shape; web (~46 MB) and API (~155 MB) together fit 256 MB only barely,
+   so one combined image would want a higher limit.
 2. **Review data.** Settled at 295 MB (four cities' negative reviews, `halfvec(384)`, no
    index; decisions 35–38). The server gets it from a dump of `hotels` + `hotel_reviews`, not
    by re-embedding.
@@ -1506,6 +1516,11 @@ Postgres. What to settle before the first deploy:
 4. **Secrets the API needs on the server:** `API_JWT_SECRET` (shared with the Next.js server),
    `ANTHROPIC_API_KEY`, and the Langfuse keys if tracing is on; `FORWARDED_ALLOW_IPS` for the
    proxy in front.
+5. **Client IPs for the demo limits.** The Next.js proxy passes on the `X-Forwarded-For` it
+   receives and adds none of its own. Behind a tunnel that sets it (Cloudflare does; check
+   Tailscale Funnel), the API sees the visitor once `FORWARDED_ALLOW_IPS` trusts the web
+   container. With no such header every visitor shares the web container's IP, and so one
+   per-IP demo limit (10 runs an hour) for everyone.
 
 ## 12. Decision log
 
@@ -1732,8 +1747,8 @@ Replaced or dropped:
 - Not yet measured: fix validity on the dataset, fix quality (needs the judge). The
   injection suite's attacks are ours and few (30); the only one followed, a vandalised OSM
   `website` tag, is closed by decision 95 (section 6d).
-- Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; no Dockerfile for it
-  until the hosting shape is settled (section 11).
+- Frontend: sign-in (Auth.js) and the signed-in pages aren't built yet; its Dockerfile exists
+  but the server has no project for it until the hosting shape is settled (section 11).
 - Closures check: on dev, no false alarms and 0 of 2 `special` labels (EVALS.md); 40% of
   pages refuse our fetch; official needs OSM and Wikidata to agree (decision 95), which 36
   of 46 tagged dev places do, so a site that moved in only one of them is `web`; vandalising

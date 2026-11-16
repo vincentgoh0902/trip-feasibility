@@ -313,7 +313,8 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
   Not in the PRD; Vincent decides. (ARCHITECTURE decision 77, section 13.)
 - No dataset prompt names a car or bike, so the car/bike paths are covered by unit tests
   only.
-- Frontend hosting: no Dockerfile yet; it depends on the hosting shape below.
+- Frontend hosting: `frontend/Dockerfile` (standalone, 46 MB idle) and a `web` service in
+  Compose exist (2026-11-16); which shape the server uses is still open (below).
 - Email magic links need an email provider (not chosen); slice 2 can start with OAuth only.
 
 - If traffic outgrows Nominatim's public policy: keyed service (NextGIS, Overpass.ch free

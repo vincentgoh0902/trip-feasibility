@@ -28,3 +28,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  web:
+    build: ./frontend
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      PORT: 3000
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-3020}:3000"
+    depends_on:
+      - api

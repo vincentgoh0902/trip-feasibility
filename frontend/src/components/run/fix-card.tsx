@@ -2,6 +2,7 @@ import { WrenchIcon } from "lucide-react";
 
 import type { Fix, Stop, Violation } from "@/lib/api/types";
 import { checkLabel, stopTimes } from "@/lib/format";
+import { unverifiedGroups } from "@/lib/run/unknown";
 
 /** What a fix operation does, in words (backend agent/fixes.py: move, remove, replace, ...). */
 function describe(op: Record<string, unknown>, stops: Map<string, Stop>): string {
@@ -70,7 +71,9 @@ export function FixCard({
         <p className="mt-1 text-xs text-warning-ink">New warnings: {fix.new_warnings.join("; ")}</p>
       )}
       {fix.unverified.length > 0 && (
-        <p className="mt-1 text-xs text-muted-foreground">Not verified: {fix.unverified.join("; ")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Not verified: {unverifiedGroups(fix.unverified, [...stops, ...fix.stops]).join("; ")}
+        </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">{action}</div>
     </article>

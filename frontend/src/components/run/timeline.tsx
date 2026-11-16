@@ -2,9 +2,10 @@
 import { BedDoubleIcon, ExternalLinkIcon, FootprintsIcon, LandmarkIcon, UtensilsIcon } from "lucide-react";
 
 import type { CheckResult, Stop, Violation } from "@/lib/api/types";
-import { checkLabel, formatDate, stopTimes } from "@/lib/format";
+import { formatDate, stopTimes } from "@/lib/format";
 import { groupDays, placeViolations } from "@/lib/run/layout";
 import type { Tiers } from "@/lib/run/tiers";
+import { unknownNotes } from "@/lib/run/unknown";
 
 import { ViolationCard } from "./violation-card";
 
@@ -52,17 +53,20 @@ export function Timeline({
     stops,
     violations.filter((v) => !tiers.folded.has(v.id)),
   );
-  // "couldn't check" notes per stop, e.g. no opening hours in OpenStreetMap
-  const unknown = new Map<string, string[]>();
-  for (const [check, result] of Object.entries(results)) {
-    for (const u of result.unknown) {
-      const notes = unknown.get(u.stop_id) ?? [];
-      unknown.set(u.stop_id, [...notes, `${checkLabel(check)}: ${u.reason}`]);
-    }
-  }
+  // "couldn't check" notes, e.g. no opening hours in OpenStreetMap
+  const unknown = unknownNotes(results, stops);
 
   return (
     <div className="space-y-8">
+      {unknown.shared.length > 0 && (
+        <div className="space-y-1">
+          {unknown.shared.map((note) => (
+            <p key={note} className="text-xs text-muted-foreground">
+              Couldn’t check · {note}
+            </p>
+          ))}
+        </div>
+      )}
       {groupDays(stops).map((day) => (
         <section key={day.day} aria-labelledby={`day-${day.day}`}>
           <h3 id={`day-${day.day}`} className="text-xl font-bold">
@@ -94,7 +98,7 @@ export function Timeline({
                       <span className="text-xs text-muted-foreground">not found on the map</span>
                     )}
                   </div>
-                  {unknown.get(stop.id)?.map((note) => (
+                  {unknown.perStop.get(stop.id)?.map((note) => (
                     <p key={note} className="mt-1 text-xs text-muted-foreground">
                       Couldn’t check · {note}
                     </p>

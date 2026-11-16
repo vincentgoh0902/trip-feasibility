@@ -93,7 +93,7 @@ backend/                        uv project; Dockerfile, start.sh, alembic/, test
                                 injection.py (prompt-injection suite), replay.py (saved
                                 model replies: `run_eval.py --replay`)
   scripts/                      see Commands
-frontend/                       Next.js (npm); openapi.json (exported from the backend)
+frontend/                       Next.js (npm); Dockerfile (standalone); openapi.json (exported from the backend)
   e2e/                          Playwright (playwright.config.ts): landing → demo → a live check
   src/app/                      pages; api/v1/[...path]/route.ts proxies every call to FastAPI
   src/components/run/ ui/       results page pieces; shadcn/ui components (owned, editable)
@@ -196,7 +196,9 @@ Planned: `train/` (Tier 2, Mac only).
 ## Runtime and config
 
 - **Frontend port:** `next dev`/`next start` on 3000 locally; `API_INTERNAL_URL` (server-side,
-  default `http://localhost:8020`) is where it reaches the API.
+  default `http://localhost:8020`) is where it reaches the API. Its image
+  (`frontend/Dockerfile`, standalone output) listens on `PORT` (3000), ~46 MB idle; Compose
+  runs it as `web` on 127.0.0.1:3020.
 - **Port:** the API listens on 8000 in the container (`PORT`); `GET /health` → 200 with a DB
   check (503 if unreachable). Compose publishes it on 8020 locally (8000 is taken on this Mac).
 - **Memory:** the API idles at ~145 MB (the agent stack loads at startup), ~155 MB after runs;
@@ -281,7 +283,8 @@ uv run --group embed python scripts/calibrate_hotel_themes.py # theme matcher P/
 uv run python scripts/hotel_theme_base_rates.py              # per-theme min_share
 ```
 
-Compose host ports are overridable: `API_HOST_PORT` (default 8020), `DB_HOST_PORT` (5432).
+Compose host ports are overridable: `API_HOST_PORT` (default 8020), `DB_HOST_PORT` (5432),
+`WEB_HOST_PORT` (3020).
 
 ## CI (`.github/workflows/ci.yml`)
 
@@ -397,7 +400,9 @@ The PRD's shape doesn't match the default homelab project (one Dockerfile, one p
 
 GitHub: https://github.com/vincentgoh0902/trip-feasibility (public, default branch `main`).
 
-Not yet a homelab project. The Dockerfile is in `backend/`, so the server needs
-`APP_BUILD_CONTEXT=backend` until the frontend lands and the hosting shape is settled. The
+Not yet a homelab project. Two images: `backend/Dockerfile` (API, port 8000) and
+`frontend/Dockerfile` (Next.js, port 3000, proxies `/api` to `API_INTERNAL_URL`), plus
+Postgres with pgvector; `compose.yaml` runs all three. The hosting shape (multi-container
+project, or one combined image) is still to settle; ARCHITECTURE section 11. The
 server session adds it with `new-project.sh`. Ship a change: commit and push, then (after
 asking me) `ssh homelab '~/homelab/scripts/deploy.sh trip-feasibility'`.
