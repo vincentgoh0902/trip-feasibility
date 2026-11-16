@@ -127,8 +127,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       tier. On dev (EVALS.md): +3 real problems in each mode for 3–4 false alarms; end to
       end 19 of 30 at 70% against the baseline's 18 of 30 at 78%; confirmed flags right 15
       of 17. Off by default; frontend label, icon and evidence row added
-- [ ] Second opinion: web-search-result attacks in the injection suite; show the tiers in
-      the results page (confirmed vs worth checking); log its tokens in the eval runner
+- [x] Tiers on the results page (2026-11-16): the second opinion's notes fold into the card
+      they're about, cards get a chip (confirmed / a web search disagrees / worth checking),
+      the sidebar counts them; checked in the browser at desktop and 375 px on a made-up run
+- [ ] Second opinion: web-search-result attacks in the injection suite; log its tokens in
+      the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
 

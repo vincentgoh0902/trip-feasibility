@@ -1180,7 +1180,12 @@ asks `GET /checks/{id}` why (an expired demo run is a 404). `lib/run/layout.ts` 
 violation on the day timeline: on its stop, on the leg after its first stop (travel time), on
 the hotel's first stop (hotel flags) or on the day (daily load, holidays). Evidence has a view
 per check, with a key/value fallback; stops a check couldn't judge say so ("Couldn't check ·
-no opening_hours in OSM"). The footer carries the OSM, FOSSGIS and Nager.Date attribution and
+no opening_hours in OSM"). With the second opinion in a run, `lib/run/tiers.ts` folds its
+agreeing and disagreeing notes into the opening-hours or closures card they're about (shown
+under "Second opinion" in its evidence, with their own source) and gives cards a tier chip:
+"Confirmed by a web search", "A web search disagrees", or "Worth checking · one web source"
+on its own finds; the sidebar counts confirmed and worth-checking opening-hours findings.
+Without it nothing changes. The footer carries the OSM, FOSSGIS and Nager.Date attribution and
 a "Fix the map" link (FOSSGIS policy).
 
 **Design.** The look matches the hero illustration (`public/hero.png`, a flat isometric
@@ -1671,8 +1676,8 @@ Replaced or dropped:
 - **The hybrid (decision 97) is ahead of a plain LLM on recall, behind on precision.** End
   to end on dev, checks plus the second opinion find 19 of 30 at 70% precision, the
   baseline 18 of 30 at 78%; confirmed flags are right 15 of 17 times. Off by default until
-  Vincent decides; the tiers aren't separated in the UI yet beyond the evidence row; the
-  second opinion isn't in the injection suite.
+  Vincent decides; the results page shows the tiers (section 6e); the second opinion isn't
+  in the injection suite.
 - **Without the second opinion, the pipeline trails a plain LLM with web search slightly.** With
   `extract-v11` at medium effort (three dev runs) it finds 16–17 of 30 problems at 71–80%
   precision; the baseline 18 of 30 at 78%; the checks on gold stops 19 of 30 at 86%.

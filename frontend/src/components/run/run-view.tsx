@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WaveDivider } from "@/components/site/wave-divider";
 import { checkLabel, formatDate } from "@/lib/format";
 import type { RunState } from "@/lib/run/state";
+import { opinionTiers, type Tiers } from "@/lib/run/tiers";
 
 import { FixCard } from "./fix-card";
 import { Progress } from "./progress";
@@ -38,7 +39,19 @@ function statusText(state: RunState): string {
   }
 }
 
-function Summary({ state }: { state: RunState }) {
+function TierSummary({ tiers }: { tiers: Tiers }) {
+  const count = (tier: string) => [...tiers.byViolation.values()].filter((t) => t.tier === tier).length;
+  const confirmed = count("confirmed");
+  const unsure = count("unconfirmed") + count("disputed");
+  if (confirmed + unsure === 0) return null;
+  return (
+    <p className="text-sm text-muted-foreground">
+      Opening hours: {confirmed} confirmed by a web search, {unsure} worth checking
+    </p>
+  );
+}
+
+function Summary({ state, tiers }: { state: RunState; tiers: Tiers }) {
   if (state.phase !== "done") return null;
   const count = (severity: string) => state.violations.filter((v) => v.severity === severity).length;
   const blockers = count("blocker");
@@ -47,15 +60,18 @@ function Summary({ state }: { state: RunState }) {
     return <p className="text-sm">No problems found in the checks that ran.</p>;
   }
   return (
-    <p className="text-sm font-semibold">
-      <span className="text-blocker-ink">
-        {blockers} blocker{blockers === 1 ? "" : "s"}
-      </span>
-      {" · "}
-      <span className="text-warning-ink">
-        {warnings} warning{warnings === 1 ? "" : "s"}
-      </span>
-    </p>
+    <div className="space-y-1">
+      <p className="text-sm font-semibold">
+        <span className="text-blocker-ink">
+          {blockers} blocker{blockers === 1 ? "" : "s"}
+        </span>
+        {" · "}
+        <span className="text-warning-ink">
+          {warnings} warning{warnings === 1 ? "" : "s"}
+        </span>
+      </p>
+      <TierSummary tiers={tiers} />
+    </div>
   );
 }
 
@@ -109,6 +125,7 @@ export function RunLayout({ state }: { state: RunState }) {
   const notes = [...new Set(Object.values(state.results).flatMap((r) => r.notes))];
   const unavailable = Object.entries(state.results).filter(([, r]) => r.status === "unavailable");
   const dates = state.stops.map((s) => s.date).sort();
+  const tiers = opinionTiers(state.violations);
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-8 px-4 py-8 lg:grid-cols-[17rem_1fr]">
@@ -129,7 +146,7 @@ export function RunLayout({ state }: { state: RunState }) {
           {statusText(state)}
         </p>
         <Progress state={state} />
-        <Summary state={state} />
+        <Summary state={state} tiers={tiers} />
       </aside>
 
       <div className="min-w-0 space-y-10">
@@ -154,7 +171,13 @@ export function RunLayout({ state }: { state: RunState }) {
             Your itinerary
           </h2>
           {state.stops.length > 0 ? (
-            <Timeline stops={state.stops} violations={state.violations} results={state.results} unfixed={unfixed} />
+            <Timeline
+              stops={state.stops}
+              violations={state.violations}
+              results={state.results}
+              unfixed={unfixed}
+              tiers={tiers}
+            />
           ) : state.phase !== "error" ? (
             <div className="space-y-3">
               <Skeleton className="h-6 w-48" />

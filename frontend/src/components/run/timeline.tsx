@@ -4,6 +4,7 @@ import { BedDoubleIcon, ExternalLinkIcon, FootprintsIcon, LandmarkIcon, Utensils
 import type { CheckResult, Stop, Violation } from "@/lib/api/types";
 import { checkLabel, formatDate, stopTimes } from "@/lib/format";
 import { groupDays, placeViolations } from "@/lib/run/layout";
+import type { Tiers } from "@/lib/run/tiers";
 
 import { ViolationCard } from "./violation-card";
 
@@ -14,12 +15,20 @@ const STOP_ICONS = {
   transfer: FootprintsIcon,
 } satisfies Record<Stop["type"], unknown>;
 
-function Problems({ violations, unfixed }: { violations: Violation[] | undefined; unfixed: Set<string> }) {
+function Problems({
+  violations,
+  unfixed,
+  tiers,
+}: {
+  violations: Violation[] | undefined;
+  unfixed: Set<string>;
+  tiers: Tiers;
+}) {
   if (!violations?.length) return null;
   return (
     <div className="mt-2 space-y-2">
       {violations.map((v) => (
-        <ViolationCard key={v.id} violation={v} unfixed={unfixed.has(v.id)} />
+        <ViolationCard key={v.id} violation={v} unfixed={unfixed.has(v.id)} tier={tiers.byViolation.get(v.id)} />
       ))}
     </div>
   );
@@ -30,13 +39,19 @@ export function Timeline({
   violations,
   results,
   unfixed,
+  tiers,
 }: {
   stops: Stop[];
   violations: Violation[];
   results: Record<string, CheckResult>;
   unfixed: Set<string>;
+  tiers: Tiers;
 }) {
-  const placed = placeViolations(stops, violations);
+  // the second opinion's notes on a finding are shown inside that finding's card
+  const placed = placeViolations(
+    stops,
+    violations.filter((v) => !tiers.folded.has(v.id)),
+  );
   // "couldn't check" notes per stop, e.g. no opening hours in OpenStreetMap
   const unknown = new Map<string, string[]>();
   for (const [check, result] of Object.entries(results)) {
@@ -53,7 +68,7 @@ export function Timeline({
           <h3 id={`day-${day.day}`} className="text-xl font-bold">
             Day {day.day} <span className="text-base font-semibold text-muted-foreground">· {formatDate(day.date)}</span>
           </h3>
-          <Problems violations={placed.onDay.get(day.day)} unfixed={unfixed} />
+          <Problems violations={placed.onDay.get(day.day)} unfixed={unfixed} tiers={tiers} />
           <ol className="mt-3 border-l-2 border-border">
             {day.stops.map((stop) => {
               const Icon = STOP_ICONS[stop.type];
@@ -84,15 +99,15 @@ export function Timeline({
                       Couldn’t check · {note}
                     </p>
                   ))}
-                  <Problems violations={placed.onStop.get(stop.id)} unfixed={unfixed} />
-                  <Problems violations={placed.afterStop.get(stop.id)} unfixed={unfixed} />
+                  <Problems violations={placed.onStop.get(stop.id)} unfixed={unfixed} tiers={tiers} />
+                  <Problems violations={placed.afterStop.get(stop.id)} unfixed={unfixed} tiers={tiers} />
                 </li>
               );
             })}
           </ol>
         </section>
       ))}
-      {placed.elsewhere.length > 0 && <Problems violations={placed.elsewhere} unfixed={unfixed} />}
+      {placed.elsewhere.length > 0 && <Problems violations={placed.elsewhere} unfixed={unfixed} tiers={tiers} />}
     </div>
   );
 }

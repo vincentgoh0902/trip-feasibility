@@ -35,6 +35,10 @@
   --color-info: var(--info);
   --color-info-ink: var(--info-ink);
   --color-info-soft: var(--info-soft);
+  --color-confirmed-ink: var(--confirmed-ink);
+  --color-confirmed-soft: var(--confirmed-soft);
+  --color-unconfirmed-ink: var(--unconfirmed-ink);
+  --color-unconfirmed: var(--unconfirmed);
   --animate-float: float 7s ease-in-out infinite;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -117,6 +121,16 @@
   --info: var(--water);
   --info-ink: #345b59;
   --info-soft: #dbe9dc;
+
+  /*
+   * How sure a finding is (the second opinion's tiers, decision 97). Confirmed: sage mixed
+   * 30% into paper, with moss-ink darkened to 0.85 (5.7:1 on its soft, 7.1:1 on paper).
+   * Worth checking uses the warning ink as an outline chip on the card (6.5:1).
+   */
+  --confirmed-ink: #52543b;
+  --confirmed-soft: #dbdec4;
+  --unconfirmed-ink: var(--warning-ink);
+  --unconfirmed: var(--warning);
 
   /* Side faces: the solid "island base" under cards and buttons */
   --card-side: var(--wood);

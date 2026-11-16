@@ -135,27 +135,14 @@ function Closures({ e }: { e: Data }) {
   );
 }
 
-const AGREEMENT: Record<string, string> = {
-  confirms: "agrees with the opening-hours check: confirmed",
-  disputes: "disagrees with the opening-hours check: worth checking",
-  only_second_opinion: "only this web search found it: worth checking",
-};
-
+// What the web search found; how sure that is shows as the card's tier chip
+// (lib/run/tiers.ts), and the page as its source line.
 function SecondOpinion({ e }: { e: Data }) {
   const hours = Array.isArray(e.hours) ? (e.hours as string[]) : [];
-  const url = str(e.source_url);
   return (
     <>
       <Row label="Found">{e.status === "closed" ? "closed that day" : `open ${hours.join(", ")}`}</Row>
       {str(e.last_entry) && <Row label="Last entry">{str(e.last_entry)}</Row>}
-      <Row label="Agreement">{AGREEMENT[str(e.agreement) ?? ""] ?? "—"}</Row>
-      {url && (
-        <Row label="Source">
-          <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="underline">
-            {new URL(url).host}
-          </a>
-        </Row>
-      )}
     </>
   );
 }
