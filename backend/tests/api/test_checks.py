@@ -61,8 +61,10 @@ async def count(model):
 
 
 async def test_samples_are_listed(api):
-    [sample] = (await api.get(f"{V1}/demo/samples")).json()
-    assert sample["id"] == "paris-one-day" and "Louvre" in sample["text"]
+    listed = (await api.get(f"{V1}/demo/samples")).json()
+    assert [s["id"] for s in listed] == ["paris-one-day", "london-bank-holiday",
+                                         "barcelona-sant-joan"]  # fmt: skip
+    assert "Louvre" in listed[0]["text"]
 
 
 async def test_demo_run_streams_and_saves_nothing(api, services, nominatim):

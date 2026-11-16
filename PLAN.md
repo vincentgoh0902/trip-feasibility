@@ -132,6 +132,11 @@ Requirements: `docs/PRD.md`. Dates there are a loose reference only.
       the sidebar counts them; checked in the browser at desktop and 375 px on a made-up run
 - [x] Second opinion in the injection suite (`injection-v4`, 2026-11-16): six search-result
       attacks, all resisted with and without the prompt sentence; 36 of 36 defended overall
+- [x] Three demo samples (2026-11-16), all made up: Paris (Tuesday), London on the Boxing
+      Day bank holiday, Barcelona on Sant Joan; no hotel stops in the new two. Each shows
+      closed places, a holiday and tight transfers
+- [x] `score_baseline.py --split test --final`: the baseline on the test split, aggregates
+      only, seen and unseen city apart
 - [ ] Second opinion: log its tokens in the eval runner
 - [ ] Injected variants of dataset itineraries (`parent_id`), after annotation
 - [ ] Final test-set run on the pinned model; results in README
@@ -321,7 +326,6 @@ ARCHITECTURE.md section 12 (decision numbers in brackets), with the prompt versi
 - Judge model (must not be Anthropic); decide when fixes are judged.
 - How the server gets the review data (dump/restore of `hotels` + `hotel_reviews`).
 - Tune `min_share` / `min_reviews` and the theme thresholds against the dev hotels' labels.
-- More demo samples (one Paris day today); each must be made up, never from the dataset.
 - Parse cost isn't linked to the run that follows it; decide whether the PRD's "under $0.01
   per check" means parse + run, and if so carry the parse usage into the saved version.
 - Behind the Next.js proxy, set `FORWARDED_ALLOW_IPS` so per-IP demo limits see real IPs.

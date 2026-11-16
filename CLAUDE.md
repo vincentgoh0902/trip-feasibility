@@ -375,7 +375,7 @@ eslint, typecheck, vitest, `next build`), and gitleaks over full history. Keep i
 ## Open decisions
 
 Tracked in `PLAN.md` ("Open"): judge model (another provider, decided when fixes are
-judged); more demo samples; whether parse cost counts toward the per-check cost target;
+judged); whether parse cost counts toward the per-check cost target;
 hosting shape (below).
 
 ## Hosting (open questions)

@@ -22,3 +22,43 @@
     - { day: 1, start_time: "13:45", end_time: "16:00", place_name: Musée d'Orsay, type: venue }
     - { day: 1, start_time: "16:10", end_time: "17:30", place_name: Eiffel Tower, type: venue }
     - { day: 1, time_of_day: evening, place_name: Bateaux Parisiens, type: meal }
+- id: london-bank-holiday
+  title: A bank holiday Monday in London
+  city: London
+  start_date: 2026-12-28 # Monday, the Boxing Day bank holiday (26 December is a Saturday)
+  preferences: { pace: packed, max_walk_km: 12, transport_modes: [walk, transit] }
+  text: |
+    **Day 1 – Museums, the Tower and the river**
+    - 9:30 – 11:30: Sir John Soane's Museum, a house crammed with curiosities.
+    - 11:45 – 13:00: British Museum: the Rosetta Stone and the Parthenon sculptures.
+    - 13:00 – 14:00: Lunch at Dishoom Covent Garden.
+    - 14:15 – 16:30: Tower of London and the Crown Jewels.
+    - 16:45 – 17:45: Sky Garden for the sunset over the City.
+    - 19:00 – 21:00: Dinner at Borough Market.
+  stops:
+    - { day: 1, start_time: "09:30", end_time: "11:30", place_name: Sir John Soane's Museum, type: venue }
+    - { day: 1, start_time: "11:45", end_time: "13:00", place_name: British Museum, type: venue }
+    - { day: 1, start_time: "13:00", end_time: "14:00", place_name: Dishoom Covent Garden, type: meal }
+    - { day: 1, start_time: "14:15", end_time: "16:30", place_name: Tower of London, type: venue }
+    - { day: 1, start_time: "16:45", end_time: "17:45", place_name: Sky Garden, type: venue }
+    - { day: 1, start_time: "19:00", end_time: "21:00", place_name: Borough Market, type: meal }
+- id: barcelona-sant-joan
+  title: Gaudí and the old town on Sant Joan
+  city: Barcelona
+  start_date: 2027-06-24 # Thursday, Sant Joan: a public holiday in Catalonia
+  preferences: { pace: moderate, max_walk_km: 10, transport_modes: [walk, transit] }
+  text: |
+    **Day 1 – Gaudí, markets and the old town**
+    - 9:00 – 11:00: Sagrada Família, with the towers if you can book them.
+    - 11:30 – 13:00: Park Güell and the mosaic terrace.
+    - 13:15 – 14:30: Lunch at La Boqueria market.
+    - 15:00 – 17:00: Museu Picasso in El Born.
+    - 17:30 – 19:00: Casa Batlló on Passeig de Gràcia.
+    - 21:00 – 22:00: the Magic Fountain show at Montjuïc.
+  stops:
+    - { day: 1, start_time: "09:00", end_time: "11:00", place_name: Sagrada Família, type: venue }
+    - { day: 1, start_time: "11:30", end_time: "13:00", place_name: Park Güell, type: venue }
+    - { day: 1, start_time: "13:15", end_time: "14:30", place_name: La Boqueria, type: meal }
+    - { day: 1, start_time: "15:00", end_time: "17:00", place_name: Museu Picasso, type: venue }
+    - { day: 1, start_time: "17:30", end_time: "19:00", place_name: Casa Batlló, type: venue }
+    - { day: 1, start_time: "21:00", end_time: "22:00", place_name: Magic Fountain of Montjuïc, type: venue }
