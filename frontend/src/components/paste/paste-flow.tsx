@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,9 @@ export function PasteFlow({ samples }: { samples: Sample[] }) {
   const [startDate, setStartDate] = useState("");
   const [recognised, setRecognised] = useState<Sample | null>(null);
   const [busy, setBusy] = useState(false);
+  // the page stays mounted, hidden, after router.push (Activity): keep the text and stops,
+  // but not a stuck "Starting…"
+  useLayoutEffect(() => () => setBusy(false), []);
   const [error, setError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParseResponse | null>(null);
   const [removed, setRemoved] = useState<Set<string>>(new Set());

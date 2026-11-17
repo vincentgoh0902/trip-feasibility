@@ -45,6 +45,16 @@ test("a demo check runs to the end through the proxy", async ({
     page.getByRole("list", { name: "Progress" }).getByRole("listitem"),
   ).not.toHaveCount(0);
   await expect(page.getByRole("link", { name: "Fix the map" })).toBeVisible();
+
+  // back to the samples: the page was kept, hidden, but its button isn't stuck on "Starting…"
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Try a sample" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Check this itinerary" }).first(),
+  ).toBeEnabled();
+  await page.goBack();
   await expect(
     page.getByRole("link", { name: "© OpenStreetMap contributors" }),
   ).toBeVisible();

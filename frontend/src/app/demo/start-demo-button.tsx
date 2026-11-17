@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,9 @@ import { browserApi, errorMessage } from "@/lib/api/browser";
 export function StartDemoButton({ sampleId }: { sampleId: string }) {
   const router = useRouter();
   const [starting, setStarting] = useState(false);
+  // Next keeps this page mounted but hidden after router.push (Activity): reset as it hides,
+  // or coming back shows "Starting…" on a disabled button
+  useLayoutEffect(() => () => setStarting(false), []);
 
   async function start() {
     setStarting(true);
