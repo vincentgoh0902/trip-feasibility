@@ -105,7 +105,7 @@ Every run, with what changed in between, is in [`docs/EVALS.md`](docs/EVALS.md).
 - **Evaluation:** a versioned dataset with a held-out city, scoring that matches predicted
   problems to labels by check, day and place, an LLM-only baseline, a prompt-injection
   suite, and replayable model calls so changes can be compared on identical inputs.
-- **Quality gates:** 428 backend tests (no test calls a real API), vitest, Playwright on the
+- **Quality gates:** 439 backend tests (no test calls a real API), vitest, Playwright on the
   full Docker stack at desktop and phone width, a behaviour snapshot that must stay
   identical across refactors, CI with ruff, Alembic drift checks and gitleaks.
 
