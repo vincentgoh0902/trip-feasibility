@@ -1,4 +1,4 @@
-"""Validate the annotated dataset (guide: docs/ANNOTATION.md).
+"""Validate the annotated dataset (format: dataset/models.py).
 
     uv run python scripts/validate_dataset.py             # complete dataset: 15 dev, 25 test
     uv run python scripts/validate_dataset.py --partial   # while collecting and annotating

@@ -7,7 +7,7 @@
   traveller leaves a few minutes early (chatbot itineraries put slots back to back)
 - strictness (buffer_min: 0, 10 or 20) is the slack wanted on top: 0 accepts up to 10 min
   short, 10 flags any shortfall, 20 wants 10 min to spare. The default, 0, is the rule
-  docs/ANNOTATION.md uses for gold labels
+  the gold labels use
 Overlaps are found from the times alone, so they're reported even when a stop isn't located
 or is an area ("Lunch" right after a visit that runs into it). Travel time is the fastest of
 the traveller's own transport modes (see checks/legs.py for
@@ -24,7 +24,7 @@ from trip_feasibility.sources.routing import SOURCE_URL
 CHECK_NAME = "travel_time"
 DEFAULT_BUFFER_MIN = 0
 ESTIMATE_MARGIN = 0.25
-# docs/ANNOTATION.md uses the same rule for gold labels (decision 78)
+# the gold labels use the same rule (decision 78)
 SHORTFALL_TOLERANCE_MIN = 10
 BLOCKER_SHORTFALL_MIN = 30
 _HOW = {

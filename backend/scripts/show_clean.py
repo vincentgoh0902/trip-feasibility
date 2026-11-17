@@ -1,4 +1,4 @@
-"""Print a saved reply as extraction sees it, after parse step 0 (guide: docs/ANNOTATION.md).
+"""Print a saved reply as extraction sees it, after parse step 0.
 
     uv run python scripts/show_clean.py paris-03     # data/dataset/texts/paris-03.md
 

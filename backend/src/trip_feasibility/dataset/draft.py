@@ -6,7 +6,7 @@ stops, checks or their output. It never runs on Anthropic models: Claude is the 
 and a draft from the same provider would reward shared blind spots. Its output is checked
 like a hand-written file (quoted words verbatim, valid shapes); entries still wrong after
 one retry are dropped and listed in `notes`. A draft counts only once Vincent has checked
-it (`verified_by_human: true`). Guide: docs/ANNOTATION.md, Violations.
+it (`verified_by_human: true`).
 """
 
 import json

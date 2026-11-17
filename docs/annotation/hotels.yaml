@@ -1,6 +1,6 @@
-# The 16 dataset hotels (docs/TEST_CITIES.md). Copy to data/dataset/hotels.yaml and label
+# The 16 dataset hotels. Copy to data/dataset/hotels.yaml and label
 # each one: red_flags is a list of themes (noise, cleanliness, safety, location), [] for none.
-# Leave it null until you've labelled it. See docs/ANNOTATION.md, "Hotels".
+# Leave it null until you've labelled it.
 - key: paris-hyatt-regency-etoile
   city: paris
   name: Hyatt Regency Paris Etoile

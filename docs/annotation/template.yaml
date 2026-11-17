@@ -1,7 +1,6 @@
 # Copy to data/dataset/itineraries/<id>.yaml (file name = id). Fill in the top part when
 # you collect the itinerary; add the annotation part later. The reply itself isn't in this
-# file: scripts/save_reply.sh <id> saves it to data/dataset/texts/<id>.md. Guide:
-# docs/ANNOTATION.md.
+# file: scripts/save_reply.sh <id> saves it to data/dataset/texts/<id>.md.
 id: paris-01 # <city>-<two digits>; synthetic variants: <parent id>-<suffix>
 city: paris # paris | london | barcelona | vienna
 split: dev # dev | test (Vienna is always test)

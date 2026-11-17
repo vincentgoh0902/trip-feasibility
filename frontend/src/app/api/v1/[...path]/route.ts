@@ -1,4 +1,4 @@
-// Every browser call to the API comes through here (ARCHITECTURE 6c): the browser never talks
+// Every browser call to the API comes through here: the browser never talks
 // to FastAPI or holds a token. Once sign-in exists, this is where the per-call token is added.
 import type { NextRequest } from "next/server";
 

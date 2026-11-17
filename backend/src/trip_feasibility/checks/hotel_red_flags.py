@@ -5,7 +5,7 @@ A review counts towards a theme when it matches the theme's keywords AND its emb
 close to one of the theme's query phrasings. Neither alone is precise enough: keywords hit
 "the room was clean", and embeddings drift into general complaints ("the hotel is dated"
 lands near "bad location"). Calibrated on hand-labelled reviews from hotels outside the
-dataset (scripts/calibrate_hotel_themes.py; numbers in docs/ARCHITECTURE.md).
+dataset (scripts/calibrate_hotel_themes.py).
 
 A theme is a red flag when at least `min_reviews` reviews match it (FR-5 strictness: 3, 5 or
 10) and they are at least the theme's `min_share` of the hotel's negative reviews. The count

@@ -7,7 +7,7 @@
 #   scripts/save_reply.sh -f paris-01       # overwrite an existing reply
 #
 # Writes data/dataset/texts/<id>.md (gitignored): the itinerary's text, read by the dataset
-# loader next to itineraries/<id>.yaml. Guide: docs/ANNOTATION.md.
+# loader next to itineraries/<id>.yaml. See docs/ARCHITECTURE.md, "Evaluation".
 set -euo pipefail
 
 TEXTS_DIR="$(cd "$(dirname "$0")/../.." && pwd)/data/dataset/texts"

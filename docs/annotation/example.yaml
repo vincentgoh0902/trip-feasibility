@@ -1,6 +1,5 @@
 # A worked example, NOT part of the dataset: a made-up one-day Paris itinerary, fully
-# annotated. Times and travel minutes are illustrative. Its text is example.md. Guide:
-# docs/ANNOTATION.md.
+# annotated. Times and travel minutes are illustrative. Its text is example.md.
 id: example-paris
 city: paris
 split: dev

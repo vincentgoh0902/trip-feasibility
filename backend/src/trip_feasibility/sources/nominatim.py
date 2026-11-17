@@ -1,7 +1,7 @@
 """Nominatim (OpenStreetMap's search service): tags of known OSM places, and geocoding.
 
 Used instead of Overpass, whose public servers are overloaded and ask automated clients to
-self-host (see docs/ARCHITECTURE.md). Usage policy: identify the app, at most 1 request per
+self-host. Usage policy: identify the app, at most 1 request per
 second, cache results, no bulk downloads. https://operations.osmfoundation.org/policies/nominatim/
 """
 

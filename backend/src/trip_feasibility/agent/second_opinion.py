@@ -2,7 +2,7 @@
 hours, run beside the checks, whose findings are then set against theirs.
 
 Why: on dev, our checks and a plain LLM with web search find mostly the same problems, and
-every problem both flagged was real (14 of 14, EVALS.md 2026-11-03); each also finds a few
+every problem both flagged was real (14 of 14 on dev, 2026-11-03); each also finds a few
 the other misses. So the hybrid reports agreement as confirmation, and what only one side
 finds as worth checking. Opening hours only: that's where the two disagreed usefully (OSM
 hours missing or wrong; the plain LLM's other finds were opening hours too, bar one

@@ -5,10 +5,10 @@ Stops are taken in itinerary order, not re-sorted by time: an itinerary whose ti
 backwards is itself a problem for the travel-time check to report. A leg to or from an area
 stop (a neighbourhood) under AREA_BESIDE_KM on foot is left out: you're already beside it,
 and routing to its centre point would time a journey that mostly doesn't exist. Farther
-than that it's a real journey, timed to the centre (a little over the nearest edge that
-docs/ANNOTATION.md times to). Decision 80; the 2 km was set on the dev set.
+than that it's a real journey, timed to the centre (a little over the nearest edge, which the gold
+labels time to). Decision 80; the 2 km was set on the dev set.
 
-Estimates, all documented in docs/ARCHITECTURE.md and tuned from the dev set:
+Estimates, to be tuned on the dev set:
 - walk: OSRM foot profile; only offered for legs up to WALK_LEG_MAX_KM, unless walking is
   the traveller's only mode.
 - bike: OSRM bike profile.

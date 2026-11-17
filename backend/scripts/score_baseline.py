@@ -7,7 +7,7 @@ Reads what scripts/run_baseline.py cached for the current BASELINE_PROMPT_VERSIO
 whose inputs changed since then are listed as stale (rerun the baseline). Hotel red flags
 are left out: the baseline doesn't check hotels. Uncertain place-name pairs use the human
 decisions (scripts/match_decisions.py --from-baseline --ask); undecided ones make the
-numbers provisional. Prints only; record kept runs in docs/EVALS.md. The test split needs
+numbers provisional. Prints only; record kept runs in the eval log. The test split needs
 --final and prints no itinerary ids; its seen cities and the unseen one (Vienna) are also
 reported apart.
 """

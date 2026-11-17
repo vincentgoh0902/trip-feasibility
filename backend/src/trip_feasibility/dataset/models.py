@@ -5,8 +5,8 @@ gold: violations as a traveller would read them (check, day, place and time as w
 with evidence), the things that couldn't be established (`unknowns`) and problems outside
 the checks (`other_issues`). A draft records who drafted it and counts only once a human
 has verified it. Hotel violations aren't labelled per file: they come from the itinerary's
-`hotel` and hotels.yaml (see validate.gold_violations). The guide is docs/ANNOTATION.md;
-docs/annotation/example.yaml is a filled-in example.
+`hotel` and hotels.yaml (see validate.gold_violations). docs/annotation/example.yaml is a
+filled-in example.
 
 Gold stops and legs are dev only, for parser debugging (decision 74): stops are what parse
 step 1 (LLM extraction) should return, plus annotation-only fields (`osm`, `hotel`). The
