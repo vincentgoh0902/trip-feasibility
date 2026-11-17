@@ -5,7 +5,8 @@ public holidays, travel times that don't fit, hotel red flags, overloaded days),
 evidence and its source for each problem, and proposes fixes that are re-checked before you
 see them.
 
-**Live demo:** not hosted yet (it runs locally with one command, below).
+**Live demo:** [trip-feasibility.tail9b08fe.ts.net](https://trip-feasibility.tail9b08fe.ts.net/)
+(three sample itineraries: check one, or copy it and paste it to see the whole flow).
 
 ![Copying a chatbot-style London itinerary, pasting it, confirming the six stops it read, then the live check: two closed places confirmed by a web search with their sources, and fixes that passed the re-check](docs/images/demo.gif)
 
