@@ -29,11 +29,11 @@ would also work, but the two apps together need more than the 256 MB default.
 - `DATABASE_URL=postgresql+asyncpg://trip:<password>@db:5432/trip` with a real password,
   the same one the `db` container gets (`POSTGRES_PASSWORD`, `POSTGRES_USER=trip`,
   `POSTGRES_DB=trip`).
-- `ANTHROPIC_API_KEY` (secret): parsing, fixes, closures and the second opinion. Set a
-  monthly spend cap in the Anthropic Console. Visitors can't spend it: demo runs and pasted
-  samples get only replies prepared by step 4 and never call the model (decision 100).
-  The key is used by `demo.warm`, and later by signed-in live checks (about $0.15–0.30
-  each, once sign-in exists).
+- No `ANTHROPIC_API_KEY`: the running API has no key. Demo runs and pasted samples get only
+  replies prepared by step 4 and never call the model (decision 100), so nothing it serves
+  needs one. The key is used only by the warm-up (step 4), which supplies it itself. Set a
+  monthly spend cap on it in the Anthropic Console. Signed-in live checks (once sign-in
+  exists, about $0.15–0.30 each) would need the key in `app.env` again.
 - `PORT=8000`.
 - `FORWARDED_ALLOW_IPS`: the `web` container's address (or the internal subnet), so the
   API trusts the `X-Forwarded-For` that `web` passes on.
@@ -60,8 +60,9 @@ backed up. Nothing else writes there.
    (`select count(*) from hotels; select count(*) from hotel_reviews;`). Delete the dump
    file afterwards. Restoring into a fresh, migrated database was tested on the Mac.
 4. **Prepare the demo** (web searches and model replies for the three samples, about $0.50,
-   three minutes): `docker exec <api container> python -m trip_feasibility.demo.warm`
-   It prints one line per sample and way in, e.g. `london-bank-holiday (pasted): 8
+   three minutes), on the server: `~/homelab/projects/trip-feasibility/warm.sh`
+   (`docker exec <api container> python -m trip_feasibility.demo.warm` now fails: the API
+   has no key). It prints one line per sample and way in, e.g. `london-bank-holiday (pasted): 8
    problems, 3 fixes`, with no "fix error". Demo runs never search or call the model; they
    use these lookups and stored replies, of any age. Rerun it after a deploy that changes a
    sample, a prompt, a model or a check.
