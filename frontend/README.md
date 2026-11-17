@@ -1,7 +1,7 @@
 # frontend
 
-Next.js (App Router) + Tailwind + shadcn/ui for the Trip Feasibility Checker. See the repo's
-`CLAUDE.md` ("Frontend") and `docs/ARCHITECTURE.md` section 6e.
+Next.js (App Router) + Tailwind + shadcn/ui for the Trip Feasibility Checker. See
+`docs/ARCHITECTURE.md` section 6e.
 
 ```sh
 npm ci

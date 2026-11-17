@@ -2,16 +2,15 @@
 
 This explains what's been built, how the pieces fit, and the reasoning behind each choice,
 including the tradeoffs and what was given up. Requirements are in [`PRD.md`](PRD.md);
-progress and open decisions are in [`../PLAN.md`](../PLAN.md). Keep this file current when
-the design changes.
+every eval run is in [`EVALS.md`](EVALS.md).
 
-**Status (Nov 3, 2026):** all five checks, the parse pipeline, the agent with re-checked
-fixes, the API (live progress over SSE, sign-in via a token from the frontend, a demo mode,
-rate limits, tracing and cost per run), the injection suite and the first frontend slice
-(landing, demo, live results) are built and tested, and have run live against the real data
-sources and Claude. The dev split is annotated and verified; the eval runner has scored it in
-both modes against an LLM-only baseline (results in [`EVALS.md`](EVALS.md)). Next: the Tier 1
-plan in `PLAN.md` (closures eval and injection pages, LLM review), then sign-in and the signed-in pages.
+**Status (Nov 17, 2026):** the six checks, the parse pipeline, the agent with the web-search
+second opinion and re-checked fixes, the API (live progress over SSE, a demo mode that never
+calls the model, rate limits, tracing and cost per run), the injection suite and the public
+half of the frontend (landing, samples, the paste flow, live results) are built and tested,
+and have run live against the real data sources and Claude. The dataset is verified and the
+held-out test split has had its one final run (EVALS.md). Not built yet: sign-in and the
+signed-in pages. Tuning travel time and daily load is deferred (section 13).
 
 ---
 
@@ -54,8 +53,8 @@ wrong, its source shows whether the data, the logic or the model was at fault.
 This replaced "the LLM interprets and proposes; code decides", under which every fact came
 from structured data. Annotating the dev set showed that much of what breaks a real
 itinerary isn't in structured data: the London Eye's annual maintenance shutdown exists only
-as text on its website, and OSM's hours say it's open. The closures check (PLAN.md Tier 1
-step 2, built 2026-11-13, section 5) is the first part built under the new rule; the review
+as text on its website, and OSM's hours say it's open. The closures check (built
+2026-11-13, section 5) is the first part built under the new rule; the review
 node (step 3) is next.
 
 ## 2. Repository map
@@ -69,7 +68,6 @@ trip-feasibility/
 ├── docs/ANNOTATION.md        how to collect and annotate the dataset
 ├── docs/TEST_CITIES.md       dataset cities and hotels
 ├── docs/annotation/          template, worked example, unlabelled hotels.yaml
-├── PLAN.md                   progress checklist + open decisions
 ├── frontend/                 Next.js 16 (App Router), Tailwind 4, shadcn/ui (section 6e)
 │   ├── openapi.json          the API schema, exported from the backend (types come from it)
 │   └── src/
@@ -83,7 +81,7 @@ trip-feasibility/
 └── backend/                  Python 3.12 project managed by uv
     ├── Dockerfile, start.sh  container image; runs migrations then the server
     ├── alembic/              database migrations
-    ├── scripts/              command-line tools, listed with their commands in CLAUDE.md:
+    ├── scripts/              command-line tools, each described in its docstring:
     │                         dataset (save, validate, format, draft), evals (run_eval, baseline,
     │                         match decisions, injection suite, snapshot), smoke tests, the CLI
     │                         (check_itinerary), hotel reviews (Mac only), export_openapi
@@ -156,7 +154,7 @@ frontend/e2e/                 Playwright: landing → demo → a live check, des
 
 Everything comes from environment variables via `pydantic-settings`, with safe defaults for
 local development. Nothing is hardcoded to a host or path, which is what the homelab
-needs. The full list, with defaults, is in CLAUDE.md ("Env vars").
+needs. The full list, with defaults, is in `backend/src/trip_feasibility/config.py`.
 
 ### Why uv, ruff, a `src/` layout
 
@@ -716,7 +714,7 @@ against the cleaned text (`scripts/show_clean.py <id>` prints it).
 
 Interactive widgets that don't reach the clipboard at all (Claude's day tabs) are a
 different problem: there's nothing to clean. The paste box will offer a "rewrite as plain
-text" follow-up line and warn when the parsed days don't cover the trip (PLAN.md "Open").
+text" follow-up line and warn when the parsed days don't cover the trip (not built yet).
 
 ### Extraction schema (`schema.py`)
 
@@ -1254,8 +1252,7 @@ Dark mode is Tier 3. Checked at 375 px with no horizontal scroll.
 
 **Next.js 16 specifics:** Cache Components is on (the default for new apps), so anything that
 reads params or fetches at request time sits inside `<Suspense>`; route types come from
-`next typegen` (run by `npm run typecheck`). `AGENTS.md` points coding agents at the docs
-bundled in `node_modules/next/dist/docs/`.
+`next typegen` (run by `npm run typecheck`).
 
 ## 7. The evaluation dataset (`dataset/`, `docs/ANNOTATION.md`)
 
@@ -1776,7 +1773,8 @@ Replaced or dropped:
   of 46 tagged dev places do, so a site that moved in only one of them is `web`; vandalising
   both still works; DNS rebinding not caught by the fetch guard; partial
   closures not reported.
-- Next: the Tier 1 plan in `PLAN.md` (the LLM review), then the frontend's signed-in half.
+- Next: tuning travel time and daily load on dev (deferred; anything tuned now is tuned
+  with the test results seen), then sign-in and the frontend's signed-in half.
 
 ## Glossary
 

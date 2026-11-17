@@ -19,3 +19,8 @@ mlruns/
 .ruff_cache/
 .Rhistory
 .claude/settings.local.json
+
+# working notes, kept locally only
+/CLAUDE.md
+/PLAN.md
+frontend/AGENTS.md

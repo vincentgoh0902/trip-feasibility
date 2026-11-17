@@ -40,7 +40,7 @@ would also work, but the two apps together need more than the 256 MB default.
 - Optional: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` (tracing; no
   traveller text is sent). Not needed yet: `API_JWT_SECRET` (sign-in isn't built; without
   it the signed-in routes answer 503 and the demo works).
-- Everything else has working defaults (CLAUDE.md, "Env vars").
+- Everything else has working defaults (`backend/src/trip_feasibility/config.py`).
 
 `db`: its data directory on `/data` (`projects/trip-feasibility/data/postgres`), so it's
 backed up. Nothing else writes there.

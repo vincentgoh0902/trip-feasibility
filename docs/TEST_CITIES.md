@@ -9,8 +9,8 @@ low-scoring ones should give the red-flags check something real to find. The hig
 ones are clean controls, so a flag on one of them is a false positive.
 
 **Vienna is held out of the dev set** (decided 2026-10-24): dev is 5 itineraries each from
-Paris, London and Barcelona; test is the other 15 plus all 10 from Vienna. Rules in PLAN.md
-"Decisions".
+Paris, London and Barcelona; test is the other 15 plus all 10 from Vienna. Rules in
+[`ANNOTATION.md`](ANNOTATION.md).
 
 ## How they were picked
 

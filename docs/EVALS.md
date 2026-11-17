@@ -57,7 +57,7 @@ Superseded: the prompt is now `baseline-v4` (decision 79), so it needs a rerun.
 
 ### 2026-10-31 · gold mode · `8ef09a3b` · after the four diagnosis fixes
 
-What changed (ARCHITECTURE decision 79; causes in PLAN.md "Gold-mode diagnosis"): stops in
+What changed (ARCHITECTURE decision 79): stops in
 one morning/afternoon/evening slot split it in order; the holiday check knows the city's
 region; opening hours use the place's coordinates for sunrise/sunset; gold stops are located
 like parsed ones (`located: false` never looked up, neighbourhoods marked as areas).
